@@ -17,6 +17,10 @@ namespace WindowsGSM.GameServer
         private const string ServerDownloadPage = "https://docs.fivem.net/docs/server-download/?platform=legacy&os=windows";
         private const string ServerDataArchiveUrl = "https://github.com/citizenfx/cfx-server-data/archive/refs/heads/master.zip";
         private readonly Functions.ServerConfig _serverData;
+        private readonly string _gameFullName;
+        private readonly string _displayName;
+        private readonly string _versionFileName;
+        private readonly bool _isRedM;
 
         private sealed class FiveMArtifact
         {
@@ -40,8 +44,21 @@ namespace WindowsGSM.GameServer
         public string Additional = "+exec server.cfg";
 
         public GTA5(Functions.ServerConfig serverData)
+            : this(serverData, FullName, "FiveM", "FiveM-version.txt", false)
+        {
+        }
+
+        protected GTA5(Functions.ServerConfig serverData, string gameFullName, string displayName, string versionFileName, bool isRedM)
         {
             _serverData = serverData;
+            _gameFullName = gameFullName;
+            _displayName = displayName;
+            _versionFileName = versionFileName;
+            _isRedM = isRedM;
+            if (_isRedM)
+            {
+                Defaultmap = "RedM-map-one";
+            }
         }
 
         public async Task CreateServerCFG()
@@ -57,39 +74,70 @@ namespace WindowsGSM.GameServer
             try
             {
                 Directory.CreateDirectory(stagingPath);
-                if (!await Functions.Github.DownloadGameServerConfig(stagedConfigPath, FullName))
+                bool downloadedTemplate = await Functions.Github.DownloadGameServerConfig(stagedConfigPath, _gameFullName);
+                string configText;
+                if (downloadedTemplate)
                 {
-                    Error = "Failed to download the FiveM server.cfg template.";
+                    configText = File.ReadAllText(stagedConfigPath);
+                }
+                else if (File.Exists(configPath))
+                {
+                    configText = File.ReadAllText(configPath);
+                    Notice = AppendNotice(Notice, $"The {_displayName} server.cfg template could not be downloaded; using the CFX default configuration.");
+                }
+                else
+                {
+                    Error = $"No {_displayName} server.cfg template or CFX default configuration was available.";
                     return;
                 }
 
                 string maxPlayers = string.IsNullOrWhiteSpace(_serverData.ServerMaxPlayer) ? Maxplayers : _serverData.ServerMaxPlayer;
-                string configText = File.ReadAllText(stagedConfigPath);
+                string serverIp = string.IsNullOrWhiteSpace(_serverData.ServerIP) ? "0.0.0.0" : _serverData.ServerIP;
+                string serverPort = string.IsNullOrWhiteSpace(_serverData.ServerPort) ? Port : _serverData.ServerPort;
                 configText = configText.Replace("{{hostname}}", EscapeConfigValue(_serverData.ServerName));
                 configText = configText.Replace("{{rcon_password}}", EscapeConfigValue(_serverData.GetRCONPassword()));
-                configText = configText.Replace("{{ip}}", EscapeConfigValue(_serverData.GetIPAddress()));
-                configText = configText.Replace("{{port}}", EscapeConfigValue(_serverData.ServerPort));
+                configText = configText.Replace("{{ip}}", EscapeConfigValue(serverIp));
+                configText = configText.Replace("{{port}}", EscapeConfigValue(serverPort));
                 configText = configText.Replace("{{maxplayers}}", EscapeConfigValue(maxPlayers));
+                configText = SetConfigValue(configText, "sv_hostname", _serverData.ServerName, true);
+                configText = SetConfigValue(configText, "sv_maxclients", maxPlayers, false);
+                configText = SetConfigValue(configText, "endpoint_add_tcp", serverIp + ":" + serverPort, true);
+                configText = SetConfigValue(configText, "endpoint_add_udp", serverIp + ":" + serverPort, true);
+                if (!string.IsNullOrWhiteSpace(_serverData.CfxLicenseKey))
+                {
+                    configText = SetConfigValue(configText, "sv_licenseKey", _serverData.CfxLicenseKey.Trim(), true);
+                }
+                if (_isRedM)
+                {
+                    configText = SetConfigValue(configText, "gamename", "rdr3", false, true);
+                }
                 File.WriteAllText(stagedConfigPath, configText, new UTF8Encoding(false));
                 ReplaceFile(stagedConfigPath, configPath);
 
-                string logoPath = Path.Combine(serverDataPath, "myLogo.png");
-                if (await Functions.Github.DownloadGameServerConfig(stagedLogoPath, FullName))
+                if (!_isRedM)
                 {
-                    ReplaceFile(stagedLogoPath, logoPath);
+                    string logoPath = Path.Combine(serverDataPath, "myLogo.png");
+                    if (await Functions.Github.DownloadGameServerConfig(stagedLogoPath, _gameFullName))
+                    {
+                        ReplaceFile(stagedLogoPath, logoPath);
+                    }
+                    else
+                    {
+                        Notice = AppendNotice(Notice, "The sample FiveM server logo could not be downloaded.");
+                    }
                 }
-                else
-                {
-                    Notice = "The sample FiveM server logo could not be downloaded.";
-                }
+            }
+            catch (WebException exception)
+            {
+                Error = $"Failed to create the {_displayName} server configuration: {exception.Message}";
             }
             catch (IOException exception)
             {
-                Error = "Failed to create the FiveM server configuration: " + exception.Message;
+                Error = $"Failed to create the {_displayName} server configuration: {exception.Message}";
             }
             catch (UnauthorizedAccessException exception)
             {
-                Error = "Failed to create the FiveM server configuration: " + exception.Message;
+                Error = $"Failed to create the {_displayName} server configuration: {exception.Message}";
             }
             finally
             {
@@ -101,11 +149,11 @@ namespace WindowsGSM.GameServer
                     }
                     catch (IOException exception)
                     {
-                        Notice = "Could not remove temporary FiveM config files: " + exception.Message;
+                        Notice = AppendNotice(Notice, "Could not remove temporary CFX config files: " + exception.Message);
                     }
                     catch (UnauthorizedAccessException exception)
                     {
-                        Notice = "Could not remove temporary FiveM config files: " + exception.Message;
+                        Notice = AppendNotice(Notice, "Could not remove temporary CFX config files: " + exception.Message);
                     }
                 }
             }
@@ -140,6 +188,11 @@ namespace WindowsGSM.GameServer
             if (!File.Exists(configPath))
             {
                 Error = $"server.cfg not found ({configPath})";
+                return Task.FromResult<Process>(null);
+            }
+
+            if (!EnsureLicenseKey(configPath))
+            {
                 return Task.FromResult<Process>(null);
             }
 
@@ -227,11 +280,11 @@ namespace WindowsGSM.GameServer
             }
             catch (IOException exception)
             {
-                Error = "Failed to send the FiveM shutdown command: " + exception.Message;
+                Error = $"Failed to send the {_displayName} shutdown command: {exception.Message}";
             }
             catch (InvalidOperationException exception)
             {
-                Error = "Failed to send the FiveM shutdown command: " + exception.Message;
+                Error = $"Failed to send the {_displayName} shutdown command: {exception.Message}";
             }
 
             await Task.Run(() =>
@@ -267,7 +320,7 @@ namespace WindowsGSM.GameServer
         public string GetLocalBuild()
         {
             Error = string.Empty;
-            string versionPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "FiveM-version.txt");
+            string versionPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, _versionFileName);
             try
             {
                 if (File.Exists(versionPath))
@@ -279,12 +332,12 @@ namespace WindowsGSM.GameServer
             }
             catch (IOException exception)
             {
-                Error = "Failed to read the local FiveM build: " + exception.Message;
+                Error = $"Failed to read the local {_displayName} build: {exception.Message}";
                 return string.Empty;
             }
             catch (UnauthorizedAccessException exception)
             {
-                Error = "Failed to read the local FiveM build: " + exception.Message;
+                Error = $"Failed to read the local {_displayName} build: {exception.Message}";
                 return string.Empty;
             }
         }
@@ -301,19 +354,19 @@ namespace WindowsGSM.GameServer
             }
             catch (WebException exception)
             {
-                Error = "Failed to get the latest FiveM build: " + exception.Message;
+                Error = $"Failed to get the latest {_displayName} build: {exception.Message}";
             }
             catch (JsonException exception)
             {
-                Error = "Failed to get the latest FiveM build: " + exception.Message;
+                Error = $"Failed to get the latest {_displayName} build: " + exception.Message;
             }
             catch (InvalidDataException exception)
             {
-                Error = "Failed to get the latest FiveM build: " + exception.Message;
+                Error = $"Failed to get the latest {_displayName} build: " + exception.Message;
             }
             catch (IOException exception)
             {
-                Error = "Failed to get the latest FiveM build: " + exception.Message;
+                Error = $"Failed to get the latest {_displayName} build: " + exception.Message;
             }
             return string.Empty;
         }
@@ -369,7 +422,7 @@ namespace WindowsGSM.GameServer
             Error = string.Empty;
             Notice = string.Empty;
             string serverFilesPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID);
-            string stagingPath = Path.Combine(serverFilesPath, "__fivem_stage_" + Guid.NewGuid().ToString("N"));
+            string stagingPath = Path.Combine(serverFilesPath, "__cfx_stage_" + Guid.NewGuid().ToString("N"));
 
             try
             {
@@ -384,11 +437,11 @@ namespace WindowsGSM.GameServer
                     await webClient.DownloadFileTaskAsync(artifact.DownloadUrl, artifactPath);
                     if (!await Functions.FileManagement.ExtractArchive(artifactPath, stagedServerPath))
                     {
-                        throw new InvalidDataException("Could not safely extract the FiveM 7-Zip server artifact.");
+                        throw new InvalidDataException("Could not safely extract the CFX 7-Zip server artifact.");
                     }
                     if (!IsValidRuntime(stagedServerPath))
                     {
-                        throw new InvalidDataException("The FiveM artifact did not contain FXServer.exe and its citizen directory.");
+                        throw new InvalidDataException("The CFX artifact did not contain FXServer.exe and its citizen directory.");
                     }
 
                     if (installing)
@@ -410,7 +463,7 @@ namespace WindowsGSM.GameServer
                         string serverDataPath = Path.Combine(serverFilesPath, "cfx-server-data-master");
                         if (Directory.Exists(serverPath) || Directory.Exists(serverDataPath))
                         {
-                            throw new InvalidDataException("FiveM files already exist. Remove or import the existing server before installing.");
+                            throw new InvalidDataException($"{_displayName} files already exist. Remove or import the existing server before installing.");
                         }
 
                         Directory.Move(stagedServerPath, serverPath);
@@ -435,35 +488,35 @@ namespace WindowsGSM.GameServer
                             throw;
                         }
 
-                        File.WriteAllText(Path.Combine(serverFilesPath, "FiveM-version.txt"), artifact.Build, new UTF8Encoding(false));
+                        File.WriteAllText(Path.Combine(serverFilesPath, _versionFileName), artifact.Build, new UTF8Encoding(false));
                     }
                     else
                     {
                         string serverPath = Path.Combine(serverFilesPath, "server");
                         ReplaceDirectory(stagedServerPath, serverPath);
-                        File.WriteAllText(Path.Combine(serverFilesPath, "FiveM-version.txt"), artifact.Build, new UTF8Encoding(false));
+                        File.WriteAllText(Path.Combine(serverFilesPath, _versionFileName), artifact.Build, new UTF8Encoding(false));
                     }
                 }
             }
             catch (WebException exception)
             {
-                Error = $"Failed to {(installing ? "install" : "update")} FiveM: {exception.Message}";
+                Error = $"Failed to {(installing ? "install" : "update")} {_displayName}: {exception.Message}";
             }
             catch (JsonException exception)
             {
-                Error = $"Failed to {(installing ? "install" : "update")} FiveM: {exception.Message}";
+                Error = $"Failed to {(installing ? "install" : "update")} {_displayName}: {exception.Message}";
             }
             catch (InvalidDataException exception)
             {
-                Error = $"Failed to {(installing ? "install" : "update")} FiveM: {exception.Message}";
+                Error = $"Failed to {(installing ? "install" : "update")} {_displayName}: {exception.Message}";
             }
             catch (IOException exception)
             {
-                Error = $"Failed to {(installing ? "install" : "update")} FiveM: {exception.Message}";
+                Error = $"Failed to {(installing ? "install" : "update")} {_displayName}: {exception.Message}";
             }
             catch (UnauthorizedAccessException exception)
             {
-                Error = $"Failed to {(installing ? "install" : "update")} FiveM: {exception.Message}";
+                Error = $"Failed to {(installing ? "install" : "update")} {_displayName}: {exception.Message}";
             }
             finally
             {
@@ -475,11 +528,11 @@ namespace WindowsGSM.GameServer
                     }
                     catch (IOException exception)
                     {
-                        Error = AppendError(Error, "Could not remove temporary FiveM files: " + exception.Message);
+                        Error = AppendError(Error, "Could not remove temporary CFX files: " + exception.Message);
                     }
                     catch (UnauthorizedAccessException exception)
                     {
-                        Error = AppendError(Error, "Could not remove temporary FiveM files: " + exception.Message);
+                        Error = AppendError(Error, "Could not remove temporary CFX files: " + exception.Message);
                     }
                 }
             }
@@ -500,12 +553,12 @@ namespace WindowsGSM.GameServer
             string serverDataPath = Path.Combine(serverFilesPath, "cfx-server-data-master");
             if (!IsValidRuntime(serverPath))
             {
-                Error = $"Invalid FiveM installation: FXServer.exe or citizen is missing from ({serverPath}).";
+                Error = $"Invalid {_displayName} installation: FXServer.exe or citizen is missing from ({serverPath}).";
                 return false;
             }
             if (!File.Exists(Path.Combine(serverDataPath, "server.cfg")))
             {
-                Error = $"Invalid FiveM installation: server.cfg is missing from ({serverDataPath}).";
+                Error = $"Invalid {_displayName} installation: server.cfg is missing from ({serverDataPath}).";
                 return false;
             }
             return true;
@@ -558,6 +611,76 @@ namespace WindowsGSM.GameServer
             }
         }
 
+        private bool EnsureLicenseKey(string configPath)
+        {
+            try
+            {
+                string configText = File.ReadAllText(configPath);
+                string licenseKey = (_serverData.CfxLicenseKey ?? string.Empty).Trim();
+                if (!string.IsNullOrWhiteSpace(licenseKey))
+                {
+                    configText = SetConfigValue(configText, "sv_licenseKey", licenseKey, true);
+                    File.WriteAllText(configPath, configText, new UTF8Encoding(false));
+                }
+
+                if (HasValidLicenseKey(configText))
+                {
+                    return true;
+                }
+
+                Error = $"A CFX license key is required for {_displayName}. Enter one in Edit Config or set sv_licenseKey in server.cfg.";
+                return false;
+            }
+            catch (IOException exception)
+            {
+                Error = $"Failed to read the {_displayName} license key from server.cfg: {exception.Message}";
+                return false;
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                Error = $"Failed to read the {_displayName} license key from server.cfg: {exception.Message}";
+                return false;
+            }
+        }
+
+        private static bool HasValidLicenseKey(string configText)
+        {
+            MatchCollection matches = Regex.Matches(configText ?? string.Empty,
+                @"^[ \t]*(?:set[ \t]+)?sv_licenseKey[ \t]+(?<value>.*)$",
+                RegexOptions.IgnoreCase | RegexOptions.Multiline);
+            if (matches.Count == 0)
+            {
+                return false;
+            }
+
+            string value = matches[matches.Count - 1].Groups["value"].Value;
+            int commentIndex = value.IndexOf('#');
+            if (commentIndex >= 0)
+            {
+                value = value.Substring(0, commentIndex);
+            }
+            value = value.Trim().Trim('"', '\'');
+            return !string.IsNullOrWhiteSpace(value) && value.IndexOf("changeme", StringComparison.OrdinalIgnoreCase) < 0;
+        }
+
+        private static string SetConfigValue(string configText, string name, string value, bool quoteValue, bool useSet = false)
+        {
+            configText = configText ?? string.Empty;
+            string pattern = @"^[ \t]*(?:set[ \t]+)?" + Regex.Escape(name) + @"[ \t]+.*$";
+            string configValue = quoteValue ? "\"" + EscapeConfigValue(value) + "\"" : EscapeConfigValue(value);
+            string line = (useSet ? "set " : string.Empty) + name + " " + configValue;
+            var regex = new Regex(pattern, RegexOptions.IgnoreCase | RegexOptions.Multiline);
+            if (regex.IsMatch(configText))
+            {
+                return regex.Replace(configText, match => line);
+            }
+
+            string existingConfig = configText.TrimEnd();
+            return string.IsNullOrEmpty(existingConfig)
+                ? line + Environment.NewLine
+                : existingConfig + Environment.NewLine + line + Environment.NewLine;
+        }
+
         private static string EscapeConfigValue(string value)
         {
             return (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", " ").Replace("\n", " ");
@@ -566,6 +689,21 @@ namespace WindowsGSM.GameServer
         private static string AppendError(string currentError, string message)
         {
             return string.IsNullOrWhiteSpace(currentError) ? message : currentError + Environment.NewLine + message;
+        }
+
+        private static string AppendNotice(string currentNotice, string message)
+        {
+            return string.IsNullOrWhiteSpace(currentNotice) ? message : currentNotice + Environment.NewLine + message;
+        }
+    }
+
+    class RedM : GTA5
+    {
+        public new const string FullName = "Red Dead Redemption 2 Server";
+
+        public RedM(Functions.ServerConfig serverData)
+            : base(serverData, FullName, "RedM", "RedM-version.txt", true)
+        {
         }
     }
 }

@@ -1099,7 +1099,7 @@ namespace WindowsGSM
                 checkBox_Install_Cod1MeatBots.IsChecked = false;
                 numericUpDown_Install_Cod1AlliesBots.Value = 0;
                 numericUpDown_Install_Cod1AxisBots.Value = 0;
-                textbox_Install_Cod1FastDlUrl.Text = string.Empty;
+                passwordBox_Install_CfxLicenseKey.Password = string.Empty;
 
                 ComboBox_InstallGameServer_SelectionChanged(sender, null);
 
@@ -1111,6 +1111,12 @@ namespace WindowsGSM
         private static bool IsCod1Game(string gameName)
         {
             return string.Equals(gameName, GameServer.COD1.FullName, StringComparison.Ordinal);
+        }
+
+        private static bool IsCfxGame(string gameName)
+        {
+            return string.Equals(gameName, GameServer.GTA5.FullName, StringComparison.Ordinal) ||
+                string.Equals(gameName, GameServer.RedM.FullName, StringComparison.Ordinal);
         }
 
         private async void Button_Install_Click(object sender, RoutedEventArgs e)
@@ -1128,14 +1134,14 @@ namespace WindowsGSM
             string servername = textbox_InstallServerName.Text;
             string servergame = selectedgame.Name;
             bool isCod1 = IsCod1Game(servergame);
+            bool isCfx = IsCfxGame(servergame);
             if (isCod1)
             {
                 newServerConfig.Cod1MeatBots = checkBox_Install_Cod1MeatBots.IsChecked == true;
                 newServerConfig.Cod1AlliesBots = numericUpDown_Install_Cod1AlliesBots.Value.ToString();
                 newServerConfig.Cod1AxisBots = numericUpDown_Install_Cod1AxisBots.Value.ToString();
-                newServerConfig.Cod1FastDlUrl = textbox_Install_Cod1FastDlUrl.Text.Trim();
                 if (!ServerConfig.ValidateCod1Settings(newServerConfig.Cod1AlliesBots, newServerConfig.Cod1AxisBots,
-                    newServerConfig.Cod1FastDlUrl, "32", newServerConfig.Cod1MeatBots, out string settingsError))
+                    "32", out string settingsError))
                 {
                     MessageBox.Show(settingsError, "Invalid Call of Duty 1 settings", MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
@@ -1231,7 +1237,10 @@ namespace WindowsGSM
                     newServerConfig.Cod1MeatBots = checkBox_Install_Cod1MeatBots.IsChecked == true;
                     newServerConfig.Cod1AlliesBots = numericUpDown_Install_Cod1AlliesBots.Value.ToString();
                     newServerConfig.Cod1AxisBots = numericUpDown_Install_Cod1AxisBots.Value.ToString();
-                    newServerConfig.Cod1FastDlUrl = textbox_Install_Cod1FastDlUrl.Text.Trim();
+                }
+                if (isCfx)
+                {
+                    newServerConfig.CfxLicenseKey = passwordBox_Install_CfxLicenseKey.Password.Trim();
                 }
                 newServerConfig.CreateWindowsGSMConfig();
 
@@ -1239,17 +1248,17 @@ namespace WindowsGSM
                 try
                 {
                     gameServer = GameServer.Data.Class.Get(servergame, newServerConfig, PluginsList);
-                    if (servergame == WindowsGSM.GameServer.GTA5.FullName)
+                    if (isCfx)
                     {
-                        WindowsGSM.GameServer.GTA5 fiveMServer = (WindowsGSM.GameServer.GTA5)gameServer;
-                        await fiveMServer.CreateServerCFG();
-                        if (!string.IsNullOrWhiteSpace(fiveMServer.Error))
+                        WindowsGSM.GameServer.GTA5 cfxServer = (WindowsGSM.GameServer.GTA5)gameServer;
+                        await cfxServer.CreateServerCFG();
+                        if (!string.IsNullOrWhiteSpace(cfxServer.Error))
                         {
-                            Log(newServerConfig.ServerID, "FiveM config: " + fiveMServer.Error);
+                            Log(newServerConfig.ServerID, servergame + " config: " + cfxServer.Error);
                         }
-                        if (!string.IsNullOrWhiteSpace(fiveMServer.Notice))
+                        if (!string.IsNullOrWhiteSpace(cfxServer.Notice))
                         {
-                            Log(newServerConfig.ServerID, "FiveM config: " + fiveMServer.Notice);
+                            Log(newServerConfig.ServerID, servergame + " config: " + cfxServer.Notice);
                         }
                     }
                     else
@@ -1268,6 +1277,7 @@ namespace WindowsGSM
                 MahAppFlyout_InstallGameServer.IsOpen = false;
                 textbox_InstallServerName.IsEnabled = true;
                 comboBox_InstallGameServer.IsEnabled = true;
+                passwordBox_Install_CfxLicenseKey.Password = string.Empty;
                 progressbar_InstallProgress.IsIndeterminate = false;
 
                 if (MahAppSwitch_SendStatistics.IsOn)
@@ -1297,6 +1307,7 @@ namespace WindowsGSM
             button_InstallSetAccount.IsEnabled = false;
             textBox_InstallToken.Visibility = Visibility.Hidden;
             button_InstallSendToken.Visibility = Visibility.Hidden;
+            stackPanel_Install_CfxSettings.Visibility = selectedgame != null && IsCfxGame(selectedgame.Name) ? Visibility.Visible : Visibility.Collapsed;
             stackPanel_Install_Cod1Settings.Visibility = selectedgame != null && IsCod1Game(selectedgame.Name) ? Visibility.Visible : Visibility.Collapsed;
             if (selectedgame == null) { return; }
 
@@ -3552,10 +3563,11 @@ namespace WindowsGSM
             textbox_EC_ServerParam.Text = serverConfig.ServerParam;
             bool isCod1 = IsCod1Game(serverConfig.ServerGame);
             stackPanel_EC_Cod1Settings.Visibility = isCod1 ? Visibility.Visible : Visibility.Collapsed;
+            stackPanel_EC_CfxSettings.Visibility = IsCfxGame(serverConfig.ServerGame) ? Visibility.Visible : Visibility.Collapsed;
+            passwordBox_EC_CfxLicenseKey.Password = string.Empty;
             checkBox_EC_Cod1MeatBots.IsChecked = serverConfig.Cod1MeatBots;
             numericUpDown_EC_Cod1AlliesBots.Value = int.TryParse(serverConfig.Cod1AlliesBots, out var alliesBots) ? alliesBots : 0;
             numericUpDown_EC_Cod1AxisBots.Value = int.TryParse(serverConfig.Cod1AxisBots, out var axisBots) ? axisBots : 0;
-            textbox_EC_Cod1FastDlUrl.Text = serverConfig.Cod1FastDlUrl;
             return true;
         }
 
@@ -3568,9 +3580,7 @@ namespace WindowsGSM
             if (isCod1 && !ServerConfig.ValidateCod1Settings(
                     numericUpDown_EC_Cod1AlliesBots.Value.ToString(),
                     numericUpDown_EC_Cod1AxisBots.Value.ToString(),
-                    textbox_EC_Cod1FastDlUrl.Text.Trim(),
                     numericUpDown_EC_ServerMaxplayer.Value.ToString(),
-                    checkBox_EC_Cod1MeatBots.IsChecked == true,
                     out string settingsError))
             {
                 MessageBox.Show(settingsError, "Invalid Call of Duty 1 settings", MessageBoxButton.OK, MessageBoxImage.Error);
@@ -3616,7 +3626,11 @@ namespace WindowsGSM
                 ServerConfig.SetSetting(serverId, ServerConfig.SettingName.Cod1MeatBots, checkBox_EC_Cod1MeatBots.IsChecked == true ? "1" : "0");
                 ServerConfig.SetSetting(serverId, ServerConfig.SettingName.Cod1AlliesBots, numericUpDown_EC_Cod1AlliesBots.Value.ToString());
                 ServerConfig.SetSetting(serverId, ServerConfig.SettingName.Cod1AxisBots, numericUpDown_EC_Cod1AxisBots.Value.ToString());
-                ServerConfig.SetSetting(serverId, ServerConfig.SettingName.Cod1FastDlUrl, textbox_EC_Cod1FastDlUrl.Text.Trim());
+            }
+            string cfxLicenseKey = passwordBox_EC_CfxLicenseKey.Password.Trim();
+            if (IsCfxGame(textbox_EC_ServerGame.Text) && !string.IsNullOrWhiteSpace(cfxLicenseKey))
+            {
+                ServerConfig.SetSetting(serverId, ServerConfig.SettingName.CfxLicenseKey, cfxLicenseKey);
             }
 
             LoadServerTable();

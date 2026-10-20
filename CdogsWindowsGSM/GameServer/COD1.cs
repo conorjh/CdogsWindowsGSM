@@ -13,6 +13,7 @@ namespace WindowsGSM.GameServer
     {
         private const string AppId = "2620";
         private const string ModDirectoryName = "CoD1MeatBots_RC2";
+        private const string FastDlBaseUrl = "https://cdogservers.net/cod1/";
         private const string ModArchiveUrl = "https://www.moddb.com/downloads/start/216746/all";
         private const string ModPageUrl = "https://www.moddb.com/games/call-of-duty/downloads/cod1-meatbot-v02";
         private const long ModArchiveSize = 24089986;
@@ -74,9 +75,7 @@ namespace WindowsGSM.GameServer
             if (meatBots && !ServerConfig.ValidateCod1Settings(
                     _serverData.Cod1AlliesBots,
                     _serverData.Cod1AxisBots,
-                    _serverData.Cod1FastDlUrl,
                     _serverData.ServerMaxPlayer,
-                    true,
                     out Error))
             {
                 return Task.FromResult<Process>(null);
@@ -389,7 +388,7 @@ namespace WindowsGSM.GameServer
             config.AppendLine($"set cod_mbot_amount2 {_serverData.Cod1AlliesBots}");
             config.AppendLine("set sv_allowDownload 1");
             config.AppendLine("set sv_wwwDownload 1");
-            config.AppendLine($"set sv_wwwBaseURL \"{EscapeConfigValue(_serverData.Cod1FastDlUrl.TrimEnd('/'))}\"");
+            config.AppendLine($"set sv_wwwBaseURL \"{EscapeConfigValue(FastDlBaseUrl.TrimEnd('/'))}\"");
             File.WriteAllText(configPath, config.ToString());
             string modPath = ServerPath.GetServersServerFiles(_serverData.ServerID, ModDirectoryName);
             File.Copy(configPath, Path.Combine(modPath, "wgs_cod1_meatbots.cfg"), true);

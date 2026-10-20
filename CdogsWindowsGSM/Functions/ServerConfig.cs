@@ -18,6 +18,7 @@ namespace WindowsGSM.Functions
             public const string ServerMaxPlayer = "servermaxplayer";
             public const string ServerGSLT = "servergslt";
             public const string ServerParam = "serverparam";
+            public const string CfxLicenseKey = "cfxlicensekey";
             public const string AutoRestart = "autorestart";
             public const string AutoStart = "autostart";
             public const string AutoUpdate = "autoupdate";
@@ -40,7 +41,6 @@ namespace WindowsGSM.Functions
             public const string Cod1MeatBots = "cod1meatbots";
             public const string Cod1AlliesBots = "cod1alliesbots";
             public const string Cod1AxisBots = "cod1axisbots";
-            public const string Cod1FastDlUrl = "cod1fastdlurl";
         }
 
         public string ServerID;
@@ -53,6 +53,7 @@ namespace WindowsGSM.Functions
         public string ServerMaxPlayer;
         public string ServerGSLT;
         public string ServerParam;
+        public string CfxLicenseKey = string.Empty;
         public bool AutoRestart;
         public bool AutoStart;
         public bool AutoUpdate;
@@ -75,7 +76,6 @@ namespace WindowsGSM.Functions
         public bool Cod1MeatBots;
         public string Cod1AlliesBots = "0";
         public string Cod1AxisBots = "0";
-        public string Cod1FastDlUrl = string.Empty;
 
         public ServerConfig(string serverid)
         {
@@ -128,6 +128,7 @@ namespace WindowsGSM.Functions
                             case SettingName.ServerMaxPlayer: ServerMaxPlayer = keyvalue[1]; break;
                             case SettingName.ServerGSLT: ServerGSLT = keyvalue[1]; break;
                             case SettingName.ServerParam: ServerParam = keyvalue[1]; break;
+                            case SettingName.CfxLicenseKey: CfxLicenseKey = keyvalue[1]; break;
                             case SettingName.AutoRestart: AutoRestart = keyvalue[1] == "1"; break;
                             case SettingName.AutoStart: AutoStart = keyvalue[1] == "1"; break;
                             case SettingName.AutoUpdate: AutoUpdate = keyvalue[1] == "1"; break;
@@ -150,7 +151,6 @@ namespace WindowsGSM.Functions
                             case SettingName.Cod1MeatBots: Cod1MeatBots = keyvalue[1] == "1"; break;
                             case SettingName.Cod1AlliesBots: Cod1AlliesBots = keyvalue[1]; break;
                             case SettingName.Cod1AxisBots: Cod1AxisBots = keyvalue[1]; break;
-                            case SettingName.Cod1FastDlUrl: Cod1FastDlUrl = keyvalue[1]; break;
                         }
                     }
                 }
@@ -168,6 +168,7 @@ namespace WindowsGSM.Functions
             ServerMaxPlayer = gameServer.Maxplayers;
             ServerGSLT = string.Empty;
             ServerParam = gameServer.Additional;
+            CfxLicenseKey = string.Empty;
             EmbedConsole = false;
 
             AutoRestart = false;
@@ -191,10 +192,9 @@ namespace WindowsGSM.Functions
             Cod1MeatBots = false;
             Cod1AlliesBots = "0";
             Cod1AxisBots = "0";
-            Cod1FastDlUrl = string.Empty;
         }
 
-        public static bool ValidateCod1Settings(string alliesBots, string axisBots, string fastDlUrl, string maxPlayers, bool requireFastDl, out string error)
+        public static bool ValidateCod1Settings(string alliesBots, string axisBots, string maxPlayers, out string error)
         {
             error = string.Empty;
             if (!int.TryParse(alliesBots, out int allies) || allies < 0 || allies > 32)
@@ -212,21 +212,6 @@ namespace WindowsGSM.Functions
             if (!int.TryParse(maxPlayers, out int playerLimit) || playerLimit < 1 || allies + axis > playerLimit)
             {
                 error = "The total bot count cannot exceed the server max-player limit.";
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(fastDlUrl))
-            {
-                if (requireFastDl)
-                {
-                    error = "A FastDL base URL is required when MeatBots are enabled.";
-                    return false;
-                }
-            }
-            else if (!Uri.TryCreate(fastDlUrl, UriKind.Absolute, out Uri uri) ||
-                     (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
-            {
-                error = "FastDL base URL must be an absolute HTTP or HTTPS URL.";
                 return false;
             }
 
@@ -253,10 +238,10 @@ namespace WindowsGSM.Functions
                     textwriter.WriteLine($"{SettingName.ServerMaxPlayer}=\"{ServerMaxPlayer}\"");
                     textwriter.WriteLine($"{SettingName.ServerGSLT}=\"{ServerGSLT}\"");
                     textwriter.WriteLine($"{SettingName.ServerParam}=\"{ServerParam}\"");
+                    textwriter.WriteLine($"{SettingName.CfxLicenseKey}=\"{CfxLicenseKey}\"");
                     textwriter.WriteLine($"{SettingName.Cod1MeatBots}=\"{(Cod1MeatBots ? "1" : "0")}\"");
                     textwriter.WriteLine($"{SettingName.Cod1AlliesBots}=\"{Cod1AlliesBots}\"");
                     textwriter.WriteLine($"{SettingName.Cod1AxisBots}=\"{Cod1AxisBots}\"");
-                    textwriter.WriteLine($"{SettingName.Cod1FastDlUrl}=\"{Cod1FastDlUrl}\"");
                     textwriter.WriteLine(string.Empty);
                     textwriter.WriteLine($"{SettingName.CPUPriority}=\"{CPUPriority}\"");
                     textwriter.WriteLine($"{SettingName.CPUAffinity}=\"{CPUAffinity}\"");

@@ -206,6 +206,10 @@
                             </StackPanel>
                         </StackPanel>
                         <TextBox x:Name="textbox_EC_ServerParam" Width="500" TextWrapping="Wrap" FontFamily="Consolas" Text="" DockPanel.Dock="Top"/>
+                        <StackPanel x:Name="stackPanel_EC_CfxSettings" Visibility="Collapsed" Margin="0,10,0,0" DockPanel.Dock="Top">
+                            <Label Content="CFX license key (leave blank to keep the current key)" Padding="0,5,0,2"/>
+                            <PasswordBox x:Name="passwordBox_EC_CfxLicenseKey" Height="23"/>
+                        </StackPanel>
                         <StackPanel x:Name="stackPanel_EC_Cod1Settings" Visibility="Collapsed" Margin="0,10,0,0" DockPanel.Dock="Top">
                             <CheckBox x:Name="checkBox_EC_Cod1MeatBots" Content="Enable MeatBots" Margin="0,0,0,5"/>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
@@ -214,8 +218,6 @@
                                 <Label Content="Axis bots" Padding="10,5,5,5"/>
                                 <mah:NumericUpDown x:Name="numericUpDown_EC_Cod1AxisBots" Minimum="0" Maximum="32" Value="0" Interval="1" Width="90"/>
                             </StackPanel>
-                            <Label Content="FastDL base URL" Padding="0,5,0,2"/>
-                            <TextBox x:Name="textbox_EC_Cod1FastDlUrl" Height="23" TextWrapping="NoWrap"/>
                         </StackPanel>
                     </DockPanel>
                     <Button x:Name="button_EC_SaveConfig" VerticalAlignment="Bottom" Content="Save" Width="500" Height="25" Click="Button_EditConfig_Save_Click"/>
@@ -274,6 +276,11 @@
                             <TextBox x:Name="textbox_InstallServerName" Height="23" TextWrapping="Wrap" Text="" VerticalAlignment="Top"/>
                         </DockPanel>
 
+                        <StackPanel x:Name="stackPanel_Install_CfxSettings" Visibility="Collapsed" Margin="0,0,0,15" DockPanel.Dock="Top">
+                            <Label Content="CFX license key (from portal.cfx.re)" Padding="0,5,0,2"/>
+                            <PasswordBox x:Name="passwordBox_Install_CfxLicenseKey" Height="23"/>
+                        </StackPanel>
+
                         <StackPanel x:Name="stackPanel_Install_Cod1Settings" Visibility="Collapsed" Margin="0,0,0,15" DockPanel.Dock="Top">
                             <CheckBox x:Name="checkBox_Install_Cod1MeatBots" Content="Install MeatBots" Margin="0,0,0,5"/>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
@@ -282,8 +289,6 @@
                                 <Label Content="Axis bots" Padding="10,5,5,5"/>
                                 <mah:NumericUpDown x:Name="numericUpDown_Install_Cod1AxisBots" Minimum="0" Maximum="32" Value="0" Interval="1" Width="90"/>
                             </StackPanel>
-                            <Label Content="FastDL base URL" Padding="0,5,0,2"/>
-                            <TextBox x:Name="textbox_Install_Cod1FastDlUrl" Height="23" TextWrapping="NoWrap"/>
                         </StackPanel>
 
                         <DockPanel Margin="0,0,0,15" DockPanel.Dock="Top">
@@ -749,7 +754,7 @@
                         <DataGridTemplateColumn Header="MOD" IsReadOnly="True" Width="53" MinWidth="53" MaxWidth="53">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Image Source="{Binding Icon}" Width="18"/>
+                                    <Image Source="{Binding Icon}" Width="18" ToolTip="{Binding Game}"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
