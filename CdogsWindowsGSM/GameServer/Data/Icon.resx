@@ -148,7 +148,10 @@
     <value>Images/Games/css.png</value>
   </data>
   <data name="Call of Duty 1 Dedicated Server" xml:space="preserve">
-    <value>Images/Games/dod.png</value>
+    <value>Images/Games/cod1.png</value>
+  </data>
+  <data name="Call of Duty 4: Modern Warfare Dedicated Server (CoD4x)" xml:space="preserve">
+    <value>Images/Games/cod4.png</value>
   </data>
   <data name="Day of Defeat Dedicated Server" xml:space="preserve">
     <value>Images/Games/dod.png</value>
@@ -232,16 +235,19 @@
     <value>Images/Games/ror2.png</value>
   </data>
   <data name="RCT2 Dedicated Server" xml:space="preserve">
-    <value>Images/WindowsGSM.png</value>
+    <value>Images/Games/rct2.png</value>
+  </data>
+  <data name="Red Dead Redemption 2 Server" xml:space="preserve">
+    <value>Images/Games/redm.png</value>
   </data>
   <data name="OpenTTD Dedicated Server" xml:space="preserve">
-    <value>Images/WindowsGSM.png</value>
+    <value>Images/Games/openttd.png</value>
   </data>
   <data name="Mindustry Dedicated Server" xml:space="preserve">
-    <value>Images/WindowsGSM.png</value>
+    <value>Images/Games/mindustry.png</value>
   </data>
   <data name="OpenRA Dedicated Server" xml:space="preserve">
-    <value>Images/WindowsGSM.png</value>
+    <value>Images/Games/openra.png</value>
   </data>
   <data name="Rust Dedicated Server" xml:space="preserve">
     <value>Images/Games/rust.png</value>
@@ -275,5 +281,11 @@
   </data>
   <data name="Zombie Panic Source Dedicated Server" xml:space="preserve">
     <value>Images/Games/zps.png</value>
+  </data>
+  <data name="Soldat Dedicated Server" xml:space="preserve">
+    <value>Images/Games/soldat.png</value>
+  </data>
+  <data name="SCUM dedicated server" xml:space="preserve">
+    <value>Images/Games/scum.png</value>
   </data>
 </root>

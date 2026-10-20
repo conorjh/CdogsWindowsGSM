@@ -14,6 +14,7 @@ namespace WindowsGSM.GameServer.Data
                 case TF2.FullName: return new TF2(serverData);
                 case MCPE.FullName: return new MCPE(serverData);
                 case RUST.FullName: return new RUST(serverData);
+                case SCUM.FullName: return new SCUM(serverData);
                 case CS.FullName: return new CS(serverData);
                 case CSCZ.FullName: return new CSCZ(serverData);
                 case HL2DM.FullName: return new HL2DM(serverData);
@@ -22,6 +23,7 @@ namespace WindowsGSM.GameServer.Data
                 case PaperMC.FullName: return new PaperMC(serverData);
                 case ForgeMC.FullName: return new ForgeMC(serverData);
                 case GTA5.FullName: return new GTA5(serverData);
+                case RedM.FullName: return new RedM(serverData);
                 case SDTD.FullName: return new SDTD(serverData);
                 case MORDHAU.FullName: return new MORDHAU(serverData);
                 case SE.FullName: return new SE(serverData);
@@ -47,6 +49,7 @@ namespace WindowsGSM.GameServer.Data
                 case DOD.FullName: return new DOD(serverData);
                 case DMC.FullName: return new DMC(serverData);
                 case COD1.FullName: return new COD1(serverData);
+                case COD4.FullName: return new COD4(serverData);
                 case HLOF.FullName: return new HLOF(serverData);
                 case RCC.FullName: return new RCC(serverData);
                 case TFC.FullName: return new TFC(serverData);
@@ -56,6 +59,7 @@ namespace WindowsGSM.GameServer.Data
                 case PS.FullName: return new PS(serverData);
                 case ROR2.FullName: return new ROR2(serverData);
                 case RCT2.FullName: return new RCT2(serverData);
+                case Soldat.FullName: return new Soldat(serverData);
                 case OpenTTD.FullName: return new OpenTTD(serverData);
                 case Mindustry.FullName: return new Mindustry(serverData);
                 case OpenRA.FullName: return new OpenRA(serverData);
