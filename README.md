@@ -3,9 +3,9 @@
 [![Open Source Love svg1](https://badges.frapsoft.com/os/v1/open-source.svg?v=103)](https://github.com/WindowsGSM/WindowsGSM/)
 [![Build status](https://ci.appveyor.com/api/projects/status/ttaomnayo3gidf2g?svg=true)](https://ci.appveyor.com/project/WindowsGSM/windowsgsm)
 [![Codacy Badge](https://api.codacy.com/project/badge/Grade/35390bff1d4140da806eaff186cfbf5c)](https://www.codacy.com/gh/WindowsGSM/WindowsGSM?utm_source=github.com&amp;utm_medium=referral&amp;utm_content=WindowsGSM/WindowsGSM&amp;utm_campaign=Badge_Grade)
-[![GitHub license](https://img.shields.io/github/license/WindowsGSM/WindowsGSM.svg)](https://github.com/WindowsGSM/WindowsGSM/blob/master/LICENSE)
-[![GitHub release](https://img.shields.io/github/release/WindowsGSM/WindowsGSM.svg)](https://github.com/WindowsGSM/WindowsGSM/releases/)
-[![Github all releases](https://img.shields.io/github/downloads/WindowsGSM/WindowsGSM/total.svg)](https://github.com/WindowsGSM/WindowsGSM/releases/)
+[![GitHub license](https://img.shields.io/github/license/conorjh/CdogsWindowsGSM.svg)](https://github.com/conorjh/CdogsWindowsGSM/blob/master/LICENSE)
+[![GitHub release](https://img.shields.io/github/release/conorjh/CdogsWindowsGSM.svg)](https://github.com/conorjh/CdogsWindowsGSM/releases/)
+[![Github all releases](https://img.shields.io/github/downloads/conorjh/CdogsWindowsGSM/total.svg)](https://github.com/conorjh/CdogsWindowsGSM/releases/)
 [![Discord Shield](https://discordapp.com/api/guilds/590590698907107340/widget.png?style=shield)](https://discord.gg/bGc7t2R)
 
 # What is WindowsGSM?

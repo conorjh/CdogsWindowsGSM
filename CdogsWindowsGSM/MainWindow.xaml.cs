@@ -122,6 +122,9 @@ namespace WindowsGSM
         public static readonly int MAX_SERVER = 50;
         public static readonly string WGSM_PATH = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName);
         public static readonly string DEFAULT_THEME = "Cyan";
+        private const string LatestReleaseApiUrl = "https://api.github.com/repos/conorjh/CdogsWindowsGSM/releases/latest";
+        private const string UpdaterAssetUrl = "https://github.com/conorjh/CdogsWindowsGSM/releases/latest/download/CdogsWindowsGSM-Updater.exe";
+        private const string UpdaterFileName = "CdogsWindowsGSM-Updater.exe";
 
         private readonly NotifyIcon notifyIcon;
         private Process Installer;
@@ -2990,13 +2993,13 @@ namespace WindowsGSM
 
             if (string.IsNullOrEmpty(latestVersion))
             {
-                await this.ShowMessageAsync("Software Updates", "Fail to get latest version, please try again later.");
+                await this.ShowMessageAsync("Software Updates", "Could not load a usable release from CdogsWindowsGSM. Check your connection and ensure the latest release includes CdogsWindowsGSM.exe and CdogsWindowsGSM-Updater.exe.");
                 return;
             }
 
             if (latestVersion == WGSM_VERSION)
             {
-                await this.ShowMessageAsync("Software Updates", "WindowsGSM is up to date.");
+                await this.ShowMessageAsync("Software Updates", "CdogsWindowsGSM is up to date.");
                 return;
             }
 
@@ -3013,15 +3016,16 @@ namespace WindowsGSM
                 string installPath = ServerPath.GetBin();
                 Directory.CreateDirectory(installPath);
 
-                string filePath = Path.Combine(installPath, "WindowsGSM-Updater.exe");
+                string filePath = Path.Combine(installPath, UpdaterFileName);
+                controller = await this.ShowProgressAsync("Downloading CdogsWindowsGSM-Updater...", "Please wait...");
+                controller.SetIndeterminate();
+                bool updaterDownloaded = await DownloadWindowsGSMUpdater();
+                await controller.CloseAsync();
 
-                if (!File.Exists(filePath))
+                if (!updaterDownloaded || !File.Exists(filePath))
                 {
-                    //Download WindowsGSM-Updater.exe
-                    controller = await this.ShowProgressAsync("Downloading WindowsGSM-Updater...", "Please wait...");
-                    controller.SetIndeterminate();
-                    bool success = await DownloadWindowsGSMUpdater();
-                    await controller.CloseAsync();
+                    await this.ShowMessageAsync("Software Updates", $"Unable to download {UpdaterFileName}. The latest release must include both CdogsWindowsGSM.exe and {UpdaterFileName}.");
+                    return;
                 }
 
                 if (File.Exists(filePath))
@@ -3040,7 +3044,7 @@ namespace WindowsGSM
                         }
                     }
 
-                    //Run WindowsGSM-Updater.exe
+                    // Run the fork's updater.
                     Process updater = new Process
                     {
                         StartInfo =
@@ -3056,7 +3060,7 @@ namespace WindowsGSM
                 }
                 else
                 {
-                    await this.ShowMessageAsync("Software Updates", $"Fail to download WindowsGSM-Updater.exe");
+                    await this.ShowMessageAsync("Software Updates", $"Fail to download {UpdaterFileName}");
                 }
             }
         }
@@ -3065,37 +3069,143 @@ namespace WindowsGSM
         {
             try
             {
-                var webRequest = WebRequest.Create("https://api.github.com/repos/WindowsGSM/WindowsGSM/releases/latest") as HttpWebRequest;
+                var webRequest = (HttpWebRequest)WebRequest.Create(LatestReleaseApiUrl);
                 webRequest.Method = "GET";
-                webRequest.UserAgent = "Anything";
+                webRequest.UserAgent = "CdogsWindowsGSM";
                 webRequest.ServicePoint.Expect100Continue = false;
-                var response = await webRequest.GetResponseAsync();
-                using (var responseReader = new StreamReader(response.GetResponseStream()))
-                    return JObject.Parse(responseReader.ReadToEnd())["tag_name"].ToString();
+                webRequest.Timeout = 15000;
+                webRequest.ReadWriteTimeout = 15000;
+
+                using (WebResponse response = await webRequest.GetResponseAsync())
+                {
+                    Stream responseStream = response.GetResponseStream();
+                    if (responseStream == null)
+                    {
+                        throw new InvalidDataException("GitHub returned an empty release response.");
+                    }
+
+                    using (responseStream)
+                    using (var responseReader = new StreamReader(responseStream))
+                    {
+                        JObject release = JObject.Parse(responseReader.ReadToEnd());
+                        string tag = (string)release["tag_name"];
+                        JArray assets = release["assets"] as JArray;
+                        bool hasApplication = false;
+                        bool hasUpdater = false;
+
+                        if (assets != null)
+                        {
+                            foreach (JToken asset in assets)
+                            {
+                                string assetName = (string)asset["name"];
+                                hasApplication |= string.Equals(assetName, "CdogsWindowsGSM.exe", StringComparison.OrdinalIgnoreCase);
+                                hasUpdater |= string.Equals(assetName, UpdaterFileName, StringComparison.OrdinalIgnoreCase);
+                            }
+                        }
+
+                        if (string.IsNullOrWhiteSpace(tag) || !hasApplication || !hasUpdater)
+                        {
+                            throw new InvalidDataException("The latest CdogsWindowsGSM release is missing its version tag or required executable assets.");
+                        }
+
+                        return tag;
+                    }
+                }
             }
-            catch
+            catch (WebException ex)
             {
+                Debug.WriteLine($"Failed to get the latest CdogsWindowsGSM release: {ex}");
+                return null;
+            }
+            catch (Newtonsoft.Json.JsonException ex)
+            {
+                Debug.WriteLine($"Failed to parse the latest CdogsWindowsGSM release: {ex}");
+                return null;
+            }
+            catch (InvalidDataException ex)
+            {
+                Debug.WriteLine($"The latest CdogsWindowsGSM release is not usable: {ex}");
+                return null;
+            }
+            catch (IOException ex)
+            {
+                Debug.WriteLine($"Failed to read the latest CdogsWindowsGSM release: {ex}");
                 return null;
             }
         }
 
         private async Task<bool> DownloadWindowsGSMUpdater()
         {
-            string filePath = ServerPath.GetBin("WindowsGSM-Updater.exe");
+            string filePath = ServerPath.GetBin(UpdaterFileName);
+            string downloadPath = filePath + ".download";
 
             try
             {
                 using (WebClient webClient = new WebClient())
                 {
-                    await webClient.DownloadFileTaskAsync("https://github.com/WindowsGSM/WindowsGSM-Updater/releases/latest/download/WindowsGSM-Updater.exe", filePath);
+                    webClient.Headers[HttpRequestHeader.UserAgent] = "CdogsWindowsGSM";
+                    await webClient.DownloadFileTaskAsync(UpdaterAssetUrl, downloadPath);
                 }
-            }
-            catch (Exception e)
-            {
-                Debug.WriteLine($"Github.WindowsGSM-Updater.exe {e}");
-            }
 
-            return File.Exists(filePath);
+                using (FileStream updaterStream = File.OpenRead(downloadPath))
+                {
+                    if (updaterStream.Length < 2 || updaterStream.ReadByte() != 0x4D || updaterStream.ReadByte() != 0x5A)
+                    {
+                        throw new InvalidDataException("The downloaded updater is not a Windows executable.");
+                    }
+                }
+
+                if (File.Exists(filePath))
+                {
+                    File.Replace(downloadPath, filePath, null);
+                }
+                else
+                {
+                    File.Move(downloadPath, filePath);
+                }
+
+                return true;
+            }
+            catch (WebException ex)
+            {
+                Debug.WriteLine($"Failed to download {UpdaterFileName}: {ex}");
+                DeleteUpdaterDownload(downloadPath);
+                return false;
+            }
+            catch (InvalidDataException ex)
+            {
+                Debug.WriteLine($"Invalid {UpdaterFileName}: {ex}");
+                DeleteUpdaterDownload(downloadPath);
+                return false;
+            }
+            catch (IOException ex)
+            {
+                Debug.WriteLine($"Failed to save {UpdaterFileName}: {ex}");
+                DeleteUpdaterDownload(downloadPath);
+                return false;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                Debug.WriteLine($"Access denied while saving {UpdaterFileName}: {ex}");
+                DeleteUpdaterDownload(downloadPath);
+                return false;
+            }
+        }
+
+        private static void DeleteUpdaterDownload(string path)
+        {
+            try
+            {
+                if (File.Exists(path)) { File.Delete(path); }
+            }
+            catch (IOException ex)
+            {
+                Debug.WriteLine($"Could not remove temporary updater file {path}: {ex}");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                Debug.WriteLine($"Could not remove temporary updater file {path}: {ex}");
+            }
         }
 
         private async void Help_AboutWindowsGSM_Click(object sender, RoutedEventArgs e)
