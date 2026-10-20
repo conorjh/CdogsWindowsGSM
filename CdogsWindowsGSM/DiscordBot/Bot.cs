@@ -13,7 +13,6 @@ namespace WindowsGSM.DiscordBot
 	class Bot
 	{
 		private DiscordSocketClient _client;
-		private string _donorType;
 		private SocketTextChannel _dashboardTextChannel;
 		private RestUserMessage _dashboardMessage;
 		private CancellationTokenSource _cancellationTokenSource;
@@ -48,7 +47,7 @@ namespace WindowsGSM.DiscordBot
 		{
 			try
 			{
-				Stream stream = Application.GetResourceStream(new Uri($"pack://application:,,,/Images/WindowsGSM{(string.IsNullOrWhiteSpace(_donorType) ? string.Empty : $"-{_donorType}")}.png")).Stream;
+				Stream stream = Application.GetResourceStream(new Uri("pack://application:,,,/Images/WindowsGSM.png")).Stream;
 				await _client.CurrentUser.ModifyAsync(x =>
 				{
 					x.Username = "WindowsGSM";
@@ -96,12 +95,6 @@ namespace WindowsGSM.DiscordBot
 
 				await Task.Delay(900000);
 			}
-		}
-
-
-		public void SetDonorType(string donorType)
-		{
-			_donorType = donorType;
 		}
 
 		public async Task Stop()

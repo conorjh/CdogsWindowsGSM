@@ -10,9 +10,9 @@ using System.Windows;
 [assembly: AssemblyTitle("CdogsWindowsGSM")]
 [assembly: AssemblyDescription("A Game Server Manager works on Windows Platform")]
 [assembly: AssemblyConfiguration("")]
-[assembly: AssemblyCompany("TatLead")]
+[assembly: AssemblyCompany("CdogsWindowsGSM contributors")]
 [assembly: AssemblyProduct("CdogsWindowsGSM")]
-[assembly: AssemblyCopyright("Copyright ©  2019")]
+[assembly: AssemblyCopyright("Copyright © 2019 TatLead; Copyright © CdogsWindowsGSM contributors")]
 [assembly: AssemblyTrademark("")]
 [assembly: AssemblyCulture("")]
 

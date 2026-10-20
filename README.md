@@ -107,13 +107,14 @@ Allow support more game servers by installing plugins!
   * Discord: <https://discord.gg/bGc7t2R>
 
 ## Authors & Credits
-  * **TatLead** - *Initial work* - [BattlefieldDuck](https://github.com/BattlefieldDuck)
+  * **CdogsWindowsGSM contributors** - Fork maintenance and development
+  * **TatLead** - *Original WindowsGSM work* - [BattlefieldDuck](https://github.com/BattlefieldDuck)
   * **Deathreus** - *Code optimization* - [Deathreus](https://github.com/Deathreus)
   * **! AssaultLine** - *Mordhau server test*
   * **Dennis** - *Mordhau server test*
 
 ### License
-This project is licensed under the MIT License - see the [LICENSE.md](https://github.com/WindowsGSM/WindowsGSM/blob/master/LICENSE) file for details
+This fork is licensed under the MIT License - see the [LICENSE](LICENSE) file. The original WindowsGSM copyright notice is retained, with fork contributions attributed to CdogsWindowsGSM contributors.
 
 ## Stargazers over time
 [![Stargazers over time](https://starchart.cc/WindowsGSM/WindowsGSM.svg)](https://starchart.cc/WindowsGSM/WindowsGSM)
