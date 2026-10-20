@@ -237,6 +237,12 @@
   <data name="OpenTTD Dedicated Server" xml:space="preserve">
     <value>Images/WindowsGSM.png</value>
   </data>
+  <data name="Mindustry Dedicated Server" xml:space="preserve">
+    <value>Images/WindowsGSM.png</value>
+  </data>
+  <data name="OpenRA Dedicated Server" xml:space="preserve">
+    <value>Images/WindowsGSM.png</value>
+  </data>
   <data name="Rust Dedicated Server" xml:space="preserve">
     <value>Images/Games/rust.png</value>
   </data>
