@@ -129,14 +129,28 @@ namespace WindowsGSM.GameServer
 
         public bool IsInstallValid()
         {
-            return File.Exists(Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "InsurgencyServer.exe"));
+            string exePath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, StartPath);
+            if (File.Exists(exePath))
+            {
+                Error = string.Empty;
+                return true;
+            }
+
+            Error = $"Invalid Insurgency: Sandstorm installation; {Path.GetFileName(exePath)} was not found ({exePath}).";
+            return false;
         }
 
         public bool IsImportValid(string path)
         {
-            string exePath = Path.Combine(path, "InsurgencyServer.exe");
-            Error = $"Invalid Path! Fail to find {Path.GetFileName(exePath)}";
-            return File.Exists(exePath);
+            string exePath = Path.Combine(path, StartPath);
+            if (File.Exists(exePath))
+            {
+                Error = string.Empty;
+                return true;
+            }
+
+            Error = $"Invalid Path! Fail to find {Path.GetFileName(exePath)} ({exePath})";
+            return false;
         }
 
         public string GetLocalBuild()
