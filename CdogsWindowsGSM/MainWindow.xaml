@@ -492,9 +492,9 @@
                             <DockPanel Grid.Column="4" Background="{DynamicResource MahApps.Brushes.Gray10}">
                                 <Grid DockPanel.Dock="Left" Background="Goldenrod" Height="Auto" Width="5"/>
                                 <DockPanel Margin="15">
-                                    <DockPanel DockPanel.Dock="Top">
-                                        <Label DockPanel.Dock="Left" Content="Active Players" FontSize="25" VerticalAlignment="Center"/>
-                                        <Label DockPanel.Dock="Right" Content="0" FontSize="25" HorizontalAlignment="Right" VerticalAlignment="Center" x:Name="dashboard_players_count"/>
+                                    <DockPanel DockPanel.Dock="Top" Margin="0,0,0,10">
+                                        <Label DockPanel.Dock="Left" Content="Active / Peak Players" FontSize="25" VerticalAlignment="Center"/>
+                                        <Label DockPanel.Dock="Right" Content="0 / 0" FontSize="25" HorizontalAlignment="Right" VerticalAlignment="Center" x:Name="dashboard_players_count"/>
                                     </DockPanel>
                                 </DockPanel>
                             </DockPanel>
@@ -521,52 +521,52 @@
                     <MenuItem Header="Servers" Height="30">
                         <MenuItem Header="Install GameServer" Click="Install_Click">
                             <MenuItem.Icon>
-                                <Image Source="/WindowsGSM;component/Images/Install.ico" Width="23" Margin="3"/>
+                                <Image Source="/CdogsWindowsGSM;component/Images/Install.ico" Width="23" Margin="3"/>
                             </MenuItem.Icon>
                         </MenuItem>
                         <MenuItem Header="Import GameServer" Click="Import_Click"/>
                         <Separator/>
                         <MenuItem Header="Delete GameServer" Click="Delete_Click">
                             <MenuItem.Icon>
-                                <Image Source="/WindowsGSM;component/Images/Delete.ico" Width="23" Margin="3"/>
+                                <Image Source="/CdogsWindowsGSM;component/Images/Delete.ico" Width="23" Margin="3"/>
                             </MenuItem.Icon>
                         </MenuItem>
                     </MenuItem>
                     <MenuItem Header="Actions" Height="30">
                         <MenuItem Header="Start" Click="Actions_Start_Click">
                             <MenuItem.Icon>
-                                <Image Source="/WindowsGSM;component/Images/Start.ico" Width="23" Margin="3"/>
+                                <Image Source="/CdogsWindowsGSM;component/Images/Start.ico" Width="23" Margin="3"/>
                             </MenuItem.Icon>
                         </MenuItem>
                         <MenuItem Header="Stop" Click="Actions_Stop_Click">
                             <MenuItem.Icon>
-                                <Image Source="/WindowsGSM;component/Images/Stop.ico" Width="23" Margin="3"/>
+                                <Image Source="/CdogsWindowsGSM;component/Images/Stop.ico" Width="23" Margin="3"/>
                             </MenuItem.Icon>
                         </MenuItem>
                         <MenuItem Header="Restart" Click="Actions_Restart_Click">
                             <MenuItem.Icon>
-                                <Image Source="/WindowsGSM;component/Images/Restart.ico" Width="23" Margin="3"/>
+                                <Image Source="/CdogsWindowsGSM;component/Images/Restart.ico" Width="23" Margin="3"/>
                             </MenuItem.Icon>
                         </MenuItem>
                         <MenuItem Header="More...">
                             <MenuItem Header="Start All Servers" Click="Actions_StartAllServers_Click">
                                 <MenuItem.Icon>
-                                    <Image Source="/WindowsGSM;component/Images/Start.ico" Width="23" Margin="3"/>
+                                    <Image Source="/CdogsWindowsGSM;component/Images/Start.ico" Width="23" Margin="3"/>
                                 </MenuItem.Icon>
                             </MenuItem>
                             <MenuItem Header="Start Servers with Auto Start Enabled" Click="Actions_StartServersWithAutoStartEnabled_Click">
                                 <MenuItem.Icon>
-                                    <Image Source="/WindowsGSM;component/Images/Start.ico" Width="23" Margin="3"/>
+                                    <Image Source="/CdogsWindowsGSM;component/Images/Start.ico" Width="23" Margin="3"/>
                                 </MenuItem.Icon>
                             </MenuItem>
                             <MenuItem Header="Stop All Servers" Click="Actions_StopAllServers_Click">
                                 <MenuItem.Icon>
-                                    <Image Source="/WindowsGSM;component/Images/Stop.ico" Width="23" Margin="3"/>
+                                    <Image Source="/CdogsWindowsGSM;component/Images/Stop.ico" Width="23" Margin="3"/>
                                 </MenuItem.Icon>
                             </MenuItem>
                             <MenuItem Header="Restart All Servers" Click="Actions_RestartAllServers_Click">
                                 <MenuItem.Icon>
-                                    <Image Source="/WindowsGSM;component/Images/Restart.ico" Width="23" Margin="3"/>
+                                    <Image Source="/CdogsWindowsGSM;component/Images/Restart.ico" Width="23" Margin="3"/>
                                 </MenuItem.Icon>
                             </MenuItem>
                         </MenuItem>
@@ -575,7 +575,7 @@
                         <Separator/>
                         <MenuItem Header="Update">
                             <MenuItem.Icon>
-                                <Image Source="/WindowsGSM;component/Images/Update.ico" Width="23" Margin="3"/>
+                                <Image Source="/CdogsWindowsGSM;component/Images/Update.ico" Width="23" Margin="3"/>
                             </MenuItem.Icon>
                             <MenuItem Header="Update" Height="30" Click="Actions_Update_Click"/>
                             <MenuItem Header="Update Validate" Height="30" Click="Actions_UpdateValidate_Click"/>
@@ -583,31 +583,31 @@
                         <Separator/>
                         <MenuItem Header="Backup" Click="Actions_Backup_Click">
                             <MenuItem.Icon>
-                                <Image Source="/WindowsGSM;component/Images/Backup.ico" Width="23" Margin="3"/>
+                                <Image Source="/CdogsWindowsGSM;component/Images/Backup.ico" Width="23" Margin="3"/>
                             </MenuItem.Icon>
                         </MenuItem>
                         <MenuItem Header="Restore Backup" Click="Actions_RestoreBackup_Click">
                             <MenuItem.Icon>
-                                <Image Source="/WindowsGSM;component/Images/Restore.ico" Width="23" Margin="3"/>
+                                <Image Source="/CdogsWindowsGSM;component/Images/Restore.ico" Width="23" Margin="3"/>
                             </MenuItem.Icon>
                         </MenuItem>
                     </MenuItem>
                     <MenuItem Header="Browse" Height="30">
                         <MenuItem Header="Server Backups">
                             <MenuItem.Icon>
-                                <Image Source="/WindowsGSM;component/Images/Zip.ico" Width="23" Margin="3"/>
+                                <Image Source="/CdogsWindowsGSM;component/Images/Zip.ico" Width="23" Margin="3"/>
                             </MenuItem.Icon>
                             <MenuItem Header="Backup Files" Click="Browse_ServerBackups_Click"/>
                             <MenuItem Header="Backup Configs" Click="Browse_BackupFiles_Click"/>
                         </MenuItem>
                         <MenuItem Header="Server Files" Click="Browse_ServerFiles_Click">
                             <MenuItem.Icon>
-                                <Image Source="/WindowsGSM;component/Images/Files.ico" Width="23" Margin="3"/>
+                                <Image Source="/CdogsWindowsGSM;component/Images/Files.ico" Width="23" Margin="3"/>
                             </MenuItem.Icon>
                         </MenuItem>
                         <MenuItem Header="Server Configs" Click="Browse_ServerConfigs_Click">
                             <MenuItem.Icon>
-                                <Image Source="/WindowsGSM;component/Images/Config.ico" Width="23" Margin="3"/>
+                                <Image Source="/CdogsWindowsGSM;component/Images/Config.ico" Width="23" Margin="3"/>
                             </MenuItem.Icon>
                         </MenuItem>
                     </MenuItem>
@@ -616,22 +616,22 @@
                         <MenuItem Header="Install Addons">
                             <MenuItem Header="AMX Mod X + MetaMod-P" Click="Tool_InstallAMXModXMetamodP_Click">
                                 <MenuItem.Icon>
-                                    <Image Source="/WindowsGSM;component/Images/Tools/AMXModX.ico" Width="23" Margin="3"/>
+                                    <Image Source="/CdogsWindowsGSM;component/Images/Tools/AMXModX.ico" Width="23" Margin="3"/>
                                 </MenuItem.Icon>
                             </MenuItem>
                             <MenuItem Header="SourceMod + MetaMod" Click="Tools_InstallSourcemodMetamod_Click">
                                 <MenuItem.Icon>
-                                    <Image Source="/WindowsGSM;component/Images/Tools/SourceMod.ico" Width="23" Margin="3"/>
+                                    <Image Source="/CdogsWindowsGSM;component/Images/Tools/SourceMod.ico" Width="23" Margin="3"/>
                                 </MenuItem.Icon>
                             </MenuItem>
                             <MenuItem Header="DayZSAL Mod Server" Click="Tools_InstallDayZSALModServer_Click">
                                 <MenuItem.Icon>
-                                    <Image Source="/WindowsGSM;component/Images/Tools/DayZSAL.ico" Width="23" Margin="3"/>
+                                    <Image Source="/CdogsWindowsGSM;component/Images/Tools/DayZSAL.ico" Width="23" Margin="3"/>
                                 </MenuItem.Icon>
                             </MenuItem>
                             <MenuItem Header="OxideMod" Click="Tools_InstallOxideMod_Click">
                                 <MenuItem.Icon>
-                                    <Image Source="/WindowsGSM;component/Images/Tools/OxideMod.ico" Width="23" Margin="3"/>
+                                    <Image Source="/CdogsWindowsGSM;component/Images/Tools/OxideMod.ico" Width="23" Margin="3"/>
                                 </MenuItem.Icon>
                             </MenuItem>
                         </MenuItem>
@@ -639,23 +639,23 @@
                     <MenuItem Header="Help" Height="30">
                         <MenuItem Header="Online Documentation" Click="Help_OnlineDocumentation_Click">
                             <MenuItem.Icon>
-                                <Image Source="/WindowsGSM;component/Images/Book.ico" Width="23" Margin="3"/>
+                                <Image Source="/CdogsWindowsGSM;component/Images/Book.ico" Width="23" Margin="3"/>
                             </MenuItem.Icon>
                         </MenuItem>
                         <MenuItem Header="Report an issue" Click="Help_ReportIssue_Click">
                             <MenuItem.Icon>
-                                <Image Source="/WindowsGSM;component/Images/Issue.ico" Width="23" Margin="3"/>
+                                <Image Source="/CdogsWindowsGSM;component/Images/Issue.ico" Width="23" Margin="3"/>
                             </MenuItem.Icon>
                         </MenuItem>
                         <MenuItem Header="Software Updates" Click="Help_SoftwareUpdates_Click">
                             <MenuItem.Icon>
-                                <Image Source="/WindowsGSM;component/Images/Update.ico" Width="23" Margin="3"/>
+                                <Image Source="/CdogsWindowsGSM;component/Images/Update.ico" Width="23" Margin="3"/>
                             </MenuItem.Icon>
                         </MenuItem>
                         <Separator/>
                         <MenuItem Header="About WindowsGSM" Click="Help_AboutWindowsGSM_Click">
                             <MenuItem.Icon>
-                                <Image Source="/WindowsGSM;component/Images/WindowsGSM-Icon.ico" Width="23" Margin="3"/>
+                                <Image Source="/CdogsWindowsGSM;component/Images/WindowsGSM-Icon.ico" Width="23" Margin="3"/>
                             </MenuItem.Icon>
                         </MenuItem>
                     </MenuItem>
@@ -695,8 +695,8 @@
                           IsSynchronizedWithCurrentItem="True"
                           HorizontalScrollBarVisibility="Disabled">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="ID" IsReadOnly="True" Binding="{Binding Path=ID}" Width="35" MinWidth="35" MaxWidth="35"/>
-                        <DataGridTextColumn Header="PID" IsReadOnly="True" Binding="{Binding Path=PID}" Width="65" MinWidth="55" MaxWidth="95"/>
+                        <DataGridTextColumn Header="ID" IsReadOnly="True" Binding="{Binding Path=ID}" SortMemberPath="IDSort" Width="35" MinWidth="35" MaxWidth="35"/>
+                        <DataGridTextColumn Header="PID" IsReadOnly="True" Binding="{Binding Path=PID}" SortMemberPath="PIDSort" Width="65" MinWidth="55" MaxWidth="95"/>
                         <DataGridTemplateColumn Header="MOD" IsReadOnly="True" Width="53" MinWidth="53" MaxWidth="53">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
@@ -707,10 +707,10 @@
                         <DataGridTextColumn Header="Status" IsReadOnly="True" Binding="{Binding Path=Status}" Width="80" MinWidth="80" MaxWidth="80"/>
                         <DataGridTextColumn Header="Server Name" IsReadOnly="True" Binding="{Binding Path=Name}" Width="10*" MinWidth="105"/>
                         <DataGridTextColumn Header="IP Address" IsReadOnly="True" Binding="{Binding Path=IP}" Width="4*" MinWidth="88"/>
-                        <DataGridTextColumn Header="Port" IsReadOnly="True" Binding="{Binding Path=Port}" Width="4*" MinWidth="52"/>
-                        <DataGridTextColumn Header="Query Port" IsReadOnly="True" Binding="{Binding Path=QueryPort}" Width="4*" MinWidth="93"/>
+                        <DataGridTextColumn Header="Port" IsReadOnly="True" Binding="{Binding Path=Port}" SortMemberPath="PortSort" Width="4*" MinWidth="52"/>
+                        <DataGridTextColumn Header="Query Port" IsReadOnly="True" Binding="{Binding Path=QueryPort}" SortMemberPath="QueryPortSort" Width="4*" MinWidth="93"/>
                         <DataGridTextColumn Header="Map" IsReadOnly="True" Binding="{Binding Path=Defaultmap}" Width="7*" MinWidth="50"/>
-                        <DataGridTextColumn Header="Players" IsReadOnly="True" Binding="{Binding Path=Maxplayers}" Width="3*" MinWidth="70"/>
+                        <DataGridTextColumn Header="Players" IsReadOnly="True" Binding="{Binding Path=Maxplayers}" SortMemberPath="PlayerCapacitySort" Width="3*" MinWidth="70"/>
                         <DataGridTextColumn Header="Uptime" IsReadOnly="True" Binding="{Binding Path=Uptime}" Width="4*" MinWidth="80"/>
                         <!--<DataGridTextColumn Header="RAM Usage" IsReadOnly="True" Binding="{Binding Path=RamUsage}" Width="4*"/>-->
                     </DataGrid.Columns>
@@ -833,17 +833,17 @@
                     <mah:HamburgerMenuItemCollection>
                         <mah:HamburgerMenuImageItem Label="Home">
                             <mah:HamburgerMenuImageItem.Thumbnail>
-                                <BitmapImage UriSource="pack://application:,,,/WindowsGSM;component/Images/HMenu/Home.ico" />
+                                <BitmapImage UriSource="pack://application:,,,/CdogsWindowsGSM;component/Images/HMenu/Home.ico" />
                             </mah:HamburgerMenuImageItem.Thumbnail>
                         </mah:HamburgerMenuImageItem>
                         <mah:HamburgerMenuImageItem Label="Dashboard">
                             <mah:HamburgerMenuImageItem.Thumbnail>
-                                <BitmapImage UriSource="pack://application:,,,/WindowsGSM;component/Images/HMenu/Dashboard.ico" />
+                                <BitmapImage UriSource="pack://application:,,,/CdogsWindowsGSM;component/Images/HMenu/Dashboard.ico" />
                             </mah:HamburgerMenuImageItem.Thumbnail>
                         </mah:HamburgerMenuImageItem>
                         <mah:HamburgerMenuImageItem Label="Discord Bot">
                             <mah:HamburgerMenuImageItem.Thumbnail>
-                                <BitmapImage UriSource="pack://application:,,,/WindowsGSM;component/Images/HMenu/Discord.ico" />
+                                <BitmapImage UriSource="pack://application:,,,/CdogsWindowsGSM;component/Images/HMenu/Discord.ico" />
                             </mah:HamburgerMenuImageItem.Thumbnail>
                         </mah:HamburgerMenuImageItem>
                     </mah:HamburgerMenuItemCollection>
@@ -853,12 +853,12 @@
                     <mah:HamburgerMenuItemCollection>
                         <mah:HamburgerMenuImageItem Label="Plugins">
                             <mah:HamburgerMenuImageItem.Thumbnail>
-                                <BitmapImage UriSource="pack://application:,,,/WindowsGSM;component/Images/HMenu/ViewPlugins.ico" />
+                                <BitmapImage UriSource="pack://application:,,,/CdogsWindowsGSM;component/Images/HMenu/ViewPlugins.ico" />
                             </mah:HamburgerMenuImageItem.Thumbnail>
                         </mah:HamburgerMenuImageItem>
                         <mah:HamburgerMenuImageItem Label="Settings">
                             <mah:HamburgerMenuImageItem.Thumbnail>
-                                <BitmapImage UriSource="pack://application:,,,/WindowsGSM;component/Images/HMenu/Settings.ico" />
+                                <BitmapImage UriSource="pack://application:,,,/CdogsWindowsGSM;component/Images/HMenu/Settings.ico" />
                             </mah:HamburgerMenuImageItem.Thumbnail>
                         </mah:HamburgerMenuImageItem>
                     </mah:HamburgerMenuItemCollection>

@@ -16,6 +16,27 @@ namespace WindowsGSM.Functions
         public string QueryPort { get; set; }
         public string Defaultmap { get; set; }
         public string Maxplayers { get; set; }
+        public int IDSort => ParseSortValue(ID);
+        public int PIDSort => ParseSortValue(PID);
+        public int PortSort => ParseSortValue(Port);
+        public int QueryPortSort => ParseSortValue(QueryPort);
+        public int PlayerCapacitySort => GetPlayerCapacity(Maxplayers);
+        public int PlayerCapacity => GetPlayerCapacity(Maxplayers);
+
+        private static int ParseSortValue(string value)
+        {
+            return int.TryParse(value, out int number) ? number : int.MinValue;
+        }
+
+        private static int GetPlayerCapacity(string players)
+        {
+            if (string.IsNullOrWhiteSpace(players)) { return 0; }
+
+            string[] playerCounts = players.Split('/');
+            string capacity = playerCounts[playerCounts.Length - 1].Trim();
+            return int.TryParse(capacity, out int number) && number > 0 ? number : 0;
+        }
+
         public string Uptime 
         { 
             get

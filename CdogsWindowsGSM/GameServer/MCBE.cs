@@ -91,6 +91,7 @@ namespace WindowsGSM.GameServer
                     {
                         WorkingDirectory = workingDir,
                         FileName = exePath,
+                        Arguments = _serverData.ServerParam,
                         WindowStyle = ProcessWindowStyle.Minimized,
                     },
                     EnableRaisingEvents = true
@@ -105,6 +106,7 @@ namespace WindowsGSM.GameServer
                     {
                         WorkingDirectory = workingDir,
                         FileName = exePath,
+                        Arguments = _serverData.ServerParam,
                         WindowStyle = ProcessWindowStyle.Minimized,
                         CreateNoWindow = true,
                         UseShellExecute = false,

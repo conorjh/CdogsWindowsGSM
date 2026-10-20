@@ -136,6 +136,7 @@ namespace WindowsGSM
         private readonly List<System.Windows.Controls.CheckBox> _checkBoxes = new List<System.Windows.Controls.CheckBox>();
 
         private string g_DonorType = string.Empty;
+        private int _peakActivePlayers;
 
         private readonly DiscordBot.Bot g_DiscordBot = new DiscordBot.Bot();
 
@@ -412,14 +413,14 @@ namespace WindowsGSM
             //Add games to ComboBox
             SortedList sortedList = new SortedList();
             List<DictionaryEntry> gameName = GameServer.Data.Icon.ResourceManager.GetResourceSet(System.Globalization.CultureInfo.CurrentUICulture, true, true).Cast<DictionaryEntry>().ToList();
-            gameName.ForEach(delegate (DictionaryEntry entry) { sortedList.Add(entry.Key, $"/WindowsGSM;component/{entry.Value}"); });
+            gameName.ForEach(delegate (DictionaryEntry entry) { sortedList.Add(entry.Key, $"/CdogsWindowsGSM;component/{entry.Value}"); });
             int pluginLoaded = 0;
             PluginsList.ForEach(delegate (PluginMetadata plugin)
             {
                 if (plugin.IsLoaded)
                 {
                     pluginLoaded++;
-                    sortedList.Add(plugin.FullName, plugin.GameImage == PluginManagement.DefaultPluginImage ? plugin.GameImage.Replace("pack://application:,,,", "/WindowsGSM;component") : plugin.GameImage);
+                    sortedList.Add(plugin.FullName, plugin.GameImage == PluginManagement.DefaultPluginImage ? plugin.GameImage.Replace("pack://application:,,,", "/CdogsWindowsGSM;component") : plugin.GameImage);
                 }
             });
 
@@ -704,14 +705,14 @@ namespace WindowsGSM
                             if (plugin.FullName == serverConfig.ServerGame && plugin.IsLoaded)
                             {
                                 icon = plugin.GameImage == PluginManagement.DefaultPluginImage
-                                    ? plugin.GameImage.Replace("pack://application:,,,", "/WindowsGSM;component")
+                                    ? plugin.GameImage.Replace("pack://application:,,,", "/CdogsWindowsGSM;component")
                                     : plugin.GameImage;
                             }
                         });
                     }
                     if (icon == null)
                     {
-                        icon = PluginManagement.DefaultPluginImage.Replace("pack://application:,,,", "/WindowsGSM;component");
+                        icon = PluginManagement.DefaultPluginImage.Replace("pack://application:,,,", "/CdogsWindowsGSM;component");
                     }
 
                     string serverId = i.ToString();
@@ -889,7 +890,9 @@ namespace WindowsGSM
                 dashboard_started_usage.Content = $"{string.Format("{0:0.00}", dashboard_started_bar.Value)}%";
                 dashboard_started_ratio.Content = $"{startedCount}/{ServerGrid.Items.Count}";
 
-                dashboard_players_count.Content = GetActivePlayers().ToString();
+                int activePlayers = GetActivePlayers();
+                _peakActivePlayers = Math.Max(_peakActivePlayers, activePlayers);
+                dashboard_players_count.Content = $"{activePlayers} / {_peakActivePlayers}";
 
                 Refresh_DashBoard_LiveChart();
 
@@ -3480,18 +3483,18 @@ namespace WindowsGSM
 
         private void Button_EditConfig_Save_Click(object sender, RoutedEventArgs e)
         {
-            var server = (ServerTable)ServerGrid.SelectedItem;
-            if (server == null) { return; }
+            string serverId = textbox_EC_ServerID.Text;
+            if (string.IsNullOrWhiteSpace(serverId)) { return; }
 
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerGame, textbox_EC_ServerGame.Text.Trim());
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerName, textbox_EC_ServerName.Text.Trim());
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerIP, textbox_EC_ServerIP.Text.Trim());
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerMaxPlayer, numericUpDown_EC_ServerMaxplayer.Value.ToString());
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerPort, numericUpDown_EC_ServerPort.Value.ToString());
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerQueryPort, numericUpDown_EC_ServerQueryPort.Value.ToString());
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerMap, textbox_EC_ServerMap.Text.Trim());
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerGSLT, textbox_EC_ServerGSLT.Text.Trim());
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.ServerParam, textbox_EC_ServerParam.Text.Trim());
+            ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerGame, textbox_EC_ServerGame.Text.Trim());
+            ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerName, textbox_EC_ServerName.Text.Trim());
+            ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerIP, textbox_EC_ServerIP.Text.Trim());
+            ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerMaxPlayer, numericUpDown_EC_ServerMaxplayer.Value.ToString());
+            ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerPort, numericUpDown_EC_ServerPort.Value.ToString());
+            ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerQueryPort, numericUpDown_EC_ServerQueryPort.Value.ToString());
+            ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerMap, textbox_EC_ServerMap.Text.Trim());
+            ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerGSLT, textbox_EC_ServerGSLT.Text.Trim());
+            ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerParam, textbox_EC_ServerParam.Text.Trim());
 
             LoadServerTable();
             MahAppFlyout_EditConfig.IsOpen = false;

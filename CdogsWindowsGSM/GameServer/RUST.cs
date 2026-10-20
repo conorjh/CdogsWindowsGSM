@@ -65,6 +65,7 @@ namespace WindowsGSM.GameServer
             string srcdsPath = Path.Combine(workingDir, "RustDedicated.exe");
 
             string param = "-nographics -batchmode -silent-crashes";
+            param += $" {_serverData.ServerParam}";
             param += string.IsNullOrWhiteSpace(_serverData.ServerName) ? string.Empty : $" +server.hostname \"{_serverData.ServerName}\"";
             param += string.IsNullOrWhiteSpace(_serverData.ServerIP) ? string.Empty : $" +server.ip {_serverData.ServerIP}";
             param += string.IsNullOrWhiteSpace(_serverData.ServerPort) ? string.Empty : $" +server.port {_serverData.ServerPort}";
@@ -76,8 +77,6 @@ namespace WindowsGSM.GameServer
             {
                 param += $" {line}";
             }
-
-            param += $" {_serverData.ServerParam}";
 
             Process p = new Process
             {

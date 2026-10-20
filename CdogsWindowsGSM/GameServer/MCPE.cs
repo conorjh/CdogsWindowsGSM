@@ -80,7 +80,7 @@ namespace WindowsGSM.GameServer
                     {
                         WorkingDirectory = workingDir,
                         FileName = phpPath,
-                        Arguments = @"-c bin\php PocketMine-MP.phar",
+                        Arguments = $@"-c bin\php PocketMine-MP.phar {_serverData.ServerParam}".TrimEnd(),
                         WindowStyle = ProcessWindowStyle.Minimized,
                     },
                     EnableRaisingEvents = true
@@ -95,7 +95,7 @@ namespace WindowsGSM.GameServer
                     {
                         WorkingDirectory = workingDir,
                         FileName = phpPath,
-                        Arguments = @"-c bin\php PocketMine-MP.phar",
+                        Arguments = $@"-c bin\php PocketMine-MP.phar {_serverData.ServerParam}".TrimEnd(),
                         WindowStyle = ProcessWindowStyle.Minimized,
                         CreateNoWindow = true,
                         UseShellExecute = false,
