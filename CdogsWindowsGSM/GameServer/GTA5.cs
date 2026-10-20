@@ -1,15 +1,28 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
-using System.IO.Compression;
 using System.Net;
+using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading.Tasks;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using WindowsGSM.Functions;
 
 namespace WindowsGSM.GameServer
 {
     class GTA5
     {
+        private const string ServerDownloadPage = "https://docs.fivem.net/docs/server-download/?platform=legacy&os=windows";
+        private const string ServerDataArchiveUrl = "https://github.com/citizenfx/cfx-server-data/archive/refs/heads/master.zip";
         private readonly Functions.ServerConfig _serverData;
+
+        private sealed class FiveMArtifact
+        {
+            public string Build { get; set; }
+            public Uri DownloadUrl { get; set; }
+        }
 
         public string Error;
         public string Notice;
@@ -31,104 +44,177 @@ namespace WindowsGSM.GameServer
             _serverData = serverData;
         }
 
-        public async void CreateServerCFG()
+        public async Task CreateServerCFG()
         {
-            //Download server.cfg
-            string configPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, @"cfx-server-data-master\server.cfg");
-            if (await Functions.Github.DownloadGameServerConfig(configPath, FullName))
-            {
-                string configText = File.ReadAllText(configPath);
-                configText = configText.Replace("{{hostname}}", _serverData.ServerName);
-                configText = configText.Replace("{{rcon_password}}", _serverData.GetRCONPassword());
-                configText = configText.Replace("{{ip}}", _serverData.GetIPAddress());
-                configText = configText.Replace("{{port}}", _serverData.ServerPort);
-                configText = configText.Replace("{{maxplayers}}", Maxplayers);
-                File.WriteAllText(configPath, configText);
-            }
+            Error = string.Empty;
+            Notice = string.Empty;
+            string serverDataPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "cfx-server-data-master");
+            string stagingPath = Path.Combine(serverDataPath, "__windowsgsm_config_" + Guid.NewGuid().ToString("N"));
+            string stagedConfigPath = Path.Combine(stagingPath, "server.cfg");
+            string stagedLogoPath = Path.Combine(stagingPath, "myLogo.png");
+            string configPath = Path.Combine(serverDataPath, "server.cfg");
 
-            //Download sample logo
-            string logoPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, @"cfx-server-data-master\myLogo.png");
-            await Functions.Github.DownloadGameServerConfig(logoPath, FullName);
+            try
+            {
+                Directory.CreateDirectory(stagingPath);
+                if (!await Functions.Github.DownloadGameServerConfig(stagedConfigPath, FullName))
+                {
+                    Error = "Failed to download the FiveM server.cfg template.";
+                    return;
+                }
+
+                string maxPlayers = string.IsNullOrWhiteSpace(_serverData.ServerMaxPlayer) ? Maxplayers : _serverData.ServerMaxPlayer;
+                string configText = File.ReadAllText(stagedConfigPath);
+                configText = configText.Replace("{{hostname}}", EscapeConfigValue(_serverData.ServerName));
+                configText = configText.Replace("{{rcon_password}}", EscapeConfigValue(_serverData.GetRCONPassword()));
+                configText = configText.Replace("{{ip}}", EscapeConfigValue(_serverData.GetIPAddress()));
+                configText = configText.Replace("{{port}}", EscapeConfigValue(_serverData.ServerPort));
+                configText = configText.Replace("{{maxplayers}}", EscapeConfigValue(maxPlayers));
+                File.WriteAllText(stagedConfigPath, configText, new UTF8Encoding(false));
+                ReplaceFile(stagedConfigPath, configPath);
+
+                string logoPath = Path.Combine(serverDataPath, "myLogo.png");
+                if (await Functions.Github.DownloadGameServerConfig(stagedLogoPath, FullName))
+                {
+                    ReplaceFile(stagedLogoPath, logoPath);
+                }
+                else
+                {
+                    Notice = "The sample FiveM server logo could not be downloaded.";
+                }
+            }
+            catch (IOException exception)
+            {
+                Error = "Failed to create the FiveM server configuration: " + exception.Message;
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                Error = "Failed to create the FiveM server configuration: " + exception.Message;
+            }
+            finally
+            {
+                if (Directory.Exists(stagingPath))
+                {
+                    try
+                    {
+                        Directory.Delete(stagingPath, true);
+                    }
+                    catch (IOException exception)
+                    {
+                        Notice = "Could not remove temporary FiveM config files: " + exception.Message;
+                    }
+                    catch (UnauthorizedAccessException exception)
+                    {
+                        Notice = "Could not remove temporary FiveM config files: " + exception.Message;
+                    }
+                }
+            }
         }
 
-        public async Task<Process> Start()
+        public Task<Process> Start()
         {
+            Error = string.Empty;
+            Notice = string.Empty;
             string fxServerPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, @"server\FXServer.exe");
             if (!File.Exists(fxServerPath))
             {
                 Error = $"FXServer.exe not found ({fxServerPath})";
-                return null;
+                return Task.FromResult<Process>(null);
             }
 
             string citizenPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, @"server\citizen");
             if (!Directory.Exists(citizenPath))
             {
                 Error = $"Directory citizen not found ({citizenPath})";
-                return null;
+                return Task.FromResult<Process>(null);
             }
 
             string serverDataPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "cfx-server-data-master");
             if (!Directory.Exists(serverDataPath))
             {
                 Error = $"Directory cfx-server-data-master not found ({serverDataPath})";
-                return null;
+                return Task.FromResult<Process>(null);
             }
 
             string configPath = Path.Combine(serverDataPath, "server.cfg");
             if (!File.Exists(configPath))
             {
-                Notice = $"server.cfg not found ({configPath})";
+                Error = $"server.cfg not found ({configPath})";
+                return Task.FromResult<Process>(null);
             }
 
-            Process p;
-            if (!AllowsEmbedConsole)
+            string serverParameters = _serverData.ServerParam ?? string.Empty;
+            if (!Regex.IsMatch(serverParameters, @"(?:^|\s)\+exec\s+(?:""server\.cfg""|'server\.cfg'|server\.cfg)(?:\s|$)", RegexOptions.IgnoreCase))
             {
-                p = new Process
-                {
-                    StartInfo =
-                    {
-                        WorkingDirectory = serverDataPath,
-                        FileName = fxServerPath,
-                        Arguments = $"+set citizen_dir \"{citizenPath}\" {_serverData.ServerParam}",
-                        WindowStyle = ProcessWindowStyle.Minimized,
-                        UseShellExecute = false
-                    },
-                    EnableRaisingEvents = true
-                };
-                p.Start();
+                serverParameters = (serverParameters.Trim() + " +exec server.cfg").Trim();
             }
-            else
+
+            var process = new Process
             {
-                p = new Process
+                StartInfo =
                 {
-                    StartInfo =
-                    {
-                        WorkingDirectory = serverDataPath,
-                        FileName = fxServerPath,
-                        Arguments = $"+set citizen_dir \"{citizenPath}\" {_serverData.ServerParam}",
-                        WindowStyle = ProcessWindowStyle.Minimized,
-                        CreateNoWindow = true,
-                        UseShellExecute = false,
-                        RedirectStandardInput = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true
-                    },
-                    EnableRaisingEvents = true
-                };
+                    WorkingDirectory = serverDataPath,
+                    FileName = fxServerPath,
+                    Arguments = $"+set citizen_dir \"{citizenPath}\" {serverParameters}",
+                    WindowStyle = ProcessWindowStyle.Minimized,
+                    CreateNoWindow = AllowsEmbedConsole,
+                    UseShellExecute = false,
+                    RedirectStandardInput = AllowsEmbedConsole,
+                    RedirectStandardOutput = AllowsEmbedConsole,
+                    RedirectStandardError = AllowsEmbedConsole
+                },
+                EnableRaisingEvents = true
+            };
+
+            if (AllowsEmbedConsole)
+            {
                 var serverConsole = new Functions.ServerConsole(_serverData.ServerID);
-                p.OutputDataReceived += serverConsole.AddOutput;
-                p.ErrorDataReceived += serverConsole.AddOutput;
-                p.Start();
-                p.BeginOutputReadLine();
-                p.BeginErrorReadLine();
+                process.OutputDataReceived += serverConsole.AddOutput;
+                process.ErrorDataReceived += serverConsole.AddOutput;
             }
 
-            return p;
+            try
+            {
+                if (!process.Start())
+                {
+                    Error = "FXServer did not start a process.";
+                    process.Dispose();
+                    return Task.FromResult<Process>(null);
+                }
+                if (AllowsEmbedConsole)
+                {
+                    process.BeginOutputReadLine();
+                    process.BeginErrorReadLine();
+                }
+                return Task.FromResult(process);
+            }
+            catch (Win32Exception exception)
+            {
+                Error = "Failed to start FXServer: " + exception.Message;
+            }
+            catch (InvalidOperationException exception)
+            {
+                Error = "Failed to start FXServer: " + exception.Message;
+            }
+            catch (IOException exception)
+            {
+                Error = "Failed to start FXServer: " + exception.Message;
+            }
+            catch (ArgumentException exception)
+            {
+                Error = "Failed to start FXServer: " + exception.Message;
+            }
+
+            process.Dispose();
+            return Task.FromResult<Process>(null);
         }
 
         public async Task Stop(Process p)
         {
-            await Task.Run(() =>
+            Error = string.Empty;
+            if (p == null || p.HasExited) { return; }
+
+            try
             {
                 if (p.StartInfo.RedirectStandardInput)
                 {
@@ -138,163 +224,348 @@ namespace WindowsGSM.GameServer
                 {
                     Functions.ServerConsole.SendMessageToMainWindow(p.MainWindowHandle, "quit");
                 }
+            }
+            catch (IOException exception)
+            {
+                Error = "Failed to send the FiveM shutdown command: " + exception.Message;
+            }
+            catch (InvalidOperationException exception)
+            {
+                Error = "Failed to send the FiveM shutdown command: " + exception.Message;
+            }
+
+            await Task.Run(() =>
+            {
+                if (!p.HasExited && !p.WaitForExit(10000))
+                {
+                    p.Kill();
+                    p.WaitForExit();
+                }
             });
         }
 
-        public async Task<Process> Install()
+        public Task<Process> Install()
         {
-            try
-            {
-                using (WebClient webClient = new WebClient())
-                {
-                    string html = await webClient.DownloadStringTaskAsync("https://runtime.fivem.net/artifacts/fivem/build_server_windows/master/");
-                    Regex regex = new Regex(@"[0-9]{4}-[ -~][^\s]{39}");
-                    var matches = regex.Matches(html);
-
-                    if (matches.Count <= 0)
-                    {
-                        return null;
-                    }
-
-                    //Match 1 is the latest recommended
-                    string recommended = regex.Match(html).ToString();
-
-                    //Download server.zip and extract then delete server.zip
-                    string serverPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "server");
-                    Directory.CreateDirectory(serverPath);
-                    string zipPath = Path.Combine(serverPath, "server.zip");
-                    await webClient.DownloadFileTaskAsync($"https://runtime.fivem.net/artifacts/fivem/build_server_windows/master/{recommended}/server.zip", zipPath);
-                    await Task.Run(() =>
-                    {
-                        try
-                        {
-                            ZipFile.ExtractToDirectory(zipPath, serverPath);
-                        }
-                        catch
-                        {
-                            Error = "Path too long";
-                        }
-                    });
-                    await Task.Run(() => File.Delete(zipPath));
-
-                    //Create FiveM-version.txt and write the downloaded version with hash
-                    File.WriteAllText(Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "FiveM-version.txt"), recommended);
-
-                    //Download cfx-server-data-master and extract to folder cfx-server-data-master then delete cfx-server-data-master.zip
-                    zipPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "cfx-server-data-master.zip");
-                    await webClient.DownloadFileTaskAsync("https://github.com/citizenfx/cfx-server-data/archive/master.zip", zipPath);
-                    await Task.Run(() => ZipFile.ExtractToDirectory(zipPath, Functions.ServerPath.GetServersServerFiles(_serverData.ServerID)));
-                    await Task.Run(() => File.Delete(zipPath));
-                }
-
-                return null;
-            }
-            catch
-            {
-                return null;
-            }
+            return InstallOrUpdate(true);
         }
 
-        public async Task<Process> Update()
+        public Task<Process> Update()
         {
-            try
-            {
-                using (WebClient webClient = new WebClient())
-                {
-                    string remoteBuild = await GetRemoteBuild();
-
-                    //Download server.zip and extract then delete server.zip
-                    string serverPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "server");
-                    await Task.Run(() =>
-                    {
-                        try
-                        {
-                            Directory.Delete(serverPath, true);
-                        }
-                        catch
-                        {
-                            //ignore
-                        }
-                    });
-
-                    if (Directory.Exists(serverPath))
-                    {
-                        Error = $"Unable to delete server folder. Path: {serverPath}";
-                        return null;
-                    }
-
-                    Directory.CreateDirectory(serverPath);
-                    string zipPath = Path.Combine(serverPath, "server.zip");
-                    await webClient.DownloadFileTaskAsync($"https://runtime.fivem.net/artifacts/fivem/build_server_windows/master/{remoteBuild}/server.zip", zipPath);
-                    await Task.Run(() =>
-                    {
-                        try
-                        {
-                            ZipFile.ExtractToDirectory(zipPath, serverPath);
-                        }
-                        catch
-                        {
-                            Error = "Path too long";
-                        }
-                    });
-                    await Task.Run(() => File.Delete(zipPath));
-
-                    //Create FiveM-version.txt and write the downloaded version with hash
-                    File.WriteAllText(Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "FiveM-version.txt"), remoteBuild);
-                }
-
-                return null;
-            }
-            catch
-            {
-                return null;
-            }
+            return InstallOrUpdate(false);
         }
 
         public bool IsInstallValid()
         {
-            string exeFile = @"server\FXServer.exe";
-            string exePath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, exeFile);
-
-            return File.Exists(exePath);
+            return ValidateInstall(Functions.ServerPath.GetServersServerFiles(_serverData.ServerID));
         }
 
         public bool IsImportValid(string path)
         {
-            string exeFile = @"server\FXServer.exe";
-            string exePath = Path.Combine(path, exeFile);
-
-            Error = $"Invalid Path! Fail to find {exeFile}";
-            return File.Exists(exePath);
+            return ValidateInstall(path);
         }
 
         public string GetLocalBuild()
         {
+            Error = string.Empty;
             string versionPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "FiveM-version.txt");
-            Error = $"Fail to get local build";
-            return File.Exists(versionPath) ? File.ReadAllText(versionPath) : string.Empty;
+            try
+            {
+                if (File.Exists(versionPath))
+                {
+                    return File.ReadAllText(versionPath).Trim();
+                }
+                string executablePath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, StartPath);
+                return File.Exists(executablePath) ? "unknown" : string.Empty;
+            }
+            catch (IOException exception)
+            {
+                Error = "Failed to read the local FiveM build: " + exception.Message;
+                return string.Empty;
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                Error = "Failed to read the local FiveM build: " + exception.Message;
+                return string.Empty;
+            }
         }
 
         public async Task<string> GetRemoteBuild()
         {
+            Error = string.Empty;
             try
             {
-                using (WebClient webClient = new WebClient())
+                using (WebClient webClient = CreateWebClient())
                 {
-                    string html = await webClient.DownloadStringTaskAsync("https://runtime.fivem.net/artifacts/fivem/build_server_windows/master/");
-                    Regex regex = new Regex(@"[0-9]{4}-[ -~][^\s]{39}");
-                    var matches = regex.Matches(html);
-
-                    return matches[0].Value;
+                    return (await GetLatestArtifact(webClient)).Build;
                 }
             }
-            catch
+            catch (WebException exception)
             {
-                //ignore
+                Error = "Failed to get the latest FiveM build: " + exception.Message;
+            }
+            catch (JsonException exception)
+            {
+                Error = "Failed to get the latest FiveM build: " + exception.Message;
+            }
+            catch (InvalidDataException exception)
+            {
+                Error = "Failed to get the latest FiveM build: " + exception.Message;
+            }
+            catch (IOException exception)
+            {
+                Error = "Failed to get the latest FiveM build: " + exception.Message;
+            }
+            return string.Empty;
+        }
+
+        private static WebClient CreateWebClient()
+        {
+            var webClient = new WebClient { Encoding = Encoding.UTF8 };
+            webClient.Headers[HttpRequestHeader.UserAgent] = "CdogsWindowsGSM";
+            return webClient;
+        }
+
+        private static async Task<FiveMArtifact> GetLatestArtifact(WebClient webClient)
+        {
+            string html = await webClient.DownloadStringTaskAsync(ServerDownloadPage);
+            Match dataMatch = Regex.Match(html, @"<script\s+id=""__NEXT_DATA__""\s+type=""application/json"">(.*?)</script>", RegexOptions.Singleline | RegexOptions.IgnoreCase);
+            if (!dataMatch.Success)
+            {
+                throw new InvalidDataException("The Cfx server download page did not include its build metadata.");
             }
 
-            Error = $"Fail to get remote build";
-            return string.Empty;
+            JObject page = JObject.Parse(dataMatch.Groups[1].Value);
+            JObject windowsBuild = page["props"]?["pageProps"]?["legacy"]?["recommended"]?["windows"] as JObject;
+            if (windowsBuild == null)
+            {
+                throw new InvalidDataException("Cfx did not publish a recommended legacy Windows server artifact.");
+            }
+
+            string assetName = (string)windowsBuild["displayName"];
+            string downloadUrl = (string)windowsBuild["downloadURL"];
+            Uri uri;
+            if (!string.Equals(assetName, "server.7z", StringComparison.OrdinalIgnoreCase) ||
+                !Uri.TryCreate(downloadUrl, UriKind.Absolute, out uri) ||
+                !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+                !uri.IsDefaultPort ||
+                !string.Equals(uri.Host, "runtime.fivem.net", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidDataException("Cfx returned an invalid recommended Windows server artifact URL.");
+            }
+
+            Match buildMatch = Regex.Match(uri.AbsolutePath,
+                @"^/artifacts/fivem/build_server_windows/master/(?<build>\d{4,}-[a-f0-9]{40})/server\.7z$",
+                RegexOptions.IgnoreCase);
+            if (!buildMatch.Success)
+            {
+                throw new InvalidDataException("Cfx returned an unrecognized Windows server build path.");
+            }
+
+            return new FiveMArtifact { Build = buildMatch.Groups["build"].Value, DownloadUrl = uri };
+        }
+
+        private async Task<Process> InstallOrUpdate(bool installing)
+        {
+            Error = string.Empty;
+            Notice = string.Empty;
+            string serverFilesPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID);
+            string stagingPath = Path.Combine(serverFilesPath, "__fivem_stage_" + Guid.NewGuid().ToString("N"));
+
+            try
+            {
+                Directory.CreateDirectory(stagingPath);
+                string stagedServerPath = Path.Combine(stagingPath, "server");
+                Directory.CreateDirectory(stagedServerPath);
+
+                using (WebClient webClient = CreateWebClient())
+                {
+                    FiveMArtifact artifact = await GetLatestArtifact(webClient);
+                    string artifactPath = Path.Combine(stagingPath, "server.7z");
+                    await webClient.DownloadFileTaskAsync(artifact.DownloadUrl, artifactPath);
+                    if (!await Functions.FileManagement.ExtractArchive(artifactPath, stagedServerPath))
+                    {
+                        throw new InvalidDataException("Could not safely extract the FiveM 7-Zip server artifact.");
+                    }
+                    if (!IsValidRuntime(stagedServerPath))
+                    {
+                        throw new InvalidDataException("The FiveM artifact did not contain FXServer.exe and its citizen directory.");
+                    }
+
+                    if (installing)
+                    {
+                        string dataArchivePath = Path.Combine(stagingPath, "cfx-server-data.zip");
+                        string extractedDataPath = Path.Combine(stagingPath, "data");
+                        await webClient.DownloadFileTaskAsync(ServerDataArchiveUrl, dataArchivePath);
+                        if (!await Functions.FileManagement.ExtractArchive(dataArchivePath, extractedDataPath))
+                        {
+                            throw new InvalidDataException("Could not safely extract the Cfx server-data archive.");
+                        }
+                        string stagedDataPath = Path.Combine(extractedDataPath, "cfx-server-data-master");
+                        if (!Directory.Exists(stagedDataPath) || !File.Exists(Path.Combine(stagedDataPath, "server.cfg")))
+                        {
+                            throw new InvalidDataException("The Cfx server-data archive did not contain server.cfg.");
+                        }
+
+                        string serverPath = Path.Combine(serverFilesPath, "server");
+                        string serverDataPath = Path.Combine(serverFilesPath, "cfx-server-data-master");
+                        if (Directory.Exists(serverPath) || Directory.Exists(serverDataPath))
+                        {
+                            throw new InvalidDataException("FiveM files already exist. Remove or import the existing server before installing.");
+                        }
+
+                        Directory.Move(stagedServerPath, serverPath);
+                        try
+                        {
+                            Directory.Move(stagedDataPath, serverDataPath);
+                        }
+                        catch (IOException)
+                        {
+                            if (Directory.Exists(serverPath))
+                            {
+                                Directory.Delete(serverPath, true);
+                            }
+                            throw;
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                            if (Directory.Exists(serverPath))
+                            {
+                                Directory.Delete(serverPath, true);
+                            }
+                            throw;
+                        }
+
+                        File.WriteAllText(Path.Combine(serverFilesPath, "FiveM-version.txt"), artifact.Build, new UTF8Encoding(false));
+                    }
+                    else
+                    {
+                        string serverPath = Path.Combine(serverFilesPath, "server");
+                        ReplaceDirectory(stagedServerPath, serverPath);
+                        File.WriteAllText(Path.Combine(serverFilesPath, "FiveM-version.txt"), artifact.Build, new UTF8Encoding(false));
+                    }
+                }
+            }
+            catch (WebException exception)
+            {
+                Error = $"Failed to {(installing ? "install" : "update")} FiveM: {exception.Message}";
+            }
+            catch (JsonException exception)
+            {
+                Error = $"Failed to {(installing ? "install" : "update")} FiveM: {exception.Message}";
+            }
+            catch (InvalidDataException exception)
+            {
+                Error = $"Failed to {(installing ? "install" : "update")} FiveM: {exception.Message}";
+            }
+            catch (IOException exception)
+            {
+                Error = $"Failed to {(installing ? "install" : "update")} FiveM: {exception.Message}";
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                Error = $"Failed to {(installing ? "install" : "update")} FiveM: {exception.Message}";
+            }
+            finally
+            {
+                if (Directory.Exists(stagingPath))
+                {
+                    try
+                    {
+                        Directory.Delete(stagingPath, true);
+                    }
+                    catch (IOException exception)
+                    {
+                        Error = AppendError(Error, "Could not remove temporary FiveM files: " + exception.Message);
+                    }
+                    catch (UnauthorizedAccessException exception)
+                    {
+                        Error = AppendError(Error, "Could not remove temporary FiveM files: " + exception.Message);
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static bool IsValidRuntime(string serverPath)
+        {
+            return File.Exists(Path.Combine(serverPath, "FXServer.exe")) &&
+                Directory.Exists(Path.Combine(serverPath, "citizen"));
+        }
+
+        private bool ValidateInstall(string serverFilesPath)
+        {
+            Error = string.Empty;
+            string serverPath = Path.Combine(serverFilesPath, "server");
+            string serverDataPath = Path.Combine(serverFilesPath, "cfx-server-data-master");
+            if (!IsValidRuntime(serverPath))
+            {
+                Error = $"Invalid FiveM installation: FXServer.exe or citizen is missing from ({serverPath}).";
+                return false;
+            }
+            if (!File.Exists(Path.Combine(serverDataPath, "server.cfg")))
+            {
+                Error = $"Invalid FiveM installation: server.cfg is missing from ({serverDataPath}).";
+                return false;
+            }
+            return true;
+        }
+
+        private static void ReplaceFile(string sourcePath, string destinationPath)
+        {
+            if (File.Exists(destinationPath))
+            {
+                File.Replace(sourcePath, destinationPath, null);
+            }
+            else
+            {
+                File.Move(sourcePath, destinationPath);
+            }
+        }
+
+        private static void ReplaceDirectory(string sourcePath, string destinationPath)
+        {
+            if (!Directory.Exists(destinationPath))
+            {
+                Directory.Move(sourcePath, destinationPath);
+                return;
+            }
+
+            string backupPath = destinationPath + ".backup-" + Guid.NewGuid().ToString("N");
+            Directory.Move(destinationPath, backupPath);
+            try
+            {
+                Directory.Move(sourcePath, destinationPath);
+            }
+            catch (IOException)
+            {
+                RestoreDirectory(destinationPath, backupPath);
+                throw;
+            }
+            catch (UnauthorizedAccessException)
+            {
+                RestoreDirectory(destinationPath, backupPath);
+                throw;
+            }
+            Directory.Delete(backupPath, true);
+        }
+
+        private static void RestoreDirectory(string destinationPath, string backupPath)
+        {
+            if (!Directory.Exists(destinationPath) && Directory.Exists(backupPath))
+            {
+                Directory.Move(backupPath, destinationPath);
+            }
+        }
+
+        private static string EscapeConfigValue(string value)
+        {
+            return (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", " ").Replace("\n", " ");
+        }
+
+        private static string AppendError(string currentError, string message)
+        {
+            return string.IsNullOrWhiteSpace(currentError) ? message : currentError + Environment.NewLine + message;
         }
     }
 }

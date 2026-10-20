@@ -1,17 +1,17 @@
-﻿using System.Collections.Generic;
-using System.Linq;
+﻿using System;
+using System.Collections.Generic;
+using System.IO;
 using System.Net;
-using System.Text;
 using System.Threading.Tasks;
-using WindowsGSM.Functions;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 
 namespace WindowsGSM.GameServer.Query
 {
     public class FIVEM
     {
-        private static readonly byte[] FIVEM_INFO = Encoding.Default.GetBytes("getinfo windowsgsm");
-
-        private IPEndPoint _IPEndPoint;
+        private string _address;
+        private int _port;
         private int _timeout;
 
         public FIVEM() { }
@@ -23,44 +23,71 @@ namespace WindowsGSM.GameServer.Query
 
         public void SetAddressPort(string address, int port, int timeout = 5)
         {
-            _IPEndPoint = new IPEndPoint(IPAddress.Parse(address), port);
-            _timeout = timeout * 1000;
+            _address = address;
+            _port = port;
+            _timeout = Math.Max(1000, timeout * 1000);
         }
 
         /// <summary>Get general information of specific game server.</summary>
         public async Task<Dictionary<string, string>> GetInfo()
         {
+            if (string.IsNullOrWhiteSpace(_address) || _port < 1 || _port > 65535)
+            {
+                return null;
+            }
+
             return await Task.Run(() =>
             {
                 try
                 {
-                    byte[] requestData;
-                    byte[] responseData;
-                    using (UdpClientHandler udpHandler = new UdpClientHandler(_IPEndPoint))
+                    var uriBuilder = new UriBuilder(Uri.UriSchemeHttp, _address, _port, "/dynamic.json");
+                    var request = (HttpWebRequest)WebRequest.Create(uriBuilder.Uri);
+                    request.Timeout = _timeout;
+                    request.ReadWriteTimeout = _timeout;
+                    request.Accept = "application/json";
+                    request.UserAgent = "CdogsWindowsGSM";
+
+                    using (WebResponse response = request.GetResponse())
                     {
-                        // Send FIVEM_INFO request
-                        requestData = new byte[] { 0xFF, 0xFF, 0xFF, 0xFF }
-                            .Concat(FIVEM_INFO)
-                            .ToArray();
+                        using (Stream responseStream = response.GetResponseStream())
+                        {
+                            if (responseStream == null)
+                            {
+                                return null;
+                            }
 
-                        // Receive response (Skip "\FF\FF\FF\FFinfoResponse\n\\")
-                        responseData = udpHandler.GetResponse(requestData, requestData.Length, _timeout, _timeout)
-                            .Skip(18)
-                            .ToArray();
+                            using (var reader = new StreamReader(responseStream))
+                            {
+                                JObject responseData = JObject.Parse(reader.ReadToEnd());
+                                var values = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                                foreach (JProperty property in responseData.Properties())
+                                {
+                                    values[property.Name] = property.Value.Type == JTokenType.String
+                                        ? property.Value.Value<string>()
+                                        : property.Value.ToString(Formatting.None);
+                                }
+                                return values.Count == 0 ? null : values;
+                            }
+                        }
                     }
-
-                    string[] splits = Encoding.UTF8.GetString(responseData).Split('\\');
-
-                    // Store response's data
-                    var keys = new Dictionary<string, string>();
-                    for (int i = 0; i < splits.Length; i += 2)
-                    {
-                        keys.Add(splits[i], splits[i + 1]);
-                    }
-
-                    return keys.Count <= 0 ? null : keys;
                 }
-                catch
+                catch (WebException)
+                {
+                    return null;
+                }
+                catch (JsonException)
+                {
+                    return null;
+                }
+                catch (IOException)
+                {
+                    return null;
+                }
+                catch (ArgumentException)
+                {
+                    return null;
+                }
+                catch (UriFormatException)
                 {
                     return null;
                 }
@@ -71,10 +98,15 @@ namespace WindowsGSM.GameServer.Query
         {
             try
             {
-                Dictionary<string, string> kv = await GetInfo();
-                return kv["clients"] + '/' + kv["sv_maxclients"];
+                Dictionary<string, string> info = await GetInfo();
+                if (info == null || !info.TryGetValue("clients", out string clients) ||
+                    !info.TryGetValue("sv_maxclients", out string maxPlayers))
+                {
+                    return null;
+                }
+                return clients + '/' + maxPlayers;
             }
-            catch
+            catch (InvalidOperationException)
             {
                 return null;
             }

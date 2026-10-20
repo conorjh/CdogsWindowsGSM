@@ -1239,7 +1239,23 @@ namespace WindowsGSM
                 try
                 {
                     gameServer = GameServer.Data.Class.Get(servergame, newServerConfig, PluginsList);
-                    gameServer.CreateServerCFG();
+                    if (servergame == WindowsGSM.GameServer.GTA5.FullName)
+                    {
+                        WindowsGSM.GameServer.GTA5 fiveMServer = (WindowsGSM.GameServer.GTA5)gameServer;
+                        await fiveMServer.CreateServerCFG();
+                        if (!string.IsNullOrWhiteSpace(fiveMServer.Error))
+                        {
+                            Log(newServerConfig.ServerID, "FiveM config: " + fiveMServer.Error);
+                        }
+                        if (!string.IsNullOrWhiteSpace(fiveMServer.Notice))
+                        {
+                            Log(newServerConfig.ServerID, "FiveM config: " + fiveMServer.Notice);
+                        }
+                    }
+                    else
+                    {
+                        gameServer.CreateServerCFG();
+                    }
                 }
                 catch
                 {
