@@ -171,6 +171,34 @@
                                 <Label Content="Server Start Map"></Label>
                                 <TextBox x:Name="textbox_EC_ServerMap" Height="23" Width="500" FontFamily="Consolas" TextWrapping="Wrap" Text="" VerticalAlignment="Top"/>
                             </StackPanel>
+                            <StackPanel x:Name="stackPanel_EC_MapRotation" Margin="0,0,0,10" Visibility="Collapsed">
+                                <Label Content="Map Rotation"/>
+                                <TextBlock x:Name="textBlock_EC_MapRotationStatus" Margin="5,0,0,5" TextWrapping="Wrap"/>
+                                <Grid>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0">
+                                        <Label Content="Available Maps"/>
+                                        <ListBox x:Name="listBox_EC_AvailableMaps" Height="100" FontFamily="Consolas" MouseDoubleClick="ListBox_EC_AvailableMaps_MouseDoubleClick"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="5,0">
+                                        <Button Content="Add &gt;" Click="Button_EC_AddMap_Click" Margin="0,2"/>
+                                        <Button Content="&lt; Remove" Click="Button_EC_RemoveMap_Click" Margin="0,2"/>
+                                    </StackPanel>
+                                    <StackPanel Grid.Column="2">
+                                        <Label Content="Rotation Order"/>
+                                        <ListBox x:Name="listBox_EC_MapRotation" Height="100" FontFamily="Consolas" MouseDoubleClick="ListBox_EC_MapRotation_MouseDoubleClick"/>
+                                    </StackPanel>
+                                </Grid>
+                                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                                    <Button Content="Move Up" Click="Button_EC_MoveMapUp_Click" Margin="2"/>
+                                    <Button Content="Move Down" Click="Button_EC_MoveMapDown_Click" Margin="2"/>
+                                    <Button Content="Randomise" Click="Button_EC_RandomiseMapRotation_Click" Margin="2"/>
+                                </StackPanel>
+                            </StackPanel>
                             <StackPanel Margin="0,0,0,10">
                                 <Label Content="Server GSLT"></Label>
                                 <TextBox x:Name="textbox_EC_ServerGSLT" Height="23" Width="500" FontFamily="Consolas" TextWrapping="Wrap" Text="" VerticalAlignment="Top"/>

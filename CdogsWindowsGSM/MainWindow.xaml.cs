@@ -137,6 +137,7 @@ namespace WindowsGSM
 
         private string g_DonorType = string.Empty;
         private int _peakActivePlayers;
+        private readonly Random _mapRotationRandom = new Random();
 
         private readonly DiscordBot.Bot g_DiscordBot = new DiscordBot.Bot();
 
@@ -3465,8 +3466,39 @@ namespace WindowsGSM
         {
             var serverConfig = new ServerConfig(serverId);
             if (string.IsNullOrWhiteSpace(serverConfig.ServerGame)) { return false; }
-            var gameServer = GameServer.Data.Class.Get(serverConfig.ServerGame, pluginList: PluginsList);
+            var gameServer = GameServer.Data.Class.Get(serverConfig.ServerGame, serverConfig, PluginsList);
             if (gameServer == null) { return false; }
+            var goldSourceServer = gameServer as GameServer.Engine.GoldSource;
+            var sourceServer = gameServer as GameServer.Engine.Source;
+            bool supportsMapRotation = goldSourceServer != null || (sourceServer != null && !string.IsNullOrWhiteSpace(sourceServer.Game));
+
+            stackPanel_EC_MapRotation.Visibility = supportsMapRotation ? Visibility.Visible : Visibility.Collapsed;
+            listBox_EC_AvailableMaps.Items.Clear();
+            listBox_EC_MapRotation.Items.Clear();
+            textBlock_EC_MapRotationStatus.Text = string.Empty;
+            if (supportsMapRotation)
+            {
+                string mapDirectory = goldSourceServer != null ? goldSourceServer.MapDirectory : sourceServer.MapDirectory;
+                List<string> availableMaps = goldSourceServer != null ? goldSourceServer.GetAvailableMaps() : sourceServer.GetAvailableMaps();
+                foreach (string map in availableMaps)
+                {
+                    listBox_EC_AvailableMaps.Items.Add(map);
+                }
+
+                var availableMapNames = new HashSet<string>(availableMaps, StringComparer.OrdinalIgnoreCase);
+                List<string> savedMapRotation = goldSourceServer != null ? goldSourceServer.GetMapRotation() : sourceServer.GetMapRotation();
+                foreach (string map in savedMapRotation.Where(availableMapNames.Contains))
+                {
+                    if (!listBox_EC_MapRotation.Items.Cast<string>().Contains(map, StringComparer.OrdinalIgnoreCase))
+                    {
+                        listBox_EC_MapRotation.Items.Add(map);
+                    }
+                }
+
+                textBlock_EC_MapRotationStatus.Text = availableMaps.Count == 0
+                    ? $"No .bsp maps found in {mapDirectory}"
+                    : $"{availableMaps.Count} maps found in {mapDirectory}";
+            }
 
             textbox_EC_ServerID.Text = serverConfig.ServerID;
             textbox_EC_ServerGame.Text = serverConfig.ServerGame;
@@ -3486,6 +3518,31 @@ namespace WindowsGSM
             string serverId = textbox_EC_ServerID.Text;
             if (string.IsNullOrWhiteSpace(serverId)) { return; }
 
+            var serverConfig = new ServerConfig(serverId);
+            var gameServer = GameServer.Data.Class.Get(serverConfig.ServerGame, serverConfig, PluginsList);
+            var goldSourceServer = gameServer as GameServer.Engine.GoldSource;
+            var sourceServer = gameServer as GameServer.Engine.Source;
+            string mapCyclePath = goldSourceServer != null ? goldSourceServer.MapCyclePath : sourceServer != null && !string.IsNullOrWhiteSpace(sourceServer.Game) ? sourceServer.MapCyclePath : null;
+            if (mapCyclePath != null && Directory.Exists(Path.GetDirectoryName(mapCyclePath)))
+            {
+                try
+                {
+                    if (goldSourceServer != null)
+                    {
+                        goldSourceServer.SaveMapRotation(listBox_EC_MapRotation.Items.Cast<string>());
+                    }
+                    else
+                    {
+                        sourceServer.SaveMapRotation(listBox_EC_MapRotation.Items.Cast<string>());
+                    }
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show($"Failed to save map rotation: {ex.Message}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+            }
+
             ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerGame, textbox_EC_ServerGame.Text.Trim());
             ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerName, textbox_EC_ServerName.Text.Trim());
             ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerIP, textbox_EC_ServerIP.Text.Trim());
@@ -3498,6 +3555,82 @@ namespace WindowsGSM
 
             LoadServerTable();
             MahAppFlyout_EditConfig.IsOpen = false;
+        }
+
+        private void ListBox_EC_AvailableMaps_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (ItemsControl.ContainerFromElement(listBox_EC_AvailableMaps, e.OriginalSource as DependencyObject) == null) { return; }
+            Button_EC_AddMap_Click(sender, e);
+        }
+
+        private void ListBox_EC_MapRotation_MouseDoubleClick(object sender, MouseButtonEventArgs e)
+        {
+            if (ItemsControl.ContainerFromElement(listBox_EC_MapRotation, e.OriginalSource as DependencyObject) == null) { return; }
+            Button_EC_RemoveMap_Click(sender, e);
+        }
+
+        private void Button_EC_AddMap_Click(object sender, RoutedEventArgs e)
+        {
+            string map = listBox_EC_AvailableMaps.SelectedItem as string;
+            if (string.IsNullOrWhiteSpace(map) || listBox_EC_MapRotation.Items.Cast<string>().Contains(map, StringComparer.OrdinalIgnoreCase)) { return; }
+
+            listBox_EC_MapRotation.Items.Add(map);
+            listBox_EC_MapRotation.SelectedItem = map;
+        }
+
+        private void Button_EC_RemoveMap_Click(object sender, RoutedEventArgs e)
+        {
+            int index = listBox_EC_MapRotation.SelectedIndex;
+            if (index < 0) { return; }
+
+            listBox_EC_MapRotation.Items.RemoveAt(index);
+            if (listBox_EC_MapRotation.Items.Count > 0)
+            {
+                listBox_EC_MapRotation.SelectedIndex = Math.Min(index, listBox_EC_MapRotation.Items.Count - 1);
+            }
+        }
+
+        private void MoveSelectedMap(int offset)
+        {
+            int index = listBox_EC_MapRotation.SelectedIndex;
+            int newIndex = index + offset;
+            if (index < 0 || newIndex < 0 || newIndex >= listBox_EC_MapRotation.Items.Count) { return; }
+
+            object map = listBox_EC_MapRotation.Items[index];
+            listBox_EC_MapRotation.Items.RemoveAt(index);
+            listBox_EC_MapRotation.Items.Insert(newIndex, map);
+            listBox_EC_MapRotation.SelectedIndex = newIndex;
+        }
+
+        private void Button_EC_MoveMapUp_Click(object sender, RoutedEventArgs e)
+        {
+            MoveSelectedMap(-1);
+        }
+
+        private void Button_EC_MoveMapDown_Click(object sender, RoutedEventArgs e)
+        {
+            MoveSelectedMap(1);
+        }
+
+        private void Button_EC_RandomiseMapRotation_Click(object sender, RoutedEventArgs e)
+        {
+            List<string> maps = listBox_EC_MapRotation.Items.Cast<string>().ToList();
+            if (maps.Count < 2) { return; }
+
+            for (int i = maps.Count - 1; i > 0; i--)
+            {
+                int swapIndex = _mapRotationRandom.Next(i + 1);
+                string map = maps[i];
+                maps[i] = maps[swapIndex];
+                maps[swapIndex] = map;
+            }
+
+            listBox_EC_MapRotation.Items.Clear();
+            foreach (string map in maps)
+            {
+                listBox_EC_MapRotation.Items.Add(map);
+            }
+            listBox_EC_MapRotation.SelectedIndex = 0;
         }
 
         private void Button_RestartCrontab_Click(object sender, RoutedEventArgs e)

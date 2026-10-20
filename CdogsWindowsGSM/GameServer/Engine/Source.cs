@@ -1,7 +1,10 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Collections.Generic;
+using System.Linq;
 
 /// <summary>
 /// 
@@ -42,6 +45,42 @@ namespace WindowsGSM.GameServer.Engine
 
         public Source(Functions.ServerConfig serverData) => this.serverData = serverData;
 
+        public string MapDirectory => Functions.ServerPath.GetServersServerFiles(serverData.ServerID, Game, "maps");
+
+        public string MapCyclePath => Functions.ServerPath.GetServersServerFiles(serverData.ServerID, Game, "mapcycle.txt");
+
+        public List<string> GetAvailableMaps()
+        {
+            if (!Directory.Exists(MapDirectory))
+            {
+                return new List<string>();
+            }
+
+            return Directory.GetFiles(MapDirectory, "*.bsp", SearchOption.TopDirectoryOnly)
+                .Select(Path.GetFileNameWithoutExtension)
+                .OrderBy(map => map, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+
+        public List<string> GetMapRotation()
+        {
+            if (!File.Exists(MapCyclePath))
+            {
+                return new List<string>();
+            }
+
+            return File.ReadLines(MapCyclePath)
+                .Select(line => line.Trim())
+                .Where(line => !string.IsNullOrWhiteSpace(line) && !line.StartsWith("//") && !line.StartsWith("#"))
+                .Select(line => line.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries)[0])
+                .ToList();
+        }
+
+        public void SaveMapRotation(IEnumerable<string> maps)
+        {
+            File.WriteAllLines(MapCyclePath, maps);
+        }
+
         public async Task<Process> Start()
         {
             string srcdsPath = Functions.ServerPath.GetServersServerFiles(serverData.ServerID, StartPath);
@@ -65,7 +104,13 @@ namespace WindowsGSM.GameServer.Engine
             sb.Append(string.IsNullOrWhiteSpace(serverData.ServerMaxPlayer) ? string.Empty : $" -maxplayers{(AppId == "740" ? "_override" : "")} {serverData.ServerMaxPlayer}");
             sb.Append(string.IsNullOrWhiteSpace(serverData.ServerGSLT) ? string.Empty : $" +sv_setsteamaccount {serverData.ServerGSLT}");
             sb.Append(string.IsNullOrWhiteSpace(serverData.ServerParam) ? string.Empty : $" {serverData.ServerParam}");
-            sb.Append(string.IsNullOrWhiteSpace(serverData.ServerMap) ? string.Empty : $" +map {serverData.ServerMap}");
+            List<string> mapRotation = string.IsNullOrWhiteSpace(Game) ? new List<string>() : GetMapRotation();
+            if (mapRotation.Count > 0)
+            {
+                sb.Append(" +mapcyclefile mapcycle.txt");
+            }
+            string startMap = mapRotation.Count > 0 ? mapRotation[0] : serverData.ServerMap;
+            sb.Append(string.IsNullOrWhiteSpace(startMap) ? string.Empty : $" +map {startMap}");
             string param = sb.ToString();
 
             Process p;
