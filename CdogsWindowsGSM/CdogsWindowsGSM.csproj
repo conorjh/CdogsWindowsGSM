@@ -396,14 +396,17 @@
     <Compile Include="GameServer\DOD.cs" />
     <Compile Include="GameServer\DODS.cs" />
     <Compile Include="GameServer\EGS.cs" />
+    <Compile Include="GameServer\Engine\MinecraftJava.cs" />
     <Compile Include="GameServer\Engine\SteamCMDAgent.cs" />
     <Compile Include="GameServer\Engine\Unity.cs" />
     <Compile Include="GameServer\Engine\UnrealEngine.cs" />
+    <Compile Include="GameServer\ForgeMC.cs" />
     <Compile Include="GameServer\HEAT.cs" />
     <Compile Include="GameServer\HLOF.cs" />
     <Compile Include="GameServer\INSS.cs" />
     <Compile Include="GameServer\ECO.cs" />
     <Compile Include="GameServer\ONSET.cs" />
+    <Compile Include="GameServer\PaperMC.cs" />
     <Compile Include="GameServer\ROR2.cs" />
     <Compile Include="GameServer\Query\A2S.cs" />
     <Compile Include="GameServer\Query\FIVEM.cs" />

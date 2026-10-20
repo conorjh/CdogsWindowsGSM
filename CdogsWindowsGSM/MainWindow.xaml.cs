@@ -402,7 +402,7 @@ namespace WindowsGSM
             int pluginLoaded = 0;
             PluginsList.ForEach(delegate (PluginMetadata plugin)
             {
-                if (plugin.IsLoaded)
+                if (plugin.IsLoaded && !sortedList.ContainsKey(plugin.FullName))
                 {
                     pluginLoaded++;
                     sortedList.Add(plugin.FullName, plugin.GameImage == PluginManagement.DefaultPluginImage ? plugin.GameImage.Replace("pack://application:,,,", "/CdogsWindowsGSM;component") : plugin.GameImage);
@@ -1197,8 +1197,8 @@ namespace WindowsGSM
             }
 
             string installFailure = Installer == null
-                ? (string.IsNullOrWhiteSpace(gameServer.Error) ? "SteamCMD did not return an installer process." : gameServer.Error)
-                : $"SteamCMD exited with code {Installer.ExitCode}.";
+                ? (string.IsNullOrWhiteSpace(gameServer.Error) ? "Installer did not return a process." : gameServer.Error)
+                : $"Installer exited with code {Installer.ExitCode}.";
             bool baseInstallValid = isCod1 ? gameServer.IsBaseInstallValid() : gameServer.IsInstallValid();
             if (isCod1 && (!baseInstallValid || Installer == null || Installer.ExitCode != 0))
             {
@@ -3269,7 +3269,8 @@ namespace WindowsGSM
             var row = (ServerTable)ServerGrid.SelectedItem;
             if (row == null) { return; }
 
-            if (row.Game == GameServer.MCPE.FullName || row.Game == GameServer.MC.FullName)
+            if (row.Game == GameServer.MCPE.FullName || row.Game == GameServer.MC.FullName ||
+                row.Game == GameServer.PaperMC.FullName || row.Game == GameServer.ForgeMC.FullName)
             {
                 Log(row.ID, $"This feature is not applicable on {row.Game}");
                 return;

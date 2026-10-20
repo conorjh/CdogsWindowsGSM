@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Collections.Generic;
 using System;
+using Newtonsoft.Json.Linq;
 
 namespace WindowsGSM.GameServer
 {
@@ -14,6 +15,11 @@ namespace WindowsGSM.GameServer
     {
         internal class MCBEWebclient : WebClient
         {
+            public MCBEWebclient()
+            {
+                Headers[HttpRequestHeader.UserAgent] = "CdogsWindowsGSM";
+            }
+
             protected override WebRequest GetWebRequest(Uri address)
             {
                 HttpWebRequest req = (HttpWebRequest)base.GetWebRequest(address);
@@ -24,6 +30,19 @@ namespace WindowsGSM.GameServer
                 return req;
             }
         }
+
+        private sealed class BedrockServerDownload
+        {
+            public Uri Url { get; set; }
+            public string FileName { get; set; }
+            public string Version { get; set; }
+        }
+
+        private const string BedrockDownloadLinksUrl = "https://net-secondary.web.minecraft-services.net/api/v1.0/download/links";
+        private const string BedrockWindowsDownloadType = "serverBedrockWindows";
+        private static readonly Regex BedrockArchiveNameRegex = new Regex(
+            @"^bedrock-server-(?<version>\d+(?:\.\d+)*)\.zip$",
+            RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         private readonly Functions.ServerConfig _serverData;
 
@@ -45,6 +64,52 @@ namespace WindowsGSM.GameServer
         public MCBE(Functions.ServerConfig serverData)
         {
             _serverData = serverData;
+        }
+
+        private static async Task<BedrockServerDownload> GetLatestBedrockServerDownload(WebClient webClient)
+        {
+            string response = await webClient.DownloadStringTaskAsync(BedrockDownloadLinksUrl);
+            JObject downloadData = JObject.Parse(response);
+            JArray links = downloadData["result"]?["links"] as JArray;
+            if (links == null)
+            {
+                throw new InvalidDataException("The official Minecraft download API did not return a links list.");
+            }
+
+            foreach (JToken link in links)
+            {
+                if (!string.Equals((string)link["downloadType"], BedrockWindowsDownloadType, StringComparison.Ordinal))
+                {
+                    continue;
+                }
+
+                string url = (string)link["downloadUrl"];
+                Uri downloadUri;
+                if (!Uri.TryCreate(url, UriKind.Absolute, out downloadUri) ||
+                    !string.Equals(downloadUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+                    !downloadUri.IsDefaultPort ||
+                    (!string.Equals(downloadUri.Host, "www.minecraft.net", StringComparison.OrdinalIgnoreCase) &&
+                     !string.Equals(downloadUri.Host, "minecraft.azureedge.net", StringComparison.OrdinalIgnoreCase)) ||
+                    downloadUri.AbsolutePath.IndexOf("/bin-win/", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    throw new InvalidDataException("The official Minecraft download API returned an invalid Windows Bedrock server URL.");
+                }
+
+                Match archiveName = BedrockArchiveNameRegex.Match(Path.GetFileName(downloadUri.AbsolutePath));
+                if (!archiveName.Success)
+                {
+                    throw new InvalidDataException("The official Minecraft download API returned an unexpected Windows Bedrock server archive name.");
+                }
+
+                return new BedrockServerDownload
+                {
+                    Url = downloadUri,
+                    FileName = Path.GetFileName(downloadUri.AbsolutePath),
+                    Version = archiveName.Groups["version"].Value
+                };
+            }
+
+            throw new InvalidDataException("The official Minecraft download API did not include a Windows Bedrock server download.");
         }
 
         public async void CreateServerCFG()
@@ -156,32 +221,31 @@ namespace WindowsGSM.GameServer
             {
                 using (WebClient webClient = new MCBEWebclient())
                 {
-                    string html = await webClient.DownloadStringTaskAsync("https://www.minecraft.net/en-us/download/server/bedrock/");
-                    Regex regex = new Regex(@"https:\/\/minecraft\.azureedge\.net\/bin-win\/(bedrock-server-(.*?)\.zip)");
-                    var matches = regex.Matches(html);
-
-                    if (matches.Count <= 0)
-                    {
-                        return null;
-                    }
-
-                    string downloadUrl = matches[0].Value; //https://minecraft.azureedge.net/bin-win/bedrock-server-1.14.21.0.zip
-                    string fileName = matches[0].Groups[1].Value; //bedrock-server-1.14.21.0.zip
-                    string version = matches[0].Groups[2].Value; //1.14.21.0
+                    BedrockServerDownload download = await GetLatestBedrockServerDownload(webClient);
 
                     //Download zip and extract then delete zip
-                    string zipPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, fileName);
-                    await webClient.DownloadFileTaskAsync(downloadUrl, zipPath);
-                    await Task.Run(() => ZipFile.ExtractToDirectory(zipPath, Functions.ServerPath.GetServersServerFiles(_serverData.ServerID)));
-                    await Task.Run(() => File.Delete(zipPath));
+                    string serverFilesPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID);
+                    string zipPath = Path.Combine(serverFilesPath, download.FileName);
+                    try
+                    {
+                        await webClient.DownloadFileTaskAsync(download.Url, zipPath);
+                        await Task.Run(() => ZipFile.ExtractToDirectory(zipPath, serverFilesPath));
+                    }
+                    finally
+                    {
+                        if (File.Exists(zipPath))
+                        {
+                            File.Delete(zipPath);
+                        }
+                    }
 
                     //Create MCBE-version.txt and write the version
-                    File.WriteAllText(Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "MCBE-version.txt"), version);
+                    File.WriteAllText(Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "MCBE-version.txt"), download.Version);
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                //ignore
+                Error = $"Failed to install Minecraft Bedrock server: {ex.Message}";
             }
 
             return null;
@@ -193,21 +257,7 @@ namespace WindowsGSM.GameServer
             {
                 using (WebClient webClient = new MCBEWebclient())
                 {
-                    string remoteBuild = await GetRemoteBuild();
-
-                    string html = await webClient.DownloadStringTaskAsync("https://www.minecraft.net/en-us/download/server/bedrock/");
-                    Regex regex = new Regex(@"https:\/\/minecraft\.azureedge\.net\/bin-win\/(bedrock-server-(.*?)\.zip)");
-                    var matches = regex.Matches(html);
-
-                    if (matches.Count <= 0)
-                    {
-                        Error = "Fail to get latest build from https://minecraft.azureedge.net";
-                        return null;
-                    }
-
-                    string downloadUrl = matches[0].Value; //https://minecraft.azureedge.net/bin-win/bedrock-server-1.14.21.0.zip
-                    string fileName = matches[0].Groups[1].Value; //bedrock-server-1.14.21.0.zip
-                    string version = matches[0].Groups[2].Value; //1.14.21.0
+                    BedrockServerDownload download = await GetLatestBedrockServerDownload(webClient);
 
                     string tempPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "__temp");
 
@@ -220,8 +270,8 @@ namespace WindowsGSM.GameServer
                     Directory.CreateDirectory(tempPath);
 
                     //Download zip and extract then delete zip - install to __temp folder
-                    string zipPath = Path.Combine(tempPath, fileName);
-                    await webClient.DownloadFileTaskAsync(downloadUrl, zipPath);
+                    string zipPath = Path.Combine(tempPath, download.FileName);
+                    await webClient.DownloadFileTaskAsync(download.Url, zipPath);
                     await Task.Run(() => ZipFile.ExtractToDirectory(zipPath, tempPath));
                     await Task.Run(() => File.Delete(zipPath));
 
@@ -264,7 +314,7 @@ namespace WindowsGSM.GameServer
                     await Task.Run(() => Directory.Delete(tempPath, true));
 
                     //Create MCBE-version.txt and write the version
-                    File.WriteAllText(Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "MCBE-version.txt"), version);
+                    File.WriteAllText(Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "MCBE-version.txt"), download.Version);
                 }
 
                 return null;
@@ -306,23 +356,15 @@ namespace WindowsGSM.GameServer
             {
                 using (WebClient webClient = new MCBEWebclient())
                 {
-                    string html = await webClient.DownloadStringTaskAsync("https://www.minecraft.net/en-us/download/server/bedrock/");
-                    Regex regex = new Regex(@"https:\/\/minecraft\.azureedge\.net\/bin-win\/(bedrock-server-(.*?)\.zip)");
-                    var matches = regex.Matches(html);
-
-                    if (matches.Count > 0)
-                    {
-                        return matches[0].Groups[2].Value; //1.14.21.0
-                    }
+                    BedrockServerDownload download = await GetLatestBedrockServerDownload(webClient);
+                    return download.Version;
                 }
             }
-            catch
+            catch (Exception ex)
             {
-                //ignore
+                Error = $"Failed to get the latest Minecraft Bedrock server build: {ex.Message}";
+                return string.Empty;
             }
-
-            Error = $"Fail to get remote build";
-            return string.Empty;
         }
     }
 }

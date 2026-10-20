@@ -19,6 +19,8 @@ namespace WindowsGSM.GameServer.Data
                 case HL2DM.FullName: return new HL2DM(serverData);
                 case L4D2.FullName: return new L4D2(serverData);
                 case MC.FullName: return new MC(serverData);
+                case PaperMC.FullName: return new PaperMC(serverData);
+                case ForgeMC.FullName: return new ForgeMC(serverData);
                 case GTA5.FullName: return new GTA5(serverData);
                 case SDTD.FullName: return new SDTD(serverData);
                 case MORDHAU.FullName: return new MORDHAU(serverData);

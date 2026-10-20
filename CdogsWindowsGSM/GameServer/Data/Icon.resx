@@ -198,6 +198,12 @@
   <data name="Minecraft: Java Edition Server" xml:space="preserve">
     <value>Images/Games/mc.png</value>
   </data>
+  <data name="Minecraft: Paper Server" xml:space="preserve">
+    <value>Images/Games/mc.png</value>
+  </data>
+  <data name="Minecraft: Forge Server" xml:space="preserve">
+    <value>Images/Games/mc.png</value>
+  </data>
   <data name="Minecraft: Pocket Edition Server (PocketMine-MP)" xml:space="preserve">
     <value>Images/Games/mcpe.png</value>
   </data>
