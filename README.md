@@ -8,8 +8,10 @@ A community-maintained Windows desktop application for installing, importing, an
 
 ## Fork-specific features
 
-- **Added built-in games:** Minecraft, Call of Duty 1, OpenRCT2 (RollerCoaster Tycoon 2), OpenTTD, Mindustry, and OpenRA.
-- **FiveM fixes:** repaired server installation, updates, and querying.
+- **Added built-in games:** Call of Duty 1, CoD4x, OpenRCT2, OpenTTD, Mindustry, OpenRA, RedM, SCUM, and Soldat, alongside the Minecraft server variants.
+- **FiveM and RedM fixes:** share the current CFX server artifacts and query support; both require a valid CFX license key.
+- **OpenRCT2 servers:** download a verified sample park when none is present and start without custom server parameters; a licensed RollerCoaster Tycoon 2 installation is still required.
+- **CoD4x:** downloads the upstream [CoD4x 21.2](https://github.com/callofduty4x/CoD4x_Server/releases/tag/21.2) server binary (AGPL-3.0); a licensed Call of Duty 4 game installation is required and proprietary game data is not redistributed. No third-party bot package is included.
 - **Map rotation:** double-click to add or remove maps in the Source and GoldSrc map-rotation interfaces.
 - **In-app updates:** checks for releases from this fork.
 
@@ -20,6 +22,8 @@ A community-maintained Windows desktop application for installing, importing, an
 | ![logo](CdogsWindowsGSM/Images/Games/avorion.png?raw=true)| Avorion Dedicated Server                          |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/bt.png?raw=true)     | Barotrauma Dedicated Server                       |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/bw.png?raw=true)     | BlackWake Dedicated Server                        |✅|      |
+| ![logo](CdogsWindowsGSM/Images/Games/dod.png?raw=true)    | Call of Duty 1 Dedicated Server                   |✅|      |
+| ![logo](CdogsWindowsGSM/Images/WindowsGSM.png?raw=true)   | Call of Duty 4: Modern Warfare Dedicated Server (CoD4x) |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/ce.png?raw=true)     | Conan Exiles Dedicated Server                     |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/cs.png?raw=true)     | Counter-Strike: 1.6 Dedicated Server              |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/cscz.png?raw=true)   | Counter-Strike: Condition Zero Dedicated Server   |✅| A2S  |
@@ -42,6 +46,7 @@ A community-maintained Windows desktop application for installing, importing, an
 | ![logo](CdogsWindowsGSM/Images/Games/mcbe.png?raw=true)   | Minecraft: Bedrock Edition Server                 |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/mc.png?raw=true)     | Minecraft: Java Edition Server                    |✅| UT3  |
 | ![logo](CdogsWindowsGSM/Images/Games/mcpe.png?raw=true)   | Minecraft: Pocket Edition Server ([PocketMine-MP](https://github.com/pmmp/PocketMine-MP)) |✅| UT3  |
+| ![logo](CdogsWindowsGSM/Images/WindowsGSM.png?raw=true)   | Mindustry Dedicated Server                        |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/mordhau.png?raw=true)| Mordhau Dedicated Server                          |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/nmrih.png?raw=true)  | No More Room in Hell Dedicated Server             |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/onset.png?raw=true)  | Onset Dedicated Server                            |✅|      |
@@ -112,6 +117,7 @@ Download builds from [Releases](https://github.com/conorjh/CdogsWindowsGSM/relea
 - **CdogsWindowsGSM contributors** — fork maintenance and development
 - **TatLead** — original application work ([BattlefieldDuck](https://github.com/BattlefieldDuck))
 - **Deathreus** — code optimization ([Deathreus](https://github.com/Deathreus))
+- **Soljian** — SCUM integration adapted from [WindowsGSM.SCUM](https://github.com/soljian/WindowsGSM.SCUM), distributed under MIT (see [third-party notices](THIRD-PARTY-NOTICES.txt))
 - **! AssaultLine** and **Dennis** — Mordhau server testing
 
 ## License
