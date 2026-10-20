@@ -2,6 +2,7 @@
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Reflection;
 using WindowsGSM.Functions;
 
@@ -15,10 +16,7 @@ namespace WindowsGSM
             // Due to a weird error, MahApps.Metro.dll cannot be embed inside WindowsGSM.exe,
             // therefore, MahApps.Metro.dll is stored in Resources, and copy the file to the WindowsGSM directory.
             string mahAppPath = Path.Combine(Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName), "MahApps.Metro.dll");
-            if (!File.Exists(mahAppPath) || new FileInfo(mahAppPath).Length != 3425392) // Latest MahApps.Metro.dll byte size is 3425392
-            {
-                File.WriteAllBytes(mahAppPath, Properties.Resources.MahApps_Metro);
-            }
+            EnsureResourceFile(mahAppPath, Properties.Resources.MahApps_Metro);
 
             string roslynBase = Path.Combine(Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName), ServerPath.FolderName.Bin);
             Directory.CreateDirectory(roslynBase);
@@ -34,10 +32,7 @@ namespace WindowsGSM
             }
 
             string ntsJsonPath = Path.Combine(Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName), ServerPath.FolderName.Bin, "Newtonsoft.Json.dll");
-            if (!File.Exists(ntsJsonPath) || new FileInfo(ntsJsonPath).Length != 700336) // Latest Newtonsoft.Json.dll byte size is 700336
-            {
-                File.WriteAllBytes(ntsJsonPath, Properties.Resources.Newtonsoft_Json);
-            }
+            EnsureResourceFile(ntsJsonPath, Properties.Resources.Newtonsoft_Json);
 
             AppDomain.CurrentDomain.AssemblyResolve += (sender, args) =>
             {
@@ -56,6 +51,14 @@ namespace WindowsGSM
             };
 
             App.Main();
+        }
+
+        private static void EnsureResourceFile(string path, byte[] resourceData)
+        {
+            if (!File.Exists(path) || !File.ReadAllBytes(path).SequenceEqual(resourceData))
+            {
+                File.WriteAllBytes(path, resourceData);
+            }
         }
     }
 }
