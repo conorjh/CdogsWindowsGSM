@@ -83,7 +83,7 @@ namespace WindowsGSM
                         {
                             WorkingDirectory = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName),
                             FileName = "cmd.exe",
-                            Arguments = "/C echo WindowsGSM will auto restart after 10 seconds... & echo Close this windows to cancel... & ping 0 -w 1000 -n 10 > NUL & start WindowsGSM.exe /ForceStart /ShowCrashHint",
+                            Arguments = "/C echo WindowsGSM will auto restart after 10 seconds... & echo Close this windows to cancel... & ping 0 -w 1000 -n 10 > NUL & start CdogsWindowsGSM.exe /ForceStart /ShowCrashHint",
                             UseShellExecute = false
                         }
                     };

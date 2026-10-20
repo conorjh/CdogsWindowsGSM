@@ -147,7 +147,7 @@ namespace WindowsGSM
             DiscordWebhook.SendErrorLog();
 
             InitializeComponent();
-            Title = $"WindowsGSM {WGSM_VERSION}";
+            Title = $"Cdog's WindowsGSM {WGSM_VERSION}";
 
             //Close SplashScreen
             splashScreen.Close(new TimeSpan(0, 0, 1));
@@ -3227,7 +3227,7 @@ namespace WindowsGSM
                 DefaultButtonFocus = MessageDialogResult.Negative
             };
 
-            var result = await this.ShowMessageAsync("About WindowsGSM", $"Product:\t\tWindowsGSM\nVersion:\t\t{WGSM_VERSION.Substring(1)}\nCreator:\t\tTatLead\n\nIf you like WindowsGSM, consider becoming a Patron!", MessageDialogStyle.AffirmativeAndNegative, settings);
+            var result = await this.ShowMessageAsync("About Cdog's WindowsGSM", $"Product:\t\tCdog's WindowsGSM\nVersion:\t\t{WGSM_VERSION.Substring(1)}\nCreator:\t\tTatLead\n\nIf you like Cdog's WindowsGSM, consider becoming a Patron!", MessageDialogStyle.AffirmativeAndNegative, settings);
 
             if (result == MessageDialogResult.Affirmative)
             {

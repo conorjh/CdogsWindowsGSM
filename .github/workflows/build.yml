@@ -11,6 +11,6 @@ jobs:
       env:
         ACTIONS_ALLOW_UNSECURE_COMMANDS: true
     - name: Restore packages
-      run: msbuild WindowsGSM.sln /t:restore
+      run: msbuild CdogsWindowsGSM.sln /t:restore
     - name: Build with MSBuild
-      run: msbuild WindowsGSM.sln
+      run: msbuild CdogsWindowsGSM.sln

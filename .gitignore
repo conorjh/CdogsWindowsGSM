@@ -1,6 +1,6 @@
 .vs
-WindowsGSM/bin/
-WindowsGSM/obj/
+CdogsWindowsGSM/bin/
+CdogsWindowsGSM/obj/
 WindowsGSM-Plugin-Development/bin/
 WindowsGSM-Plugin-Development/obj/
-WindowsGSM.sln.DotSettings.user
+CdogsWindowsGSM.sln.DotSettings.user
