@@ -57,6 +57,9 @@ OpenRCT2 binaries are downloaded at installation time from the official
 OpenRCT2 GitHub releases and are not bundled with WindowsGSM. RollerCoaster
 Tycoon 2 game data is not included; users must supply their own licensed copy.
 
+OpenTTD binaries and OpenGFX base graphics are downloaded from the official
+OpenTTD CDNs at install/update time and are not bundled with WindowsGSM.
+
 CdogsWindowsGSM updater
 
 Adapted from:

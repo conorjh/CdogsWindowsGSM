@@ -406,6 +406,7 @@
     <Compile Include="GameServer\INSS.cs" />
     <Compile Include="GameServer\ECO.cs" />
     <Compile Include="GameServer\ONSET.cs" />
+    <Compile Include="GameServer\OpenTTD.cs" />
     <Compile Include="GameServer\PaperMC.cs" />
     <Compile Include="GameServer\RCT2.cs" />
     <Compile Include="GameServer\ROR2.cs" />

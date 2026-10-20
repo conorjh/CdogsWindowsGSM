@@ -234,6 +234,9 @@
   <data name="RCT2 Dedicated Server" xml:space="preserve">
     <value>Images/WindowsGSM.png</value>
   </data>
+  <data name="OpenTTD Dedicated Server" xml:space="preserve">
+    <value>Images/WindowsGSM.png</value>
+  </data>
   <data name="Rust Dedicated Server" xml:space="preserve">
     <value>Images/Games/rust.png</value>
   </data>
