@@ -147,6 +147,9 @@
   <data name="Counter-Strike: Source Dedicated Server" xml:space="preserve">
     <value>Images/Games/css.png</value>
   </data>
+  <data name="Call of Duty 1 Dedicated Server" xml:space="preserve">
+    <value>Images/Games/dod.png</value>
+  </data>
   <data name="Day of Defeat Dedicated Server" xml:space="preserve">
     <value>Images/Games/dod.png</value>
   </data>

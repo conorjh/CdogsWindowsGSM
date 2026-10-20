@@ -1096,12 +1096,21 @@ namespace WindowsGSM
                 progressbar_InstallProgress.IsIndeterminate = false;
                 textblock_InstallProgress.Text = string.Empty;
                 button_Install.IsEnabled = true;
+                checkBox_Install_Cod1MeatBots.IsChecked = false;
+                numericUpDown_Install_Cod1AlliesBots.Value = 0;
+                numericUpDown_Install_Cod1AxisBots.Value = 0;
+                textbox_Install_Cod1FastDlUrl.Text = string.Empty;
 
                 ComboBox_InstallGameServer_SelectionChanged(sender, null);
 
                 var newServerConfig = new ServerConfig(null);
                 textbox_InstallServerName.Text = $"WindowsGSM - Server #{newServerConfig.ServerID}";
             }
+        }
+
+        private static bool IsCod1Game(string gameName)
+        {
+            return string.Equals(gameName, GameServer.COD1.FullName, StringComparison.Ordinal);
         }
 
         private async void Button_Install_Click(object sender, RoutedEventArgs e)
@@ -1116,6 +1125,23 @@ namespace WindowsGSM
             if (string.IsNullOrWhiteSpace(textbox_InstallServerName.Text) || selectedgame == null) { return; }
 
             var newServerConfig = new ServerConfig(null);
+            string servername = textbox_InstallServerName.Text;
+            string servergame = selectedgame.Name;
+            bool isCod1 = IsCod1Game(servergame);
+            if (isCod1)
+            {
+                newServerConfig.Cod1MeatBots = checkBox_Install_Cod1MeatBots.IsChecked == true;
+                newServerConfig.Cod1AlliesBots = numericUpDown_Install_Cod1AlliesBots.Value.ToString();
+                newServerConfig.Cod1AxisBots = numericUpDown_Install_Cod1AxisBots.Value.ToString();
+                newServerConfig.Cod1FastDlUrl = textbox_Install_Cod1FastDlUrl.Text.Trim();
+                if (!ServerConfig.ValidateCod1Settings(newServerConfig.Cod1AlliesBots, newServerConfig.Cod1AxisBots,
+                    newServerConfig.Cod1FastDlUrl, "32", newServerConfig.Cod1MeatBots, out string settingsError))
+                {
+                    MessageBox.Show(settingsError, "Invalid Call of Duty 1 settings", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+            }
+
             string installPath = ServerPath.GetServersServerFiles(newServerConfig.ServerID);
             if (Directory.Exists(installPath))
             {
@@ -1139,9 +1165,6 @@ namespace WindowsGSM
             textblock_InstallProgress.Text = "Installing";
             button_Install.IsEnabled = false;
             textbox_InstallLog.Text = string.Empty;
-
-            string servername = textbox_InstallServerName.Text;
-            string servergame = selectedgame.Name;
 
             newServerConfig.CreateServerDirectory();
 
@@ -1173,13 +1196,43 @@ namespace WindowsGSM
                 });
             }
 
-            if (gameServer.IsInstallValid())
+            string installFailure = Installer == null
+                ? (string.IsNullOrWhiteSpace(gameServer.Error) ? "SteamCMD did not return an installer process." : gameServer.Error)
+                : $"SteamCMD exited with code {Installer.ExitCode}.";
+            bool baseInstallValid = isCod1 ? gameServer.IsBaseInstallValid() : gameServer.IsInstallValid();
+            if (isCod1 && (!baseInstallValid || Installer == null || Installer.ExitCode != 0))
+            {
+                string steamFailure = installFailure;
+                textblock_InstallProgress.Text = "SteamCMD failed or returned an invalid install; trying configured HTTPS fallback";
+                await gameServer.InstallFallback();
+                baseInstallValid = gameServer.IsBaseInstallValid();
+                if (!baseInstallValid)
+                {
+                    installFailure = $"SteamCMD: {steamFailure}{Environment.NewLine}HTTPS fallback: {gameServer.Error}";
+                }
+            }
+
+            string componentFailure = string.Empty;
+            if (isCod1 && baseInstallValid && newServerConfig.Cod1MeatBots && !await gameServer.InstallMeatBots())
+            {
+                componentFailure = gameServer.Error;
+            }
+
+            bool installValid = baseInstallValid && string.IsNullOrWhiteSpace(componentFailure) && gameServer.IsInstallValid();
+            if (installValid)
             {
                 newServerConfig.ServerIP = newServerConfig.GetIPAddress();
                 newServerConfig.ServerPort = newServerConfig.GetAvailablePort(gameServer.Port, gameServer.PortIncrements);
 
                 // Create WindowsGSM.cfg
                 newServerConfig.SetData(servergame, servername, gameServer);
+                if (isCod1)
+                {
+                    newServerConfig.Cod1MeatBots = checkBox_Install_Cod1MeatBots.IsChecked == true;
+                    newServerConfig.Cod1AlliesBots = numericUpDown_Install_Cod1AlliesBots.Value.ToString();
+                    newServerConfig.Cod1AxisBots = numericUpDown_Install_Cod1AxisBots.Value.ToString();
+                    newServerConfig.Cod1FastDlUrl = textbox_Install_Cod1FastDlUrl.Text.Trim();
+                }
                 newServerConfig.CreateWindowsGSMConfig();
 
                 // Create WindowsGSM.cfg and game server config
@@ -1215,14 +1268,9 @@ namespace WindowsGSM
                 textblock_InstallProgress.Text = "Install";
                 button_Install.IsEnabled = true;
 
-                if (Installer != null)
-                {
-                    textblock_InstallProgress.Text = "Fail to install [ERROR] Exit code: " + Installer.ExitCode;
-                }
-                else
-                {
-                    textblock_InstallProgress.Text = $"Fail to install [ERROR] {gameServer.Error}";
-                }
+                if (!string.IsNullOrWhiteSpace(componentFailure)) { installFailure += Environment.NewLine + "MeatBots installation: " + componentFailure; }
+                if (string.IsNullOrWhiteSpace(installFailure)) { installFailure = gameServer.Error; }
+                textblock_InstallProgress.Text = $"Fail to install [ERROR] {installFailure}";
             }
         }
 
@@ -1233,6 +1281,7 @@ namespace WindowsGSM
             button_InstallSetAccount.IsEnabled = false;
             textBox_InstallToken.Visibility = Visibility.Hidden;
             button_InstallSendToken.Visibility = Visibility.Hidden;
+            stackPanel_Install_Cod1Settings.Visibility = selectedgame != null && IsCod1Game(selectedgame.Name) ? Visibility.Visible : Visibility.Collapsed;
             if (selectedgame == null) { return; }
 
             try
@@ -3484,6 +3533,12 @@ namespace WindowsGSM
             textbox_EC_ServerMap.Text = serverConfig.ServerMap;
             textbox_EC_ServerGSLT.Text = serverConfig.ServerGSLT;
             textbox_EC_ServerParam.Text = serverConfig.ServerParam;
+            bool isCod1 = IsCod1Game(serverConfig.ServerGame);
+            stackPanel_EC_Cod1Settings.Visibility = isCod1 ? Visibility.Visible : Visibility.Collapsed;
+            checkBox_EC_Cod1MeatBots.IsChecked = serverConfig.Cod1MeatBots;
+            numericUpDown_EC_Cod1AlliesBots.Value = int.TryParse(serverConfig.Cod1AlliesBots, out var alliesBots) ? alliesBots : 0;
+            numericUpDown_EC_Cod1AxisBots.Value = int.TryParse(serverConfig.Cod1AxisBots, out var axisBots) ? axisBots : 0;
+            textbox_EC_Cod1FastDlUrl.Text = serverConfig.Cod1FastDlUrl;
             return true;
         }
 
@@ -3491,6 +3546,19 @@ namespace WindowsGSM
         {
             string serverId = textbox_EC_ServerID.Text;
             if (string.IsNullOrWhiteSpace(serverId)) { return; }
+
+            bool isCod1 = IsCod1Game(textbox_EC_ServerGame.Text);
+            if (isCod1 && !ServerConfig.ValidateCod1Settings(
+                    numericUpDown_EC_Cod1AlliesBots.Value.ToString(),
+                    numericUpDown_EC_Cod1AxisBots.Value.ToString(),
+                    textbox_EC_Cod1FastDlUrl.Text.Trim(),
+                    numericUpDown_EC_ServerMaxplayer.Value.ToString(),
+                    checkBox_EC_Cod1MeatBots.IsChecked == true,
+                    out string settingsError))
+            {
+                MessageBox.Show(settingsError, "Invalid Call of Duty 1 settings", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
 
             var serverConfig = new ServerConfig(serverId);
             var gameServer = GameServer.Data.Class.Get(serverConfig.ServerGame, serverConfig, PluginsList);
@@ -3526,6 +3594,13 @@ namespace WindowsGSM
             ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerMap, textbox_EC_ServerMap.Text.Trim());
             ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerGSLT, textbox_EC_ServerGSLT.Text.Trim());
             ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerParam, textbox_EC_ServerParam.Text.Trim());
+            if (isCod1)
+            {
+                ServerConfig.SetSetting(serverId, ServerConfig.SettingName.Cod1MeatBots, checkBox_EC_Cod1MeatBots.IsChecked == true ? "1" : "0");
+                ServerConfig.SetSetting(serverId, ServerConfig.SettingName.Cod1AlliesBots, numericUpDown_EC_Cod1AlliesBots.Value.ToString());
+                ServerConfig.SetSetting(serverId, ServerConfig.SettingName.Cod1AxisBots, numericUpDown_EC_Cod1AxisBots.Value.ToString());
+                ServerConfig.SetSetting(serverId, ServerConfig.SettingName.Cod1FastDlUrl, textbox_EC_Cod1FastDlUrl.Text.Trim());
+            }
 
             LoadServerTable();
             MahAppFlyout_EditConfig.IsOpen = false;

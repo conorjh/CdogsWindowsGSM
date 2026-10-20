@@ -37,6 +37,10 @@ namespace WindowsGSM.Functions
             public const string CPUPriority = "cpupriority";
             public const string CPUAffinity = "cpuaffinity";
             public const string AutoScroll = "autoscroll";
+            public const string Cod1MeatBots = "cod1meatbots";
+            public const string Cod1AlliesBots = "cod1alliesbots";
+            public const string Cod1AxisBots = "cod1axisbots";
+            public const string Cod1FastDlUrl = "cod1fastdlurl";
         }
 
         public string ServerID;
@@ -68,6 +72,10 @@ namespace WindowsGSM.Functions
         public string CPUPriority;
         public string CPUAffinity;
         public bool AutoScroll;
+        public bool Cod1MeatBots;
+        public string Cod1AlliesBots = "0";
+        public string Cod1AxisBots = "0";
+        public string Cod1FastDlUrl = string.Empty;
 
         public ServerConfig(string serverid)
         {
@@ -139,6 +147,10 @@ namespace WindowsGSM.Functions
                             case SettingName.CPUPriority: CPUPriority = keyvalue[1]; break;
                             case SettingName.CPUAffinity: CPUAffinity = keyvalue[1]; break;
                             case SettingName.AutoScroll: AutoScroll = keyvalue[1] == "1"; break;
+                            case SettingName.Cod1MeatBots: Cod1MeatBots = keyvalue[1] == "1"; break;
+                            case SettingName.Cod1AlliesBots: Cod1AlliesBots = keyvalue[1]; break;
+                            case SettingName.Cod1AxisBots: Cod1AxisBots = keyvalue[1]; break;
+                            case SettingName.Cod1FastDlUrl: Cod1FastDlUrl = keyvalue[1]; break;
                         }
                     }
                 }
@@ -176,6 +188,49 @@ namespace WindowsGSM.Functions
             CPUPriority = "2";
             CPUAffinity = string.Concat(System.Linq.Enumerable.Repeat("1", Environment.ProcessorCount));
             AutoScroll = true;
+            Cod1MeatBots = false;
+            Cod1AlliesBots = "0";
+            Cod1AxisBots = "0";
+            Cod1FastDlUrl = string.Empty;
+        }
+
+        public static bool ValidateCod1Settings(string alliesBots, string axisBots, string fastDlUrl, string maxPlayers, bool requireFastDl, out string error)
+        {
+            error = string.Empty;
+            if (!int.TryParse(alliesBots, out int allies) || allies < 0 || allies > 32)
+            {
+                error = "Allies bots must be an integer from 0 to 32.";
+                return false;
+            }
+
+            if (!int.TryParse(axisBots, out int axis) || axis < 0 || axis > 32)
+            {
+                error = "Axis bots must be an integer from 0 to 32.";
+                return false;
+            }
+
+            if (!int.TryParse(maxPlayers, out int playerLimit) || playerLimit < 1 || allies + axis > playerLimit)
+            {
+                error = "The total bot count cannot exceed the server max-player limit.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(fastDlUrl))
+            {
+                if (requireFastDl)
+                {
+                    error = "A FastDL base URL is required when MeatBots are enabled.";
+                    return false;
+                }
+            }
+            else if (!Uri.TryCreate(fastDlUrl, UriKind.Absolute, out Uri uri) ||
+                     (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            {
+                error = "FastDL base URL must be an absolute HTTP or HTTPS URL.";
+                return false;
+            }
+
+            return true;
         }
 
         public bool CreateWindowsGSMConfig()
@@ -198,6 +253,10 @@ namespace WindowsGSM.Functions
                     textwriter.WriteLine($"{SettingName.ServerMaxPlayer}=\"{ServerMaxPlayer}\"");
                     textwriter.WriteLine($"{SettingName.ServerGSLT}=\"{ServerGSLT}\"");
                     textwriter.WriteLine($"{SettingName.ServerParam}=\"{ServerParam}\"");
+                    textwriter.WriteLine($"{SettingName.Cod1MeatBots}=\"{(Cod1MeatBots ? "1" : "0")}\"");
+                    textwriter.WriteLine($"{SettingName.Cod1AlliesBots}=\"{Cod1AlliesBots}\"");
+                    textwriter.WriteLine($"{SettingName.Cod1AxisBots}=\"{Cod1AxisBots}\"");
+                    textwriter.WriteLine($"{SettingName.Cod1FastDlUrl}=\"{Cod1FastDlUrl}\"");
                     textwriter.WriteLine(string.Empty);
                     textwriter.WriteLine($"{SettingName.CPUPriority}=\"{CPUPriority}\"");
                     textwriter.WriteLine($"{SettingName.CPUAffinity}=\"{CPUAffinity}\"");

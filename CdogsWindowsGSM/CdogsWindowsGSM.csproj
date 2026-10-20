@@ -134,6 +134,14 @@
       <HintPath>..\packages\SharpZipLib.1.4.2\lib\netstandard2.0\ICSharpCode.SharpZipLib.dll</HintPath>
       <Private>True</Private>
     </Reference>
+    <Reference Include="SharpCompress">
+      <HintPath>..\packages\SharpCompress.0.32.2\lib\net461\SharpCompress.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
+    <Reference Include="System.Text.Encoding.CodePages">
+      <HintPath>..\packages\System.Text.Encoding.CodePages.6.0.0\runtimes\win\lib\net461\System.Text.Encoding.CodePages.dll</HintPath>
+      <Private>False</Private>
+    </Reference>
     <Reference Include="LiveCharts, Version=0.9.7.0, Culture=neutral, PublicKeyToken=0bc1f845d1ebb8df, processorArchitecture=MSIL">
       <HintPath>..\packages\LiveCharts.0.9.7\lib\net45\LiveCharts.dll</HintPath>
       <Private>False</Private>
@@ -383,6 +391,7 @@
     <Compile Include="GameServer\BT.cs" />
     <Compile Include="GameServer\BW.cs" />
     <Compile Include="GameServer\CE.cs" />
+    <Compile Include="GameServer\COD1.cs" />
     <Compile Include="GameServer\DMC.cs" />
     <Compile Include="GameServer\DOD.cs" />
     <Compile Include="GameServer\DODS.cs" />
@@ -723,6 +732,12 @@
     <Resource Include="Images\Games\vts.png" />
   </ItemGroup>
   <ItemGroup>
+    <EmbeddedResource Include="..\packages\SharpCompress.0.32.2\lib\net461\SharpCompress.dll">
+      <Link>ReferencesEx\SharpCompress.dll</Link>
+    </EmbeddedResource>
+    <EmbeddedResource Include="..\packages\System.Text.Encoding.CodePages.6.0.0\runtimes\win\lib\net461\System.Text.Encoding.CodePages.dll">
+      <Link>ReferencesEx\System.Text.Encoding.CodePages.dll</Link>
+    </EmbeddedResource>
     <EmbeddedResource Include="..\packages\SharpZipLib.1.4.2\lib\netstandard2.0\ICSharpCode.SharpZipLib.dll">
       <Link>ReferencesEx\ICSharpCode.SharpZipLib.dll</Link>
     </EmbeddedResource>
