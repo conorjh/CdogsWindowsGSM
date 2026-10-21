@@ -1,12 +1,18 @@
 ﻿using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
 using WindowsGSM.Localization;
 
 namespace WindowsGSM.Functions
 {
-    class ServerTable
+    class ServerTable : INotifyPropertyChanged
     {
+        private int? _detectedQueryPort;
+        private string _maxplayers;
+
+        public event PropertyChangedEventHandler PropertyChanged;
+
         public string ID { get; set; }
         public string PID { get; set; }
         public string Game { get; set; }
@@ -17,9 +23,34 @@ namespace WindowsGSM.Functions
         public string IP { get; set; }
         public string Port { get; set; }
         public string QueryPort { get; set; }
-        public int? DetectedQueryPort { get; set; }
+        public int? DetectedQueryPort
+        {
+            get => _detectedQueryPort;
+            set
+            {
+                if (_detectedQueryPort == value) { return; }
+
+                _detectedQueryPort = value;
+                OnPropertyChanged(nameof(DetectedQueryPort));
+                OnPropertyChanged(nameof(QueryPortSort));
+                OnPropertyChanged(nameof(QueryPortMismatchDisplay));
+                OnPropertyChanged(nameof(QueryPortToolTip));
+            }
+        }
         public string Defaultmap { get; set; }
-        public string Maxplayers { get; set; }
+        public string Maxplayers
+        {
+            get => _maxplayers;
+            set
+            {
+                if (_maxplayers == value) { return; }
+
+                _maxplayers = value;
+                OnPropertyChanged(nameof(Maxplayers));
+                OnPropertyChanged(nameof(PlayerCapacitySort));
+                OnPropertyChanged(nameof(PlayerCapacity));
+            }
+        }
         public int IDSort => ParseSortValue(ID);
         public int PIDSort => ParseSortValue(PID);
         public int PortSort => ParseSortValue(Port);
@@ -58,6 +89,11 @@ namespace WindowsGSM.Functions
         private static int ParseSortValue(string value)
         {
             return int.TryParse(value, out int number) ? number : int.MinValue;
+        }
+
+        private void OnPropertyChanged(string propertyName)
+        {
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
         }
 
         private static int GetPlayerCapacity(string players)

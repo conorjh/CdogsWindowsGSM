@@ -17,11 +17,12 @@
         MinWidth="1000"
         Closing="Window_Closing"
         GlowBrush="{DynamicResource MahApps.Brushes.Accent}"
-        WindowStartupLocation="CenterScreen" Activated="Window_Activated">
+        WindowStartupLocation="CenterScreen" Loaded="MainWindow_Loaded" Activated="Window_Activated">
     <mah:MetroWindow.RightWindowCommands>
         <mah:WindowCommands>
             <Button x:Name="button_Website" Content="{loc:Loc Key=Website}" Click="Button_Website_Click"/>
             <Button x:Name="button_Discord" Content="{loc:Loc Key=Discord}" Click="Button_Discord_Click"/>
+            <Button x:Name="button_UpdateAvailableIndicator" Content="{loc:Loc Key=UpdateAvailableIndicator}" Foreground="Orange" Visibility="Collapsed" Click="Help_SoftwareUpdates_Click"/>
             <!--<Button x:Name="button_Settings" Content="Settings" Click="Button_Settings_Click"/>-->
             <Button x:Name="button_Hide" Content="{loc:Loc Key=Hide}" Click="Button_Hide_Click"/>
         </mah:WindowCommands>

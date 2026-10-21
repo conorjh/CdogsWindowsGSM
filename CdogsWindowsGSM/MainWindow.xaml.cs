@@ -775,7 +775,6 @@ namespace WindowsGSM
                 if (row != null && row.ID == server.ID)
                 {
                     row.DetectedQueryPort = detectedPort;
-                    ServerGrid.Items.Refresh();
                     return;
                 }
             }
@@ -2823,12 +2822,10 @@ namespace WindowsGSM
 
                     for (int i = 0; i < ServerGrid.Items.Count; i++)
                     {
-                        if (server.ID == ((ServerTable)ServerGrid.Items[i]).ID)
+                        ServerTable row = ServerGrid.Items[i] as ServerTable;
+                        if (row != null && server.ID == row.ID)
                         {
-                            int selectedIndex = ServerGrid.SelectedIndex;
-                            ServerGrid.Items[i] = server;
-                            ServerGrid.SelectedIndex = selectedIndex;
-                            ServerGrid.Items.Refresh();
+                            row.Maxplayers = players;
                             break;
                         }
                     }
@@ -3203,6 +3200,41 @@ namespace WindowsGSM
         #endregion
 
         #region Menu - Help
+        private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
+        {
+            string latestVersion = await GetLatestVersion();
+            SetUpdateAvailableIndicator(latestVersion);
+        }
+
+        private void SetUpdateAvailableIndicator(string latestVersion)
+        {
+            bool updateAvailable = IsUpdateAvailable(latestVersion);
+            button_UpdateAvailableIndicator.Visibility = updateAvailable ? Visibility.Visible : Visibility.Collapsed;
+
+            if (updateAvailable)
+            {
+                button_UpdateAvailableIndicator.ToolTip = string.Format(
+                    LocalizationManager.Get("UpdateAvailableIndicatorTooltip"), latestVersion);
+            }
+        }
+
+        private static bool IsUpdateAvailable(string latestVersion)
+        {
+            if (string.IsNullOrWhiteSpace(latestVersion)) { return false; }
+
+            string normalizedLatestVersion = NormalizeVersion(latestVersion);
+            string normalizedCurrentVersion = NormalizeVersion(WGSM_VERSION);
+            return !string.Equals(normalizedLatestVersion, normalizedCurrentVersion, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizeVersion(string version)
+        {
+            string normalizedVersion = version.Trim();
+            return normalizedVersion.StartsWith("v", StringComparison.OrdinalIgnoreCase)
+                ? normalizedVersion.Substring(1)
+                : normalizedVersion;
+        }
+
         private void Help_OnlineDocumentation_Click(object sender, RoutedEventArgs e)
         {
             Process.Start("https://docs.windowsgsm.com");
@@ -3219,6 +3251,7 @@ namespace WindowsGSM
             controller.SetIndeterminate();
             string latestVersion = await GetLatestVersion();
             await controller.CloseAsync();
+            SetUpdateAvailableIndicator(latestVersion);
 
             if (string.IsNullOrEmpty(latestVersion))
             {
@@ -3226,7 +3259,7 @@ namespace WindowsGSM
                 return;
             }
 
-            if (latestVersion == WGSM_VERSION)
+            if (!IsUpdateAvailable(latestVersion))
             {
                 await this.ShowMessageAsync(LocalizationManager.Get("SoftwareUpdates"), LocalizationManager.Get("SoftwareUpToDate"));
                 return;
@@ -3302,8 +3335,8 @@ namespace WindowsGSM
                 webRequest.Method = "GET";
                 webRequest.UserAgent = "CdogsWindowsGSM";
                 webRequest.ServicePoint.Expect100Continue = false;
-                webRequest.Timeout = 5000;
-                webRequest.ReadWriteTimeout = 5000;
+                webRequest.Timeout = 15000;
+                webRequest.ReadWriteTimeout = 15000;
 
                 using (WebResponse response = await webRequest.GetResponseAsync())
                 {

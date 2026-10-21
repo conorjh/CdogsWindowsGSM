@@ -242,6 +242,8 @@
   <data name="SoftwareUpToDate"><value>WindowsGSM está actualizado.</value></data>
   <data name="UpdateButton"><value>Actualizar</value></data>
 	<data name="UpdateAvailable"><value>La versión {0} está disponible. ¿Quieres actualizar ahora?&#xA;&#xA;Aviso: se detendrán todos los servidores.</value></data>
+	<data name="UpdateAvailableIndicator"><value>Actualización disponible</value></data>
+  <data name="UpdateAvailableIndicatorTooltip"><value>La versión {0} está disponible. Haz clic para revisar e instalar.</value></data>
   <data name="DownloadingUpdater"><value>Descargando CdogsWindowsGSM-Updater...</value></data>
   <data name="UpdaterDownloadFailed"><value>No se pudo descargar {0}. La última versión debe incluir CdogsWindowsGSM.exe y {0}.</value></data>
   <data name="UpdaterDownloadError"><value>Error al descargar {0}.</value></data>

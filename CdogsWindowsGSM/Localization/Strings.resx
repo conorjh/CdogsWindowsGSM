@@ -242,6 +242,8 @@
   <data name="SoftwareUpToDate"><value>CdogsWindowsGSM is up to date.</value></data>
   <data name="UpdateButton"><value>Update</value></data>
 	<data name="UpdateAvailable"><value>Version {0} is available, would you like to update now?&#xA;&#xA;Warning: All servers will be shut down!</value></data>
+	<data name="UpdateAvailableIndicator"><value>Update available</value></data>
+  <data name="UpdateAvailableIndicatorTooltip"><value>Version {0} is available. Click to review and install.</value></data>
   <data name="DownloadingUpdater"><value>Downloading CdogsWindowsGSM-Updater...</value></data>
   <data name="UpdaterDownloadFailed"><value>Unable to download {0}. The latest release must include both CdogsWindowsGSM.exe and {0}.</value></data>
   <data name="UpdaterDownloadError"><value>Failed to download {0}.</value></data>

@@ -86,7 +86,7 @@ namespace WindowsGSM
                         {
                             WorkingDirectory = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName),
                             FileName = "cmd.exe",
-                            Arguments = $"/C echo {LocalizationManager.Get("CrashAutoRestartMessage")} & echo {LocalizationManager.Get("CrashAutoRestartCancelMessage")} & ping 0 -w 1000 -n 10 > NUL & start CdogsWindowsGSM.exe /ForceStart /ShowCrashHint",
+                            Arguments = $"/C echo {LocalizationManager.Get("CrashAutoRestartMessage")} & echo {LocalizationManager.Get("CrashAutoRestartCancelMessage")} & ping 0 -w 1000 -n 5 > NUL & start CdogsWindowsGSM.exe /ForceStart /ShowCrashHint",
                             UseShellExecute = false
                         }
                     };
