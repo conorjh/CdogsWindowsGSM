@@ -761,8 +761,48 @@
                           GridLinesVisibility="None"
                           DockPanel.Dock="Top"
                           SelectionChanged="DataGrid_SelectionChanged"
+                          LoadingRow="ServerGrid_LoadingRow"
+                          PreviewMouseRightButtonDown="ServerGrid_PreviewMouseRightButtonDown"
                           IsSynchronizedWithCurrentItem="True"
                           HorizontalScrollBarVisibility="Disabled">
+                    <DataGrid.Resources>
+                        <ContextMenu x:Key="ServerRowContextMenu">
+                            <MenuItem Header="{loc:Loc Key=ActionsMenu}">
+                                <MenuItem Header="{loc:Loc Key=Start}" Click="Actions_Start_Click"/>
+                                <MenuItem Header="{loc:Loc Key=Stop}" Click="Actions_Stop_Click"/>
+                                <MenuItem Header="{loc:Loc Key=Restart}" Click="Actions_Restart_Click"/>
+                                <MenuItem Header="{loc:Loc Key=ButtonKill}" Click="Actions_Kill_Click"/>
+                                <Separator/>
+                                <MenuItem Header="{loc:Loc Key=ToggleConsole}" Click="Actions_ToggleConsole_Click"/>
+                                <MenuItem Header="{loc:Loc Key=Update}">
+                                    <MenuItem Header="{loc:Loc Key=Update}" Click="Actions_Update_Click"/>
+                                    <MenuItem Header="{loc:Loc Key=UpdateValidate}" Click="Actions_UpdateValidate_Click"/>
+                                </MenuItem>
+                                <MenuItem Header="{loc:Loc Key=Backup}" Click="Actions_Backup_Click"/>
+                                <MenuItem Header="{loc:Loc Key=RestoreBackup}" Click="Actions_RestoreBackup_Click"/>
+                                <MenuItem Header="{loc:Loc Key=ButtonManageAddons}" Click="Actions_ManageAddons_Click"/>
+                            </MenuItem>
+                            <MenuItem Header="{loc:Loc Key=BrowseMenu}">
+                                <MenuItem Header="{loc:Loc Key=ServerBackups}">
+                                    <MenuItem Header="{loc:Loc Key=BackupFiles}" Click="Browse_ServerBackups_Click"/>
+                                    <MenuItem Header="{loc:Loc Key=BackupConfigs}" Click="Browse_BackupFiles_Click"/>
+                                </MenuItem>
+                                <MenuItem Header="{loc:Loc Key=ServerFiles}" Click="Browse_ServerFiles_Click"/>
+                                <MenuItem Header="{loc:Loc Key=ServerConfigs}" Click="Browse_ServerConfigs_Click"/>
+                            </MenuItem>
+                            <MenuItem Header="{loc:Loc Key=ToolsMenu}">
+                                <MenuItem Header="{loc:Loc Key=GlobalServerListCheck}" Click="Tools_GlobalServerListCheck_Click"/>
+                                <MenuItem Header="{loc:Loc Key=InstallAddons}">
+                                    <MenuItem Header="{loc:Loc Key=AddonAmxMetamod}" Click="Tool_InstallAMXModXMetamodP_Click"/>
+                                    <MenuItem Header="{loc:Loc Key=AddonSourceMetamod}" Click="Tools_InstallSourcemodMetamod_Click"/>
+                                    <MenuItem Header="{loc:Loc Key=AddonDayzSal}" Click="Tools_InstallDayZSALModServer_Click"/>
+                                    <MenuItem Header="{loc:Loc Key=AddonOxide}" Click="Tools_InstallOxideMod_Click"/>
+                                </MenuItem>
+                            </MenuItem>
+                            <Separator/>
+                            <MenuItem Header="{loc:Loc Key=DeleteGameServer}" Click="Delete_Click"/>
+                        </ContextMenu>
+                    </DataGrid.Resources>
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="{loc:Loc Key=ColumnId}" IsReadOnly="True" Binding="{Binding Path=ID}" SortMemberPath="IDSort" Width="35" MinWidth="35" MaxWidth="35"/>
                         <DataGridTextColumn Header="{loc:Loc Key=ColumnPid}" IsReadOnly="True" Binding="{Binding Path=PID}" SortMemberPath="PIDSort" Width="65" MinWidth="55" MaxWidth="95"/>
@@ -777,7 +817,18 @@
                         <DataGridTextColumn Header="{loc:Loc Key=ColumnServerName}" IsReadOnly="True" Binding="{Binding Path=Name}" Width="10*" MinWidth="105"/>
                         <DataGridTextColumn Header="{loc:Loc Key=ColumnIpAddress}" IsReadOnly="True" Binding="{Binding Path=IP}" Width="4*" MinWidth="88"/>
                         <DataGridTextColumn Header="{loc:Loc Key=ColumnPort}" IsReadOnly="True" Binding="{Binding Path=Port}" SortMemberPath="PortSort" Width="4*" MinWidth="52"/>
-                        <DataGridTextColumn Header="{loc:Loc Key=ColumnQueryPort}" IsReadOnly="True" Binding="{Binding Path=QueryPortDisplay}" SortMemberPath="QueryPortSort" Width="4*" MinWidth="93"><DataGridTextColumn.CellStyle><Style TargetType="{x:Type DataGridCell}"><Setter Property="ToolTip" Value="{Binding Path=QueryPortToolTip}"/></Style></DataGridTextColumn.CellStyle></DataGridTextColumn>
+                        <DataGridTemplateColumn Header="{loc:Loc Key=ColumnQueryPort}" IsReadOnly="True" SortMemberPath="QueryPortSort" Width="4*" MinWidth="93">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <Grid Background="Transparent" ToolTip="{Binding Path=QueryPortToolTip}">
+                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding Path=QueryPort}"/>
+                                            <TextBlock Text="{Binding Path=QueryPortMismatchDisplay}" Foreground="Firebrick" Margin="4,0,0,0"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                         <DataGridTextColumn Header="{loc:Loc Key=ColumnMap}" IsReadOnly="True" Binding="{Binding Path=Defaultmap}" Width="7*" MinWidth="50"/>
                         <DataGridTextColumn Header="{loc:Loc Key=ColumnPlayers}" IsReadOnly="True" Binding="{Binding Path=Maxplayers}" SortMemberPath="PlayerCapacitySort" Width="3*" MinWidth="70"/>
                         <DataGridTextColumn Header="{loc:Loc Key=ColumnUptime}" IsReadOnly="True" Binding="{Binding Path=Uptime}" Width="4*" MinWidth="80"/>

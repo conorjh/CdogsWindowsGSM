@@ -121,8 +121,8 @@ namespace WindowsGSM
             Deleting = 12
         }
 
-        public static readonly string WGSM_VERSION = "v" + string.Concat(System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString().Reverse().Skip(2).Reverse());
-        public static readonly int MAX_SERVER = 50;
+        public static readonly string WGSM_VERSION = "v" + System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(System.Reflection.Assembly.GetExecutingAssembly()).InformationalVersion;
+        public static readonly int MAX_SERVER = 256;
         public static readonly string WGSM_PATH = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName);
         public static readonly string DEFAULT_THEME = "Cyan";
         private const string LatestReleaseApiUrl = "https://api.github.com/repos/conorjh/CdogsWindowsGSM/releases/latest";
@@ -164,7 +164,7 @@ namespace WindowsGSM
             ThemeManager.Current.Themes.Select(t => Path.GetExtension(t.Name).Trim('.')).Distinct().OrderBy(x => x).ToList().ForEach(delegate (string name) { comboBox_Themes.Items.Add(name); });
 
             // Set up _serverMetadata
-            for (int i = 0; i < MAX_SERVER; i++)
+            for (int i = 0; i <= MAX_SERVER; i++)
             {
                 _serverMetadata[i] = new ServerMetadata
                 {
@@ -1010,6 +1010,24 @@ namespace WindowsGSM
             if (ServerGrid.SelectedIndex != -1)
             {
                 DataGrid_RefreshElements();
+            }
+        }
+
+        private void ServerGrid_LoadingRow(object sender, DataGridRowEventArgs e)
+        {
+            e.Row.ContextMenu = (System.Windows.Controls.ContextMenu)ServerGrid.Resources["ServerRowContextMenu"];
+        }
+
+        private void ServerGrid_PreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+        {
+            DependencyObject originalSource = e.OriginalSource as DependencyObject;
+            DataGridRow row = originalSource == null
+                ? null
+                : ItemsControl.ContainerFromElement(ServerGrid, originalSource) as DataGridRow;
+
+            if (row != null)
+            {
+                ServerGrid.SelectedItem = row.Item;
             }
         }
 
@@ -3284,8 +3302,8 @@ namespace WindowsGSM
                 webRequest.Method = "GET";
                 webRequest.UserAgent = "CdogsWindowsGSM";
                 webRequest.ServicePoint.Expect100Continue = false;
-                webRequest.Timeout = 15000;
-                webRequest.ReadWriteTimeout = 15000;
+                webRequest.Timeout = 5000;
+                webRequest.ReadWriteTimeout = 5000;
 
                 using (WebResponse response = await webRequest.GetResponseAsync())
                 {

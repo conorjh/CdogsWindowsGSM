@@ -26,16 +26,12 @@ namespace WindowsGSM.Functions
         public int QueryPortSort => DetectedQueryPort ?? ParseSortValue(QueryPort);
         public int PlayerCapacitySort => GetPlayerCapacity(Maxplayers);
         public int PlayerCapacity => GetPlayerCapacity(Maxplayers);
-        public string QueryPortDisplay
-        {
-            get
-            {
-                if (!DetectedQueryPort.HasValue || !int.TryParse(QueryPort, out int configuredPort)) { return QueryPort; }
-                return DetectedQueryPort.Value == configuredPort
-                    ? $"{QueryPort} \u2713"
-                    : $"{QueryPort} \u2717 ({DetectedQueryPort.Value})";
-            }
-        }
+        public string QueryPortMismatchDisplay =>
+            DetectedQueryPort.HasValue &&
+            int.TryParse(QueryPort, out int configuredPort) &&
+            DetectedQueryPort.Value != configuredPort
+                ? $"\u2717 ({DetectedQueryPort.Value})"
+                : string.Empty;
         public string QueryPortToolTip
         {
             get
