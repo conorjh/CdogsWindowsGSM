@@ -47,8 +47,9 @@ namespace WindowsGSM.Functions
         public static string GetBackups(string serverId)
         {
             var backupConfig = new BackupConfig(serverId);
-            if (Directory.Exists(backupConfig.BackupLocation))
+            if (!string.IsNullOrWhiteSpace(backupConfig.BackupLocation))
             {
+                Directory.CreateDirectory(backupConfig.BackupLocation);
                 return backupConfig.BackupLocation;
             }
 

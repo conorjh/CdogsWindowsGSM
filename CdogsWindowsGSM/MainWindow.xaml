@@ -589,6 +589,58 @@
             </Grid>
         </DockPanel>
 
+        <DockPanel Name="hMenu_Schedules" Margin="48,0,0,0" Visibility="Hidden">
+            <Grid Margin="10">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="*"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
+                    <Label Content="{loc:Loc Key=BackupSchedules}" FontSize="22" FontWeight="SemiBold" Padding="0"/>
+                    <Label x:Name="label_BackupScheduleTimeZone" VerticalAlignment="Center" Margin="16,0,0,0"/>
+                </StackPanel>
+                <DataGrid x:Name="BackupScheduleGrid" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" SelectionChanged="BackupScheduleGrid_SelectionChanged">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="{loc:Loc Key=ColumnServerName}" Binding="{Binding ServerName}" Width="2*"/>
+                        <DataGridTextColumn Header="{loc:Loc Key=ScheduleGame}" Binding="{Binding Game}" Width="*"/>
+                        <DataGridCheckBoxColumn Header="{loc:Loc Key=ScheduleEnabled}" Binding="{Binding Enabled}" Width="Auto"/>
+                        <DataGridTextColumn Header="{loc:Loc Key=ScheduleCron}" Binding="{Binding CronExpression}" Width="2*"/>
+                        <DataGridTextColumn Header="{loc:Loc Key=ScheduleNextRun}" Binding="{Binding NextRun}" Width="2*"/>
+                        <DataGridTextColumn Header="{loc:Loc Key=ScheduleLastAttempt}" Binding="{Binding LastAttempt}" Width="2*"/>
+                        <DataGridTextColumn Header="{loc:Loc Key=ScheduleLastResult}" Binding="{Binding LastResult}" Width="*"/>
+                        <DataGridTextColumn Header="{loc:Loc Key=ScheduleResultDetails}" Binding="{Binding LastResultMessage}" Width="3*"/>
+                    </DataGrid.Columns>
+                </DataGrid>
+                <Grid Grid.Row="2" Margin="0,10,0,0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="2*"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+                    <Label Grid.Row="0" Grid.Column="0" Content="{loc:Loc Key=SelectedServer}"/>
+                    <TextBlock x:Name="label_BackupScheduleServer" Grid.Row="0" Grid.Column="1" VerticalAlignment="Center"/>
+                    <Label Grid.Row="0" Grid.Column="2" Content="{loc:Loc Key=ScheduleEnabled}"/>
+                    <mah:ToggleSwitch x:Name="switch_BackupScheduleEnabled" Grid.Row="0" Grid.Column="3" VerticalAlignment="Center"/>
+                    <Button x:Name="button_SaveBackupSchedule" Grid.Row="0" Grid.Column="4" Content="{loc:Loc Key=ScheduleSave}" Margin="8,0,0,0" Padding="12,4" Click="Button_SaveBackupSchedule_Click"/>
+                    <Label Grid.Row="1" Grid.Column="0" Content="{loc:Loc Key=ScheduleCron}"/>
+                    <TextBox x:Name="textBox_BackupScheduleCron" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" VerticalContentAlignment="Center"/>
+                    <Button x:Name="button_RunBackupNow" Grid.Row="1" Grid.Column="4" Content="{loc:Loc Key=ScheduleRunNow}" Margin="8,0,0,0" Padding="12,4" Click="Button_RunBackupNow_Click"/>
+                    <TextBlock x:Name="label_BackupScheduleStorage" Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="5" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                    <TextBlock x:Name="label_BackupScheduleHint" Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" TextWrapping="Wrap" Margin="0,6,10,0"/>
+                    <TextBlock x:Name="label_BackupScheduleStatus" Grid.Row="3" Grid.Column="2" Grid.ColumnSpan="3" TextWrapping="Wrap" Margin="10,6,0,0"/>
+                </Grid>
+            </Grid>
+        </DockPanel>
+
         <DockPanel Name="hMenu_Home" Margin="48,0,0,0" Visibility="Hidden">
             <Grid DockPanel.Dock="Top">
                 <Menu x:Name="menu" Height="30" DockPanel.Dock="Top" Margin="1,0,0,0">
@@ -1008,6 +1060,11 @@
                         <mah:HamburgerMenuImageItem Label="{loc:Loc Key=NavDashboard}">
                             <mah:HamburgerMenuImageItem.Thumbnail>
                                 <BitmapImage UriSource="pack://application:,,,/CdogsWindowsGSM;component/Images/HMenu/Dashboard.ico" />
+                            </mah:HamburgerMenuImageItem.Thumbnail>
+                        </mah:HamburgerMenuImageItem>
+                        <mah:HamburgerMenuImageItem Label="{loc:Loc Key=NavSchedules}">
+                            <mah:HamburgerMenuImageItem.Thumbnail>
+                                <BitmapImage UriSource="pack://application:,,,/CdogsWindowsGSM;component/Images/Backup.ico" />
                             </mah:HamburgerMenuImageItem.Thumbnail>
                         </mah:HamburgerMenuImageItem>
                         <mah:HamburgerMenuImageItem Label="{loc:Loc Key=NavDiscordBot}">
