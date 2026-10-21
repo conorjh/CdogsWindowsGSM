@@ -84,7 +84,7 @@ namespace WindowsGSM.GameServer.Engine
 
             StringBuilder sb = new StringBuilder();
             sb.Append($"-console -game {Game}");
-            sb.Append(string.IsNullOrWhiteSpace(serverData.ServerIP) ? string.Empty : $" -ip {serverData.ServerIP}");
+            sb.Append(string.IsNullOrWhiteSpace(serverData.ServerIP) ? string.Empty : $" +ip {serverData.ServerIP}");
             sb.Append(string.IsNullOrWhiteSpace(serverData.ServerPort) ? string.Empty : $" -port {serverData.ServerPort}");
             sb.Append(string.IsNullOrWhiteSpace(serverData.ServerMaxPlayer) ? string.Empty : $" -maxplayers {serverData.ServerMaxPlayer}");
             sb.Append(string.IsNullOrWhiteSpace(serverData.ServerGSLT) ? string.Empty : $" +sv_setsteamaccount {serverData.ServerGSLT}");

@@ -13,6 +13,7 @@ A community-maintained Windows desktop application for installing, importing, an
 - **OpenRCT2 servers:** download a verified sample park when none is present and start without custom server parameters; a licensed RollerCoaster Tycoon 2 installation is still required.
 - **CoD4x:** downloads the upstream [CoD4x 21.2](https://github.com/callofduty4x/CoD4x_Server/releases/tag/21.2) server binary (AGPL-3.0); a licensed Call of Duty 4 game installation is required and proprietary game data is not redistributed. No third-party bot package is included.
 - **Map rotation:** double-click to add or remove maps in the Source and GoldSrc map-rotation interfaces.
+- **GoldSrc IP binding:** passes the configured Server IP using `+ip` so HLDS uses the selected local address on multi-NIC hosts. Avoid conflicting `+ip` entries in Server Parameters.
 - **In-app updates:** checks for releases from this fork.
 
 |               | 🎮 Game Server  | Supported | Query |
