@@ -1699,6 +1699,17 @@ namespace WindowsGSM
             }
         }
 
+        private async void Actions_UpdateAllServers_Click(object sender, RoutedEventArgs e)
+        {
+            foreach (var server in ServerGrid.Items.Cast<ServerTable>().ToList())
+            {
+                if (GetServerMetadata(server.ID).ServerStatus == ServerStatus.Stopped)
+                {
+                    await GameServer_Update(server);
+                }
+            }
+        }
+
         private async void Actions_Update_Click(object sender, RoutedEventArgs e)
         {
             var server = (ServerTable)ServerGrid.SelectedItem;

@@ -623,6 +623,11 @@
                                     <Image Source="/CdogsWindowsGSM;component/Images/Restart.ico" Width="23" Margin="3"/>
                                 </MenuItem.Icon>
                             </MenuItem>
+                            <MenuItem Header="Update All Servers" Click="Actions_UpdateAllServers_Click">
+                                <MenuItem.Icon>
+                                    <Image Source="/CdogsWindowsGSM;component/Images/Update.ico" Width="23" Margin="3"/>
+                                </MenuItem.Icon>
+                            </MenuItem>
                         </MenuItem>
                         <Separator/>
                         <MenuItem Header="Toggle Console" Click="Actions_ToggleConsole_Click"/>
