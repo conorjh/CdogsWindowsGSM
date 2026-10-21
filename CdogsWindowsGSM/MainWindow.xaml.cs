@@ -65,6 +65,13 @@ namespace WindowsGSM
             public int? DetectedMainPortProcessId;
             public int? DetectedQueryPort;
             public int? DetectedQueryPortProcessId;
+            public bool ProcessExitedUnexpectedly;
+            public bool? QuerySupported;
+            public bool QueryInProgress;
+            public int ConsecutiveQueryFailures;
+            public DateTime? LastQueryAttemptAt;
+            public DateTime? LastQuerySucceededAt;
+            public string LastQueryFailureMessage;
             public IntPtr MainWindow;
             public ServerConsole ServerConsole;
 
@@ -147,6 +154,11 @@ namespace WindowsGSM
         private DateTime _backupScheduleStartedAt;
         private DateTime _backupScheduleLastTickAt;
         private bool _backupScheduleTickRunning;
+        private readonly IServerHealthCheck[] _serverHealthChecks =
+        {
+            new ProcessServerHealthCheck(),
+            new QueryServerHealthCheck()
+        };
 
         private readonly DiscordBot.Bot g_DiscordBot = new DiscordBot.Bot();
 
@@ -726,6 +738,7 @@ namespace WindowsGSM
                         Maxplayers = (GetServerMetadata(i).ServerStatus != ServerStatus.Started) ? serverConfig.ServerMaxPlayer : livePlayerData[i]
                     };
 
+                    RefreshServerHealth(server);
                     SaveServerConfigToServerMetadata(i, serverConfig);
                     ServerGrid.Items.Add(server);
 
@@ -777,6 +790,107 @@ namespace WindowsGSM
             {
                 return null;
             }
+        }
+
+        private ServerHealthSummary GetServerHealthSummary(ServerMetadata metadata)
+        {
+            if (metadata == null)
+            {
+                return new ServerHealthSummary(Enumerable.Empty<ServerHealthCheckResult>());
+            }
+
+            bool? processRunning = false;
+            if (metadata.Process != null)
+            {
+                try
+                {
+                    processRunning = !metadata.Process.HasExited;
+                }
+                catch (InvalidOperationException)
+                {
+                    processRunning = null;
+                }
+                catch (System.ComponentModel.Win32Exception)
+                {
+                    processRunning = null;
+                }
+                catch (System.Security.SecurityException)
+                {
+                    processRunning = null;
+                }
+                catch (NotSupportedException)
+                {
+                    processRunning = null;
+                }
+            }
+
+            ServerStatus status = metadata.ServerStatus;
+            bool stateChanging = status == ServerStatus.Starting ||
+                status == ServerStatus.Stopping ||
+                status == ServerStatus.Restarting ||
+                status == ServerStatus.Updating ||
+                status == ServerStatus.Restoring ||
+                status == ServerStatus.Backuping ||
+                status == ServerStatus.Deleting;
+            var context = new ServerHealthContext(
+                status == ServerStatus.Started,
+                stateChanging,
+                metadata.ProcessExitedUnexpectedly,
+                processRunning,
+                metadata.QuerySupported,
+                metadata.QueryInProgress,
+                metadata.ConsecutiveQueryFailures,
+                metadata.LastQueryAttemptAt,
+                metadata.LastQuerySucceededAt,
+                metadata.LastQueryFailureMessage,
+                DateTime.Now);
+
+            return new ServerHealthSummary(_serverHealthChecks.Select(check => check.Evaluate(context)));
+        }
+
+        private void RefreshServerHealth(ServerTable server)
+        {
+            if (server == null) { return; }
+
+            ServerHealthSummary summary = GetServerHealthSummary(GetServerMetadata(server.ID));
+            SetServerHealthDisplay(server, summary);
+
+            for (int i = 0; i < ServerGrid.Items.Count; i++)
+            {
+                ServerTable row = ServerGrid.Items[i] as ServerTable;
+                if (row != null && row.ID == server.ID)
+                {
+                    SetServerHealthDisplay(row, summary);
+                    break;
+                }
+            }
+
+            ServerTable selectedServer = ServerGrid.SelectedItem as ServerTable;
+            if (selectedServer != null && selectedServer.ID == server.ID)
+            {
+                label_ServerHealthDetails.Text = summary.CompactDetails;
+                label_ServerHealthDetails.ToolTip = summary.Details;
+            }
+        }
+
+        private static void SetServerHealthDisplay(ServerTable server, ServerHealthSummary summary)
+        {
+            server.HealthStatus = summary.OverallStatus;
+            server.HealthStatusText = LocalizationManager.Get("Health" + summary.OverallStatus);
+            server.HealthCompactDetails = summary.CompactDetails;
+            server.HealthDetails = summary.Details;
+        }
+
+        private static void ResetServerQueryHealth(ServerMetadata metadata)
+        {
+            if (metadata == null) { return; }
+
+            metadata.QuerySupported = null;
+            metadata.QueryInProgress = false;
+            metadata.ConsecutiveQueryFailures = 0;
+            metadata.LastQueryAttemptAt = null;
+            metadata.LastQuerySucceededAt = null;
+            metadata.LastQueryFailureMessage = null;
         }
 
         private void ClearDetectedPorts(ServerTable server)
@@ -1148,6 +1262,8 @@ namespace WindowsGSM
 
                 button_Status.Content = row.Status.ToUpper();
                 button_Status.Background = (GetServerMetadata(row.ID).ServerStatus == ServerStatus.Started) ? System.Windows.Media.Brushes.LimeGreen : System.Windows.Media.Brushes.Orange;
+                label_ServerHealthDetails.Text = row.HealthCompactDetails;
+                label_ServerHealthDetails.ToolTip = row.HealthDetails;
 
                 var gameServer = GameServer.Data.Class.Get(row.Game, pluginList: PluginsList);
                 switch_embedconsole.IsEnabled = gameServer.AllowsEmbedConsole;
@@ -2315,6 +2431,7 @@ namespace WindowsGSM
 
         private async Task<dynamic> Server_BeginStart(ServerTable server)
         {
+            ServerMetadata metadata = GetServerMetadata(server.ID);
             ClearDetectedPorts(server);
             dynamic gameServer = GameServer.Data.Class.Get(server.Game, new ServerConfig(server.ID), PluginsList);
             if (gameServer == null) { return null; }
@@ -2395,6 +2512,12 @@ namespace WindowsGSM
                 SetServerStatus(server, "Stopped");
 
                 return null;
+            }
+
+            if (metadata != null)
+            {
+                metadata.ProcessExitedUnexpectedly = false;
+                ResetServerQueryHealth(metadata);
             }
 
             // Set Priority
@@ -2904,6 +3027,7 @@ namespace WindowsGSM
 
                 if (metadata.ServerStatus == ServerStatus.Started)
                 {
+                    metadata.ProcessExitedUnexpectedly = true;
                     bool autoRestart = GetServerMetadata(serverId).AutoRestart;
                     _serverMetadata[int.Parse(server.ID)].ServerStatus = autoRestart ? ServerStatus.Restarting : ServerStatus.Stopped;
                     Log(server.ID, "Server: Crashed");
@@ -2934,7 +3058,11 @@ namespace WindowsGSM
                         var gameServer = await Server_BeginStart(server);
                         if (gameServer == null)
                         {
-                            _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Stopped;
+                            if (metadata.ServerStatus != ServerStatus.Stopped)
+                            {
+                                metadata.ServerStatus = ServerStatus.Stopped;
+                                SetServerStatus(server, "Stopped");
+                            }
                             return;
                         }
 
@@ -3317,18 +3445,45 @@ namespace WindowsGSM
 
         private async void StartQuery(ServerTable server)
         {
-            if (string.IsNullOrWhiteSpace(server.IP) || string.IsNullOrWhiteSpace(server.QueryPort)) { return; }
-            if (!IsValidIPAddress(server.IP) || !IsValidPort(server.QueryPort)) { return; }
+            ServerMetadata metadata = GetServerMetadata(server.ID);
+            if (metadata == null) { return; }
+
+            ResetServerQueryHealth(metadata);
+            if (string.IsNullOrWhiteSpace(server.IP) || string.IsNullOrWhiteSpace(server.QueryPort) ||
+                !IsValidIPAddress(server.IP) || !IsValidPort(server.QueryPort))
+            {
+                metadata.QuerySupported = false;
+                RefreshServerHealth(server);
+                return;
+            }
 
             // Check the server support Query Method
             dynamic gameServer = GameServer.Data.Class.Get(server.Game, pluginList: PluginsList);
-            if (gameServer == null) { return; }
+            if (gameServer == null)
+            {
+                metadata.QuerySupported = false;
+                RefreshServerHealth(server);
+                return;
+            }
             object queryMethod = gameServer.QueryMethod;
-            if (queryMethod == null) { return; }
+            if (queryMethod == null)
+            {
+                metadata.QuerySupported = false;
+                RefreshServerHealth(server);
+                return;
+            }
 
             // Save the process of game server
-            Process p = GetServerMetadata(server.ID).Process;
-            if (p == null) { return; }
+            Process p = metadata.Process;
+            if (p == null)
+            {
+                metadata.QuerySupported = false;
+                RefreshServerHealth(server);
+                return;
+            }
+
+            metadata.QuerySupported = true;
+            RefreshServerHealth(server);
 
             IQueryPortDiscoveryProvider discoveryProvider = queryMethod as IQueryPortDiscoveryProvider;
             int? discoveredQueryPort = null;
@@ -3352,7 +3507,8 @@ namespace WindowsGSM
                 }
                 else
                 {
-                    ServerMetadata metadata = GetServerMetadata(server.ID);
+                    metadata = GetServerMetadata(server.ID);
+                    if (metadata == null) { return; }
                     metadata.DetectedQueryPort = discoveredQueryPort;
                     metadata.DetectedQueryPortProcessId = p.Id;
                     RefreshServerQueryPortDisplay(server, discoveredQueryPort);
@@ -3365,17 +3521,38 @@ namespace WindowsGSM
             // Query server every 5 seconds
             while (IsCurrentServerProcess(server.ID, p))
             {
-                ServerMetadata metadata = GetServerMetadata(server.ID);
-                if (metadata.ServerStatus == ServerStatus.Stopped || metadata.ServerStatus == ServerStatus.Stopping)
+                metadata = GetServerMetadata(server.ID);
+                if (metadata == null || metadata.ServerStatus == ServerStatus.Stopped || metadata.ServerStatus == ServerStatus.Stopping)
                 {
                     break;
                 }
 
-                query.SetAddressPort(server.IP, queryPort);
-                string players = await query.GetPlayersAndMaxPlayers();
+                DateTime attemptAt = DateTime.Now;
+                metadata.QueryInProgress = true;
+                RefreshServerHealth(server);
+
+                string players = null;
+                string queryError = null;
+                try
+                {
+                    query.SetAddressPort(server.IP, queryPort);
+                    players = await query.GetPlayersAndMaxPlayers();
+                }
+                catch (Exception e) when (IsExpectedServerQueryException(e))
+                {
+                    queryError = e.Message;
+                }
+
+                if (!IsCurrentServerProcess(server.ID, p)) { break; }
+
+                metadata.QueryInProgress = false;
+                metadata.LastQueryAttemptAt = attemptAt;
 
                 if (players != null)
                 {
+                    metadata.LastQuerySucceededAt = DateTime.Now;
+                    metadata.ConsecutiveQueryFailures = 0;
+                    metadata.LastQueryFailureMessage = string.Empty;
                     server.Maxplayers = players;
 
                     for (int i = 0; i < ServerGrid.Items.Count; i++)
@@ -3388,9 +3565,28 @@ namespace WindowsGSM
                         }
                     }
                 }
+                else
+                {
+                    metadata.ConsecutiveQueryFailures++;
+                    metadata.LastQueryFailureMessage = queryError;
+                }
+
+                RefreshServerHealth(server);
 
                 await Task.Delay(5000);
             }
+        }
+
+        private static bool IsExpectedServerQueryException(Exception exception)
+        {
+            return exception is IOException ||
+                exception is System.Net.WebException ||
+                exception is System.Net.Sockets.SocketException ||
+                exception is TimeoutException ||
+                exception is OperationCanceledException ||
+                exception is InvalidOperationException ||
+                exception is ArgumentException ||
+                exception is System.Security.SecurityException;
         }
 
         private async Task<int?> DiscoverQueryPort(ServerTable server, Process process, int mainPort, IQueryPortDiscoveryProvider provider)
@@ -3475,6 +3671,7 @@ namespace WindowsGSM
             if (statusCode == ServerStatus.Stopped)
             {
                 server.PID = string.Empty;
+                ResetServerQueryHealth(GetServerMetadata(server.ID));
             }
 
             if (statusCode != ServerStatus.Started && server.Maxplayers.Contains('/'))
@@ -3482,6 +3679,8 @@ namespace WindowsGSM
                 var serverConfig = new ServerConfig(server.ID);
                 server.Maxplayers = serverConfig.ServerMaxPlayer;
             }
+
+            RefreshServerHealth(server);
 
             for (int i = 0; i < ServerGrid.Items.Count; i++)
             {

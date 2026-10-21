@@ -2,6 +2,8 @@
 using System.ComponentModel;
 using System.Diagnostics;
 using System.Globalization;
+using System.Collections.Generic;
+using System.Linq;
 using WindowsGSM.Localization;
 
 namespace WindowsGSM.Functions
@@ -11,6 +13,10 @@ namespace WindowsGSM.Functions
         private int? _detectedQueryPort;
         private int? _detectedMainPort;
         private string _maxplayers;
+        private ServerHealthStatus _healthStatus = ServerHealthStatus.Unknown;
+        private string _healthStatusText = string.Empty;
+        private string _healthCompactDetails = string.Empty;
+        private string _healthDetails = string.Empty;
 
         public event PropertyChangedEventHandler PropertyChanged;
 
@@ -53,6 +59,50 @@ namespace WindowsGSM.Functions
             }
         }
         public string Defaultmap { get; set; }
+        public ServerHealthStatus HealthStatus
+        {
+            get => _healthStatus;
+            set
+            {
+                if (_healthStatus == value) { return; }
+
+                _healthStatus = value;
+                OnPropertyChanged(nameof(HealthStatus));
+            }
+        }
+        public string HealthStatusText
+        {
+            get => _healthStatusText;
+            set
+            {
+                if (_healthStatusText == value) { return; }
+
+                _healthStatusText = value;
+                OnPropertyChanged(nameof(HealthStatusText));
+            }
+        }
+        public string HealthCompactDetails
+        {
+            get => _healthCompactDetails;
+            set
+            {
+                if (_healthCompactDetails == value) { return; }
+
+                _healthCompactDetails = value;
+                OnPropertyChanged(nameof(HealthCompactDetails));
+            }
+        }
+        public string HealthDetails
+        {
+            get => _healthDetails;
+            set
+            {
+                if (_healthDetails == value) { return; }
+
+                _healthDetails = value;
+                OnPropertyChanged(nameof(HealthDetails));
+            }
+        }
         public string Maxplayers
         {
             get => _maxplayers;
@@ -188,5 +238,206 @@ namespace WindowsGSM.Functions
                 return string.Format(CultureInfo.CurrentUICulture, LocalizationManager.Get(resourceKey), numberOfDay, time.Hours, time.Minutes);
             }
         }
+    }
+
+    public enum ServerHealthStatus
+    {
+        Healthy,
+        Warning,
+        Unhealthy,
+        Unknown
+    }
+
+    public sealed class ServerHealthContext
+    {
+        public bool ProcessExpectedToRun { get; private set; }
+        public bool ProcessStateChanging { get; private set; }
+        public bool ProcessExitedUnexpectedly { get; private set; }
+        public bool? ProcessRunning { get; private set; }
+        public bool? QuerySupported { get; private set; }
+        public bool QueryInProgress { get; private set; }
+        public int ConsecutiveQueryFailures { get; private set; }
+        public DateTime? LastQueryAttemptAt { get; private set; }
+        public DateTime? LastQuerySucceededAt { get; private set; }
+        public string LastQueryFailureMessage { get; private set; }
+        public DateTime CheckedAt { get; private set; }
+
+        public ServerHealthContext(
+            bool processExpectedToRun,
+            bool processStateChanging,
+            bool processExitedUnexpectedly,
+            bool? processRunning,
+            bool? querySupported,
+            bool queryInProgress,
+            int consecutiveQueryFailures,
+            DateTime? lastQueryAttemptAt,
+            DateTime? lastQuerySucceededAt,
+            string lastQueryFailureMessage,
+            DateTime checkedAt)
+        {
+            ProcessExpectedToRun = processExpectedToRun;
+            ProcessStateChanging = processStateChanging;
+            ProcessExitedUnexpectedly = processExitedUnexpectedly;
+            ProcessRunning = processRunning;
+            QuerySupported = querySupported;
+            QueryInProgress = queryInProgress;
+            ConsecutiveQueryFailures = consecutiveQueryFailures;
+            LastQueryAttemptAt = lastQueryAttemptAt;
+            LastQuerySucceededAt = lastQuerySucceededAt;
+            LastQueryFailureMessage = lastQueryFailureMessage;
+            CheckedAt = checkedAt;
+        }
+    }
+
+    public sealed class ServerHealthCheckResult
+    {
+        public string CheckName { get; private set; }
+        public ServerHealthStatus Status { get; private set; }
+        public string Explanation { get; private set; }
+        public DateTime? LastCheckedAt { get; private set; }
+
+        public ServerHealthCheckResult(string checkName, ServerHealthStatus status, string explanation, DateTime? lastCheckedAt)
+        {
+            CheckName = checkName;
+            Status = status;
+            Explanation = explanation;
+            LastCheckedAt = lastCheckedAt;
+        }
+    }
+
+    public interface IServerHealthCheck
+    {
+        ServerHealthCheckResult Evaluate(ServerHealthContext context);
+    }
+
+    public sealed class ProcessServerHealthCheck : IServerHealthCheck
+    {
+        public ServerHealthCheckResult Evaluate(ServerHealthContext context)
+        {
+            if (context.ProcessStateChanging)
+            {
+                return new ServerHealthCheckResult("HealthProcessCheck", ServerHealthStatus.Unknown, LocalizationManager.Get("HealthProcessTransition"), context.CheckedAt);
+            }
+
+            if (context.ProcessExitedUnexpectedly)
+            {
+                return new ServerHealthCheckResult("HealthProcessCheck", ServerHealthStatus.Unhealthy, LocalizationManager.Get("HealthProcessExited"), context.CheckedAt);
+            }
+
+            if (!context.ProcessExpectedToRun)
+            {
+                return new ServerHealthCheckResult("HealthProcessCheck", ServerHealthStatus.Unknown, LocalizationManager.Get("HealthProcessStopped"), context.CheckedAt);
+            }
+
+            if (!context.ProcessRunning.HasValue)
+            {
+                return new ServerHealthCheckResult("HealthProcessCheck", ServerHealthStatus.Unknown, LocalizationManager.Get("HealthProcessUnavailable"), context.CheckedAt);
+            }
+
+            return context.ProcessRunning.Value
+                ? new ServerHealthCheckResult("HealthProcessCheck", ServerHealthStatus.Healthy, LocalizationManager.Get("HealthProcessRunning"), context.CheckedAt)
+                : new ServerHealthCheckResult("HealthProcessCheck", ServerHealthStatus.Unhealthy, LocalizationManager.Get("HealthProcessExited"), context.CheckedAt);
+        }
+    }
+
+    public sealed class QueryServerHealthCheck : IServerHealthCheck
+    {
+        private static readonly TimeSpan QueryStaleAfter = TimeSpan.FromSeconds(20);
+
+        public ServerHealthCheckResult Evaluate(ServerHealthContext context)
+        {
+            if (context.QuerySupported != true)
+            {
+                return new ServerHealthCheckResult("HealthQueryCheck", ServerHealthStatus.Unknown, LocalizationManager.Get("HealthQueryUnsupported"), context.LastQueryAttemptAt);
+            }
+
+            if (!context.LastQueryAttemptAt.HasValue)
+            {
+                string explanation = context.QueryInProgress
+                    ? LocalizationManager.Get("HealthQueryInProgress")
+                    : LocalizationManager.Get("HealthQueryWaiting");
+                return new ServerHealthCheckResult("HealthQueryCheck", ServerHealthStatus.Unknown, explanation, null);
+            }
+
+            if (context.ConsecutiveQueryFailures >= 3)
+            {
+                string explanation = string.IsNullOrWhiteSpace(context.LastQueryFailureMessage)
+                    ? LocalizationManager.Get("HealthQueryRepeatedFailure")
+                    : string.Format(LocalizationManager.Get("HealthQueryFailureReason"), context.LastQueryFailureMessage);
+                return new ServerHealthCheckResult("HealthQueryCheck", ServerHealthStatus.Unhealthy, explanation, context.LastQueryAttemptAt);
+            }
+
+            if (context.CheckedAt - context.LastQueryAttemptAt.Value > QueryStaleAfter)
+            {
+                return new ServerHealthCheckResult("HealthQueryCheck", ServerHealthStatus.Warning, LocalizationManager.Get("HealthQueryStale"), context.LastQueryAttemptAt);
+            }
+
+            if (context.LastQuerySucceededAt.HasValue && context.LastQuerySucceededAt.Value >= context.LastQueryAttemptAt.Value)
+            {
+                return new ServerHealthCheckResult("HealthQueryCheck", ServerHealthStatus.Healthy, LocalizationManager.Get("HealthQuerySucceeded"), context.LastQueryAttemptAt);
+            }
+
+            string failure = string.IsNullOrWhiteSpace(context.LastQueryFailureMessage)
+                ? LocalizationManager.Get("HealthQueryFailed")
+                : string.Format(LocalizationManager.Get("HealthQueryFailureReason"), context.LastQueryFailureMessage);
+            return new ServerHealthCheckResult("HealthQueryCheck", ServerHealthStatus.Warning, failure, context.LastQueryAttemptAt);
+        }
+    }
+
+    public sealed class ServerHealthSummary
+    {
+        public IList<ServerHealthCheckResult> Checks { get; private set; }
+
+        public ServerHealthSummary(IEnumerable<ServerHealthCheckResult> checks)
+        {
+            Checks = checks.ToList();
+        }
+
+        public ServerHealthStatus OverallStatus
+        {
+            get
+            {
+                List<ServerHealthStatus> knownStatuses = Checks
+                    .Select(check => check.Status)
+                    .Where(status => status != ServerHealthStatus.Unknown)
+                    .ToList();
+
+                if (knownStatuses.Contains(ServerHealthStatus.Unhealthy)) { return ServerHealthStatus.Unhealthy; }
+                if (knownStatuses.Contains(ServerHealthStatus.Warning)) { return ServerHealthStatus.Warning; }
+                return knownStatuses.Count == 0 ? ServerHealthStatus.Unknown : ServerHealthStatus.Healthy;
+            }
+        }
+
+        public string CompactDetails
+        {
+            get
+            {
+                return string.Join(" | ", Checks.Select(check => string.Format(
+                    CultureInfo.CurrentUICulture,
+                    "{0}: {1}",
+                    LocalizationManager.Get(check.CheckName),
+                    LocalizationManager.Get("Health" + check.Status))));
+            }
+        }
+
+        public string Details
+        {
+            get
+            {
+                return string.Join(Environment.NewLine, Checks.Select(check =>
+                {
+                    string lastChecked = check.LastCheckedAt.HasValue
+                        ? string.Format(CultureInfo.CurrentUICulture, LocalizationManager.Get("HealthLastChecked"), check.LastCheckedAt.Value.ToString("g", CultureInfo.CurrentUICulture))
+                        : LocalizationManager.Get("HealthNotChecked");
+                    return string.Format(
+                        CultureInfo.CurrentUICulture,
+                        "{0}: {1} - {2} ({3})",
+                        LocalizationManager.Get(check.CheckName),
+                        LocalizationManager.Get("Health" + check.Status),
+                        check.Explanation,
+                        lastChecked);
+                }));
+            }
+    }
     }
 }

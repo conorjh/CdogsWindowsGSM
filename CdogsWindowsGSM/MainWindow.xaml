@@ -904,6 +904,13 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
                         <DataGridTextColumn Header="{loc:Loc Key=ColumnStatus}" IsReadOnly="True" Binding="{Binding Path=Status}" Width="80" MinWidth="80" MaxWidth="80"/>
+                        <DataGridTemplateColumn Header="{loc:Loc Key=ServerHealth}" IsReadOnly="True" SortMemberPath="HealthStatus" Width="95" MinWidth="80">
+                            <DataGridTemplateColumn.CellTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding HealthStatusText}" ToolTip="{Binding HealthDetails}" TextTrimming="CharacterEllipsis"/>
+                                </DataTemplate>
+                            </DataGridTemplateColumn.CellTemplate>
+                        </DataGridTemplateColumn>
                         <DataGridTextColumn Header="{loc:Loc Key=ColumnServerName}" IsReadOnly="True" Binding="{Binding Path=Name}" Width="10*" MinWidth="105"/>
                         <DataGridTextColumn Header="{loc:Loc Key=ColumnIpAddress}" IsReadOnly="True" Binding="{Binding Path=IP}" Width="4*" MinWidth="88"/>
                         <DataGridTemplateColumn Header="{loc:Loc Key=ColumnPort}" IsReadOnly="True" SortMemberPath="PortSort" Width="4*" MinWidth="93">
@@ -989,9 +996,10 @@
                         <Button x:Name="button_discordset" Cursor="Hand" Content="{loc:Loc Key=SetMessage}" HorizontalAlignment="Left" Margin="192,70,0,0" VerticalAlignment="Top" Width="95" Height="26" Click="Button_DiscordSetMessage_Click"/>
                         <Button x:Name="button_discordtest" Cursor="Hand" Content="{loc:Loc Key=TestAlert}" HorizontalAlignment="Left" Margin="382,70,0,0" VerticalAlignment="Top" Width="85" Height="26" Click="Button_DiscordWebhookTest_Click" IsEnabled="False"/>
                         <Button x:Name="button_discordsettings" Content="{loc:Loc Key=SettingsButton}" HorizontalAlignment="Left" Margin="292,70,0,0" VerticalAlignment="Top" Width="85" Height="26" Click="Button_DiscordAlertSettings_Click"/>
-                        <Label x:Name="label_wgsmlog" Content="{loc:Loc Key=Log}" HorizontalAlignment="Left" Margin="24,154,0,0" VerticalAlignment="Top"/>
+                        <TextBlock x:Name="label_ServerHealthDetails" Margin="10,151,10,0" Height="18" VerticalAlignment="Top" TextTrimming="CharacterEllipsis" ToolTip=""/>
+                        <Label x:Name="label_wgsmlog" Content="{loc:Loc Key=Log}" HorizontalAlignment="Left" Margin="24,174,0,0" VerticalAlignment="Top"/>
                         <Button x:Name="button_clearwgsmlog" Cursor="Hand" Content="{loc:Loc Key=Clear}" Margin="10,0,0,10" Height="18" Click="Button_ClearWGSMLog_Click" HorizontalAlignment="Left" Width="45" VerticalAlignment="Bottom"/>
-                        <TextBox x:Name="textBox_wgsmlog" Margin="10,157,10,10" FontFamily="Consolas" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" IsReadOnly="True"/>
+                        <TextBox x:Name="textBox_wgsmlog" Margin="10,177,10,10" FontFamily="Consolas" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" IsReadOnly="True"/>
                     </Grid>
 
                     <GridSplitter Grid.Column="1" Width="5" HorizontalAlignment="Stretch">

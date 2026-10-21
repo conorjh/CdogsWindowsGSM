@@ -1,6 +1,6 @@
 # Server management features: schedules, health, groups, and dashboard
 
-Status: implementation in progress; phases 1–2 are implemented and build-verified.
+Status: implementation in progress; phases 1–3 are implemented and build-verified.
 Investigated: 21 October 2026.
 
 ## Goal and recommendation
@@ -25,7 +25,7 @@ Paths below are relative to the repository root.
 | Automatic updates | `MainWindow.xaml.cs` checks for a remote build every 30 minutes for a running server with `AutoUpdate` enabled. If it finds a newer version, it stops, updates, and restarts that server. | Preserve this existing behavior and setting; a new scheduled-update feature is not part of this plan. |
 | Scheduled restarts | Per-server `RestartCrontab` and `CrontabFormat` settings use the existing NCrontab dependency. | Leave restart behavior and its current settings untouched in the first release; this plan does not require a restart-scheduler redesign. |
 | Backups | Manual and scheduled backups require a stopped server. `BackupConfig` stores the backup location and maximum count (default three); archives are published from a temporary file before retention is applied. | Reuse the current backup/restore paths. Do not silently stop a running server to make a backup. |
-| Server health | The app tracks process state, queries supported games, and displays host CPU/RAM/disk usage, but has no unified per-server health result. | Derive a simple health view from reliable existing signals; unsupported checks must be shown as unknown, not as failures. |
+| Server health | The app reports process and supported-query health in the server list, with per-check explanations and check times on selection. Unsupported queries are shown as unknown. | Keep checks bounded and reuse existing process/query state; unsupported checks must remain unknown, not failures. |
 | Server groups | No user-defined server-group model or group assignment was identified in the current UI/configuration. | Add group metadata without changing a server's identity or its per-server settings. |
 
 ## 1. Schedules section
@@ -138,7 +138,7 @@ Keep this first dashboard extension focused on current values and actionable sta
 |---|---|---|
 | 1. Scheduling shell | Add the Schedules navigation/view, validated schedule model, next/last-run display, and one app-level scheduler. Keep it inert until a job is enabled. | Existing server navigation/actions still work; schedule validation, disabled jobs, local-time display, and missed-run behavior are clear. | Implemented; app project build succeeds. |
 | 2. Scheduled backups | Add per-server backup schedules and retention behavior using existing backup paths. | Backup acceptance checks pass, including failed/incomplete archive creation and running-server skip cases. | Implemented; app project build succeeds. Runtime acceptance checks remain. |
-| 3. Health summary | Add the common health result model and process/query checks, then add optional transition alerts if the result is useful without noise. | Supported and unsupported checks are clearly distinguished; lifecycle and no-spam checks pass. | Pending |
+| 3. Health summary | Add the common health result model and process/query checks, then add optional transition alerts if the result is useful without noise. | Supported and unsupported checks are clearly distinguished; lifecycle and no-spam checks pass. | Implemented; app project build succeeds. Runtime lifecycle checks remain. |
 | 4. Dashboard additions | Validate a temperature provider, then add temperatures, storage headroom, and health/schedule summaries. Add per-server resource figures only if process attribution is reliable. | Sensor absence/failure is handled safely; dashboard values match their source and do not block existing refreshes. | Pending |
 | 5. Server groups | Add group persistence, Server List filtering, and sequential group actions with progress/results. | Group and existing single/global actions pass the group acceptance checks. | Pending |
 
