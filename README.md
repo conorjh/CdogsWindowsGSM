@@ -97,10 +97,19 @@ A community-maintained Windows desktop application for installing, importing, an
   * **Auto Update** - Checks for updates every 30 minutes, making sure your game servers are up to date!
   * **Restart Crontab** - Schedule your game servers to restart at any time, very useful for servers that require restarts to run smoothly.
   * **Start on Login** - Automatically start the application and selected servers when you sign in.
+  * **Query Port Discovery** - Detects the runtime query port for supported A2S, UT3, and FiveM servers, shows whether it matches the configured port, and falls back to the configured value when it cannot be verified.
   * **CPU Priority and Affinity** - Set and save the cpu priority and affinity!
   * **Mod Manager** - Manage custom server mods from the application.
   * **Remote Control** - Remote control your game servers with Discord!
   * **Plugins** - Allow support more game servers by installing plugins
+
+### Languages
+
+WindowsGSM includes English and Spanish UI text. Choose **Use Windows language**, **English**, or **Español** in **Settings > Language**. The preference is saved for the current Windows user and takes effect the next time WindowsGSM starts. Unsupported Windows UI languages fall back to English.
+
+Translations cover the main window, settings, common server-management dialogs, status labels, and Minecraft EULA prompts. Game names, game-specific installer output, third-party plugin text, server logs, and game-server console output are provided by their respective sources and are not translated. Language resources are embedded in the application executable so the existing updater keeps them in sync.
+
+To add a language, provide a matching `Strings.<culture>.resx`, embed it in the application, and add the culture to the language selector and localization manager. Keep resource keys and format placeholders consistent with `Strings.resx`.
 
 ### Plugins
 Allow support more game servers by installing plugins!

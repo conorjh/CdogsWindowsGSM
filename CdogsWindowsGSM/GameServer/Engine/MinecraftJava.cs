@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using WindowsGSM.Functions;
+using WindowsGSM.Localization;
 
 namespace WindowsGSM.GameServer.Engine
 {
@@ -88,9 +89,9 @@ namespace WindowsGSM.GameServer.Engine
         public async Task<Process> Install()
         {
             Error = null;
-            if (!await UI.CreateYesNoPromptV1("Agreement to the EULA", "By continuing you agree to the Minecraft EULA.\nhttps://www.minecraft.net/eula", "Agree", "Decline"))
+            if (!await UI.CreateYesNoPromptV1(LocalizationManager.Get("MinecraftEulaTitle"), LocalizationManager.Get("MinecraftJavaEulaPrompt"), LocalizationManager.Get("MinecraftAgree"), LocalizationManager.Get("MinecraftDecline")))
             {
-                Error = "Declined the Minecraft EULA";
+                Error = LocalizationManager.Get("MinecraftEulaDeclined");
                 return null;
             }
             return await InstallOrUpdate(true);
