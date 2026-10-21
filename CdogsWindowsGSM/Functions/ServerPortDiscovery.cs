@@ -34,7 +34,7 @@ namespace WindowsGSM.Functions
         private const uint TcpStateListen = 2;
         private static readonly IntPtr InvalidHandle = new IntPtr(-1);
 
-        public static async Task<int?> FindQueryPortAsync(Process serverProcess, string address, int configuredPort, IQueryPortDiscoveryProvider provider)
+        public static async Task<int?> FindQueryPortAsync(Process serverProcess, string address, int configuredPort, int mainPort, IQueryPortDiscoveryProvider provider)
         {
             if (serverProcess == null || provider == null || string.IsNullOrWhiteSpace(address) || !IPAddress.TryParse(address, out IPAddress targetAddress) || targetAddress.AddressFamily != AddressFamily.InterNetwork)
             {
@@ -55,10 +55,12 @@ namespace WindowsGSM.Functions
             }
 
             List<int> candidatePorts = endpoints
-                .Where(endpoint => processIds.Contains(endpoint.ProcessId) && endpoint.Port > 0 && IsAddressRelevant(endpoint.LocalAddress, targetAddress))
+                .Where(endpoint => processIds.Contains(endpoint.ProcessId) &&
+                    endpoint.Port > 0 &&
+                    IsAddressRelevant(endpoint.LocalAddress, targetAddress) &&
+                    !HasConflictingOwner(endpoint.Port, endpoint.Transport, targetAddress, processIds, endpoints))
                 .Select(endpoint => endpoint.Port)
                 .Distinct()
-                .Where(port => !HasConflictingOwner(port, targetAddress, processIds, endpoints))
                 .OrderBy(port => port)
                 .ToList();
 
@@ -75,6 +77,11 @@ namespace WindowsGSM.Functions
                 }
 
                 candidatePorts.Remove(configuredPort);
+            }
+
+            if (mainPort > 0 && mainPort <= ushort.MaxValue && mainPort != configuredPort)
+            {
+                candidatePorts.Remove(mainPort);
             }
 
             if (candidatePorts.Count == 0)
@@ -103,6 +110,66 @@ namespace WindowsGSM.Functions
             }
         }
 
+        public static int? FindMainPort(Process serverProcess, string address, int configuredPort, int configuredQueryPort, int? detectedQueryPort)
+        {
+            if (serverProcess == null ||
+                string.IsNullOrWhiteSpace(address) ||
+                !IPAddress.TryParse(address, out IPAddress targetAddress) ||
+                targetAddress.AddressFamily != AddressFamily.InterNetwork ||
+                configuredPort < 1 ||
+                configuredPort > ushort.MaxValue)
+            {
+                return null;
+            }
+
+            if (!IsRunning(serverProcess))
+            {
+                return null;
+            }
+
+            int rootProcessId = serverProcess.Id;
+            HashSet<int> processIds = GetProcessTree(rootProcessId);
+            List<BoundEndpoint> endpoints = GetUdpEndpoints();
+            endpoints.AddRange(GetTcpEndpoints());
+            if (!IsRunning(serverProcess))
+            {
+                return null;
+            }
+
+            List<int> candidatePorts = endpoints
+                .Where(endpoint => processIds.Contains(endpoint.ProcessId) &&
+                    endpoint.Port > 0 &&
+                    IsAddressRelevant(endpoint.LocalAddress, targetAddress) &&
+                    !HasConflictingOwner(endpoint.Port, endpoint.Transport, targetAddress, processIds, endpoints))
+                .Select(endpoint => endpoint.Port)
+                .Distinct()
+                .OrderBy(port => port)
+                .ToList();
+
+            if (candidatePorts.Contains(configuredPort))
+            {
+                return configuredPort;
+            }
+
+            if (configuredPort == configuredQueryPort &&
+                detectedQueryPort.HasValue &&
+                candidatePorts.Contains(detectedQueryPort.Value))
+            {
+                return detectedQueryPort;
+            }
+
+            if (configuredQueryPort > 0)
+            {
+                candidatePorts.Remove(configuredQueryPort);
+            }
+            if (detectedQueryPort.HasValue)
+            {
+                candidatePorts.Remove(detectedQueryPort.Value);
+            }
+
+            return candidatePorts.Count == 1 ? candidatePorts[0] : (int?)null;
+        }
+
         private static bool IsRunning(Process process)
         {
             try
@@ -120,9 +187,10 @@ namespace WindowsGSM.Functions
             return targetAddress.Equals(IPAddress.Any) || localAddress.Equals(IPAddress.Any) || localAddress.Equals(targetAddress);
         }
 
-        private static bool HasConflictingOwner(int port, IPAddress targetAddress, HashSet<int> processIds, List<BoundEndpoint> endpoints)
+        private static bool HasConflictingOwner(int port, QueryPortTransport transport, IPAddress targetAddress, HashSet<int> processIds, List<BoundEndpoint> endpoints)
         {
             return endpoints.Any(endpoint => endpoint.Port == port &&
+                endpoint.Transport == transport &&
                 !processIds.Contains(endpoint.ProcessId) &&
                 IsAddressRelevant(endpoint.LocalAddress, targetAddress));
         }
@@ -162,7 +230,8 @@ namespace WindowsGSM.Functions
                     {
                         LocalAddress = new IPAddress(BitConverter.GetBytes(row.LocalAddress)),
                         Port = GetHostPort(row.LocalPort),
-                        ProcessId = unchecked((int)row.OwningProcessId)
+                        ProcessId = unchecked((int)row.OwningProcessId),
+                        Transport = QueryPortTransport.Udp
                     });
                 }
             }
@@ -201,7 +270,8 @@ namespace WindowsGSM.Functions
                     {
                         LocalAddress = new IPAddress(BitConverter.GetBytes(row.LocalAddress)),
                         Port = GetHostPort(row.LocalPort),
-                        ProcessId = unchecked((int)row.OwningProcessId)
+                        ProcessId = unchecked((int)row.OwningProcessId),
+                        Transport = QueryPortTransport.Tcp
                     });
                 }
             }
@@ -373,6 +443,7 @@ namespace WindowsGSM.Functions
             public IPAddress LocalAddress;
             public int Port;
             public int ProcessId;
+            public QueryPortTransport Transport;
         }
 
         [StructLayout(LayoutKind.Sequential)]

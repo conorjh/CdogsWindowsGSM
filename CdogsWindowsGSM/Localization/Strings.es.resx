@@ -171,6 +171,10 @@
   <data name="ColumnIpAddress"><value>Dirección IP</value></data>
   <data name="ColumnPort"><value>Puerto</value></data>
   <data name="ColumnQueryPort"><value>Puerto de consulta</value></data>
+	<data name="MainPortNotVerified"><value>Puerto principal configurado: {0}; valor en tiempo de ejecución no verificado.</value></data>
+  <data name="MainPortDetected"><value>Puerto principal detectado: {0}.</value></data>
+  <data name="MainPortMatches"><value>El puerto principal detectado coincide con el valor configurado ({0}).</value></data>
+  <data name="MainPortMismatch"><value>Puerto principal configurado: {0}; puerto principal detectado: {1}.</value></data>
   <data name="QueryPortNotVerified"><value>Puerto de consulta configurado: {0}; valor en tiempo de ejecución no verificado.</value></data>
   <data name="QueryPortDetected"><value>Puerto de consulta detectado: {0}.</value></data>
   <data name="QueryPortMatches"><value>El puerto de consulta detectado coincide con el valor configurado ({0}).</value></data>
