@@ -18,8 +18,10 @@ using Newtonsoft.Json.Linq;
 using NCrontab;
 using System.Collections.Generic;
 using System.Collections;
-using LiveCharts;
-using LiveCharts.Wpf;
+using System.Collections.ObjectModel;
+using LiveChartsCore;
+using LiveChartsCore.Defaults;
+using LiveChartsCore.SkiaSharpView;
 using System.Management;
 using System.Windows.Media.Imaging;
 using ControlzEx.Theming;
@@ -118,7 +120,7 @@ namespace WindowsGSM
             Deleting = 12
         }
 
-        public static readonly string WGSM_VERSION = "v" + string.Concat(System.Reflection.Assembly.GetExecutingAssembly().GetName().Version.ToString().Reverse().Skip(2).Reverse());
+        public static readonly string WGSM_VERSION = "v" + System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(System.Reflection.Assembly.GetExecutingAssembly()).InformationalVersion;
         public static readonly int MAX_SERVER = 50;
         public static readonly string WGSM_PATH = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName);
         public static readonly string DEFAULT_THEME = "Cyan";
@@ -135,6 +137,11 @@ namespace WindowsGSM
         public List<PluginMetadata> PluginsList = new List<PluginMetadata>();
 
         private readonly List<System.Windows.Controls.CheckBox> _checkBoxes = new List<System.Windows.Controls.CheckBox>();
+        private readonly ObservableCollection<ISeries> _playerChartSeries = new ObservableCollection<ISeries>();
+        private readonly Dictionary<string, (ColumnSeries<ObservableValue> Series, ObservableValue Value)> _playerChartValues =
+            new Dictionary<string, (ColumnSeries<ObservableValue>, ObservableValue)>(StringComparer.Ordinal);
+        private readonly Axis _playerChartXAxis = new Axis { Labels = Array.Empty<string>() };
+        private readonly Axis _playerChartYAxis = new Axis { Name = "Players", MinLimit = 0, MaxLimit = 10 };
 
         private int _peakActivePlayers;
         private readonly Random _mapRotationRandom = new Random();
@@ -149,6 +156,9 @@ namespace WindowsGSM
             DiscordWebhook.SendErrorLog();
 
             InitializeComponent();
+            livechart_players.Series = _playerChartSeries;
+            livechart_players.XAxes = new[] { _playerChartXAxis };
+            livechart_players.YAxes = new[] { _playerChartYAxis };
             Title = $"Cdog's WindowsGSM {WGSM_VERSION}";
 
             //Close SplashScreen
@@ -909,36 +919,36 @@ namespace WindowsGSM
             if (typePlayers.Count > 0)
             {
                 int maxValue = typePlayers.Select(s => s.Item2).Max() + 5;
-                livechart_players_axisY.MaxValue = (maxValue > 10) ? maxValue : 10;
+                _playerChartYAxis.MaxLimit = (maxValue > 10) ? maxValue : 10;
             }
 
-            // Update the column data if updated, if ServerType doesn't exist remove
-            for (int i = 0; i < livechart_players.Series.Count; i++)
+            var activeTypes = new HashSet<string>(typePlayers.Select(item => item.Item1), StringComparer.Ordinal);
+            foreach (string inactiveType in _playerChartValues.Keys.Where(type => !activeTypes.Contains(type)).ToList())
             {
-                if (typePlayers.Select(t => t.Item1).Contains(livechart_players.Series[i].Title))
-                {
-                    int currentPlayers = typePlayers.Where(t => t.Item1 == livechart_players.Series[i].Title).Select(t => t.Item2).FirstOrDefault();
-                    if (((ChartValues<int>)livechart_players.Series[i].Values)[0] != currentPlayers)
-                    {
-                        livechart_players.Series[i].Values[0] = currentPlayers;
-                    }
+                _playerChartSeries.Remove(_playerChartValues[inactiveType].Series);
+                _playerChartValues.Remove(inactiveType);
+            }
 
-                    typePlayers.Remove((livechart_players.Series[i].Title, currentPlayers));
+            foreach (var item in typePlayers)
+            {
+                if (_playerChartValues.TryGetValue(item.Item1, out var chartValue))
+                {
+                    if (chartValue.Value.Value != item.Item2)
+                    {
+                        chartValue.Value.Value = item.Item2;
+                    }
                 }
                 else
                 {
-                    livechart_players.Series.RemoveAt(i--);
+                    var value = new ObservableValue(item.Item2);
+                    var series = new ColumnSeries<ObservableValue>
+                    {
+                        Name = item.Item1,
+                        Values = new ObservableCollection<ObservableValue> { value }
+                    };
+                    _playerChartValues.Add(item.Item1, (series, value));
+                    _playerChartSeries.Add(series);
                 }
-            }
-
-            // Add ServerType Series if not exist
-            foreach (var item in typePlayers)
-            {
-                livechart_players.Series.Add(new ColumnSeries
-                {
-                    Title = item.Item1,
-                    Values = new ChartValues<int> { item.Item2 }
-                });
             }
         }
 
@@ -1063,7 +1073,7 @@ namespace WindowsGSM
                 switch_restartcrontab.IsOn = GetServerMetadata(row.ID).RestartCrontab;
                 switch_autostart.IsOn = GetServerMetadata(row.ID).AutoStart;
                 switch_autoupdate.IsOn = GetServerMetadata(row.ID).AutoUpdate;
-                switch_updateonstart.IsOn = GetServerMetadata(row.ID).UpdateOnStart;
+                switch_updateonstart.IsOn = GetServerMetadata(row.ID).BackupOnStart;
                 switch_backuponstart.IsOn = GetServerMetadata(row.ID).BackupOnStart;
                 switch_discordalert.IsOn = GetServerMetadata(row.ID).DiscordAlert;
                 button_discordtest.IsEnabled = switch_discordalert.IsOn;
@@ -2183,7 +2193,7 @@ namespace WindowsGSM
                 return false;
             }
 
-            //Begin Update
+            //Begin update
             _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Updating;
             Log(server.ID, "Action: Update" + notes);
             SetServerStatus(server, "Updating");
@@ -2192,12 +2202,12 @@ namespace WindowsGSM
 
             if (p == null && string.IsNullOrEmpty(gameServer.Error)) // Update success (non-steamcmd server)
             {
-                Log(server.ID, $"Server: Updated {(validate ? "Validate " : string.Empty)}({remoteVersion})");
+                Log(server.ID, $"Server: Updated ({remoteVersion})");
             }
             else if (p != null) // p stores process of steamcmd
             {
                 await Task.Run(() => { p.WaitForExit(); });
-                Log(server.ID, $"Server: Updated {(validate ? "Validate " : string.Empty)}({remoteVersion})");
+                Log(server.ID, $"Server: Updated ({remoteVersion})");
             }
             else
             {
@@ -2288,7 +2298,6 @@ namespace WindowsGSM
                 Log(server.ID, "Server: Fail to backup");
                 Log(server.ID, $"[ERROR] {error}");
                 SetServerStatus(server, "Stopped");
-
                 return false;
             }
 
@@ -2388,7 +2397,7 @@ namespace WindowsGSM
 
             //Remove firewall rule
             var firewall = new WindowsFirewall(null, ServerPath.GetServers(server.ID));
-            firewall.RemoveRuleEx();
+            await firewall.RemoveRuleEx();
 
             //End All Running Process
             await EndAllRunningProcess(server.ID);
@@ -2589,6 +2598,7 @@ namespace WindowsGSM
                         if (gameServerStart == null) { return; }
 
                         _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Started;
+                        Log(server.ID, "Server: Started");
                         SetServerStatus(server, "Started", ServerCache.GetPID(server.ID).ToString());
 
                         break;
@@ -2758,6 +2768,7 @@ namespace WindowsGSM
                                      try
                                      {
                                          return p_.MainModule.FileName.Contains(Path.Combine(WGSM_PATH, "servers", serverId) + "\\");
+
                                      }
                                      catch
                                      {
@@ -3304,25 +3315,25 @@ namespace WindowsGSM
         #region Menu - Tools
         private void Tools_GlobalServerListCheck_Click(object sender, RoutedEventArgs e)
         {
-            var row = (ServerTable)ServerGrid.SelectedItem;
-            if (row == null) { return; }
+            var server = (ServerTable)ServerGrid.SelectedItem;
+            if (server == null) { return; }
 
-            if (row.Game == GameServer.MCPE.FullName || row.Game == GameServer.MC.FullName ||
-                row.Game == GameServer.PaperMC.FullName || row.Game == GameServer.ForgeMC.FullName)
+            if (server.Game == GameServer.MCPE.FullName || server.Game == GameServer.MC.FullName ||
+                server.Game == GameServer.PaperMC.FullName || server.Game == GameServer.ForgeMC.FullName)
             {
-                Log(row.ID, $"This feature is not applicable on {row.Game}");
+                Log(server.ID, $"This feature is not applicable on {server.Game}");
                 return;
             }
 
             string publicIP = GetPublicIP();
             if (publicIP == null)
             {
-                Log(row.ID, "Fail to check. Reason: Fail to get the public ip.");
+                Log(server.ID, "Fail to check. Reason: Fail to get the public ip.");
                 return;
             }
 
-            string messageText = $"Server Name: {row.Name}\nPublic IP: {publicIP}\nQuery Port: {row.QueryPort}";
-            if (GlobalServerList.IsServerOnSteamServerList(publicIP, row.QueryPort))
+            string messageText = $"Server Name: {server.Name}\nPublic IP: {publicIP}\nQuery Port: {server.QueryPort}";
+            if (GlobalServerList.IsServerOnSteamServerList(publicIP, server.QueryPort))
             {
                 MessageBox.Show(messageText + "\n\nResult: Online\n\nYour server is on the global server list!", "Global Server List Check", MessageBoxButton.OK, MessageBoxImage.Information);
             }

@@ -24,7 +24,11 @@ namespace WindowsGSM.DiscordBot
 
 		public async Task<bool> Start()
 		{
-			_client = new DiscordSocketClient();
+			var clientConfig = new DiscordSocketConfig
+			{
+				GatewayIntents = GatewayIntents.Guilds | GatewayIntents.GuildMessages | GatewayIntents.DirectMessages | GatewayIntents.MessageContent
+			};
+			_client = new DiscordSocketClient(clientConfig);
 			_client.Ready += On_Bot_Ready;
 
 			try

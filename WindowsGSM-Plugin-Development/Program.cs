@@ -21,17 +21,22 @@ namespace WindowsGSM_Plugin_Development
             Console.ResetColor();
 
             var currentDir = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName);
-            var wgsmRoot = Path.GetFullPath(Path.Combine(currentDir, "..", "..", ".."));
-            var wgsm = Path.Combine(wgsmRoot, "WindowsGSM");
-            var wgsnBin = Directory.CreateDirectory(Path.Combine(wgsm, "bin")).FullName; // Create \bin directory
+            var repositoryRoot = FindRepositoryRoot(currentDir);
 #if DEBUG
             var target = "Debug";
 #else
             var target = "Release";
 #endif
-            var wgsmTarget = Directory.CreateDirectory(Path.Combine(wgsnBin, target)).FullName; // Create \Debug or \Release directory
-            var wgsmPlugins = Directory.CreateDirectory(Path.Combine(wgsmTarget, "plugins")).FullName; // Create \plugins directory
-            var localPlugins = Path.GetFullPath(Path.Combine(Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName), "..", "..", "Plugins"));
+            var appOutputDirectory = Path.Combine(repositoryRoot, "CdogsWindowsGSM", "bin", target, "net10.0-windows10.0.19041", "win-x64");
+            var applicationPath = Path.Combine(appOutputDirectory, "CdogsWindowsGSM.exe");
+            if (!File.Exists(applicationPath))
+            {
+                Console.Error.WriteLine($"Build CdogsWindowsGSM.Net10 before installing plugins. Application output was not found at {applicationPath}.");
+                return;
+            }
+
+            var wgsmPlugins = Directory.CreateDirectory(Path.Combine(appOutputDirectory, "plugins")).FullName;
+            var localPlugins = Path.Combine(repositoryRoot, "WindowsGSM-Plugin-Development", "Plugins");
 
             Console.Write("\nSearching your new plugins in ");
             Console.ForegroundColor = ConsoleColor.Yellow;
@@ -93,6 +98,19 @@ namespace WindowsGSM_Plugin_Development
             {
                 Thread.Sleep(1000);
             }*/
+        }
+
+        private static string FindRepositoryRoot(string startDirectory)
+        {
+            for (DirectoryInfo directory = new DirectoryInfo(startDirectory); directory != null; directory = directory.Parent)
+            {
+                if (File.Exists(Path.Combine(directory.FullName, "CdogsWindowsGSM.sln")))
+                {
+                    return directory.FullName;
+                }
+            }
+
+            throw new DirectoryNotFoundException("Could not locate CdogsWindowsGSM.sln from the plugin development tool directory.");
         }
 
         private static bool DeleteOldPlugin(string oldPluginFile)

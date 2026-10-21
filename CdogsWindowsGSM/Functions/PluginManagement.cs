@@ -1,11 +1,14 @@
 ﻿using System;
-using System.CodeDom.Compiler;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Metadata;
+using System.Runtime.Loader;
 using System.Text;
 using System.Threading.Tasks;
+using Microsoft.CodeAnalysis;
+using Microsoft.CodeAnalysis.CSharp;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
@@ -23,6 +26,7 @@ namespace WindowsGSM.Functions
     {
         public const string DefaultUserImage = "pack://application:,,,/Images/Plugins/User.png";
         public const string DefaultPluginImage = "pack://application:,,,/Images/WindowsGSM.png";
+        private static readonly Lazy<IReadOnlyList<MetadataReference>> PluginReferences = new Lazy<IReadOnlyList<MetadataReference>>(CreatePluginReferences);
 
         public PluginManagement()
         {
@@ -55,31 +59,30 @@ namespace WindowsGSM.Functions
                 FileName = Path.GetFileName(path)
             };
 
-            var options = new CompilerParameters();
-            options.ReferencedAssemblies.Add(Assembly.GetEntryAssembly().Location);
-            options.ReferencedAssemblies.Add("System.dll");
-            options.ReferencedAssemblies.Add("System.Core.dll");
-            options.ReferencedAssemblies.Add("System.Data.dll");
-            options.ReferencedAssemblies.Add(ServerPath.GetBin("Newtonsoft.Json.dll"));
-            options.GenerateInMemory = true;
-
-            var c = new Microsoft.CodeDom.Providers.DotNetCompilerPlatform.CSharpCodeProvider();
-            var cr = shouldAwait ? await Task.Run(() => c.CompileAssemblyFromSource(options, File.ReadAllText(path))) : c.CompileAssemblyFromSource(options, File.ReadAllText(path));
-            if (cr.Errors.HasErrors)
+            PluginCompilationResult compilation;
+            try
             {
-                var sb = new StringBuilder();
-                foreach (CompilerError err in cr.Errors)
-                {
-                    sb.Append($"{err.ErrorText}\nLine: {err.Line} - Column: {err.Column}\n\n");
-                }
-                pluginMetadata.Error = sb.ToString();
+                compilation = shouldAwait
+                    ? await Task.Run(() => CompilePlugin(path))
+                    : CompilePlugin(path);
+            }
+            catch (Exception exception) when (IsPluginCompilationException(exception))
+            {
+                pluginMetadata.Error = exception.Message;
+                Console.WriteLine(pluginMetadata.Error);
+                return pluginMetadata;
+            }
+
+            if (compilation.Error != null)
+            {
+                pluginMetadata.Error = compilation.Error;
                 Console.WriteLine(pluginMetadata.Error);
                 return pluginMetadata;
             }
 
             try
             {
-                pluginMetadata.Type = shouldAwait ? await Task.Run(() => cr.CompiledAssembly.GetType($"WindowsGSM.Plugins.{Path.GetFileNameWithoutExtension(path)}")) : cr.CompiledAssembly.GetType($"WindowsGSM.Plugins.{Path.GetFileNameWithoutExtension(path)}");
+                pluginMetadata.Type = compilation.Assembly.GetType($"WindowsGSM.Plugins.{Path.GetFileNameWithoutExtension(path)}");
                 var plugin = GetPluginClass(pluginMetadata);
                 pluginMetadata.FullName = $"{plugin.FullName} [{pluginMetadata.FileName}]";
                 pluginMetadata.Plugin = plugin.Plugin;
@@ -113,6 +116,124 @@ namespace WindowsGSM.Functions
             }
 
             return pluginMetadata;
+        }
+
+        private static PluginCompilationResult CompilePlugin(string path)
+        {
+            var syntaxTree = CSharpSyntaxTree.ParseText(
+                File.ReadAllText(path),
+                new CSharpParseOptions(LanguageVersion.CSharp7_3),
+                path);
+            var compilation = CSharpCompilation.Create(
+                $"{Path.GetFileNameWithoutExtension(path)}_{Guid.NewGuid():N}",
+                new[] { syntaxTree },
+                PluginReferences.Value,
+                new CSharpCompilationOptions(OutputKind.DynamicallyLinkedLibrary, optimizationLevel: OptimizationLevel.Release));
+
+            using (var assemblyStream = new MemoryStream())
+            {
+                var emitResult = compilation.Emit(assemblyStream);
+                if (!emitResult.Success)
+                {
+                    var errors = new StringBuilder();
+                    foreach (Diagnostic diagnostic in emitResult.Diagnostics.Where(item => item.Severity == DiagnosticSeverity.Error))
+                    {
+                        var line = diagnostic.Location.GetLineSpan().StartLinePosition;
+                        errors.Append($"{diagnostic.GetMessage()}\nLine: {line.Line + 1} - Column: {line.Character + 1}\n\n");
+                    }
+
+                    return new PluginCompilationResult { Error = errors.ToString() };
+                }
+
+                assemblyStream.Position = 0;
+                return new PluginCompilationResult { Assembly = AssemblyLoadContext.Default.LoadFromStream(assemblyStream) };
+            }
+        }
+
+        private static IReadOnlyList<MetadataReference> CreatePluginReferences()
+        {
+            var references = new List<MetadataReference>();
+            var assemblyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string trustedAssemblies = AppContext.GetData("TRUSTED_PLATFORM_ASSEMBLIES") as string;
+            if (string.IsNullOrWhiteSpace(trustedAssemblies))
+            {
+                throw new InvalidOperationException("The runtime did not provide trusted platform assemblies for plugin compilation.");
+            }
+
+            foreach (string assemblyPath in trustedAssemblies.Split(Path.PathSeparator))
+            {
+                if (!assemblyPath.EndsWith(".dll", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                string assemblyName = Path.GetFileNameWithoutExtension(assemblyPath);
+                if (string.IsNullOrWhiteSpace(assemblyName) || !assemblyNames.Add(assemblyName))
+                {
+                    continue;
+                }
+
+                if (File.Exists(assemblyPath))
+                {
+                    references.Add(MetadataReference.CreateFromFile(assemblyPath));
+                }
+                else
+                {
+                    try
+                    {
+                        Assembly assembly = AssemblyLoadContext.Default.LoadFromAssemblyName(new AssemblyName(assemblyName));
+                        references.Add(CreateAssemblyReference(assembly));
+                    }
+                    catch (FileNotFoundException exception)
+                    {
+                        throw new InvalidOperationException($"Could not load runtime reference '{assemblyName}' for plugin compilation.", exception);
+                    }
+                    catch (FileLoadException exception)
+                    {
+                        throw new InvalidOperationException($"Could not load runtime reference '{assemblyName}' for plugin compilation.", exception);
+                    }
+                    catch (BadImageFormatException exception)
+                    {
+                        throw new InvalidOperationException($"Could not load runtime reference '{assemblyName}' for plugin compilation.", exception);
+                    }
+                }
+            }
+
+            Assembly entryAssembly = typeof(PluginManagement).Assembly;
+            if (assemblyNames.Add(entryAssembly.GetName().Name))
+            {
+                references.Add(CreateAssemblyReference(entryAssembly));
+            }
+
+            return references;
+        }
+
+        private static unsafe MetadataReference CreateAssemblyReference(Assembly assembly)
+        {
+            if (!string.IsNullOrWhiteSpace(assembly.Location) && File.Exists(assembly.Location) &&
+                string.Equals(Path.GetExtension(assembly.Location), ".dll", StringComparison.OrdinalIgnoreCase))
+            {
+                return MetadataReference.CreateFromFile(assembly.Location);
+            }
+
+            if (System.Reflection.Metadata.AssemblyExtensions.TryGetRawMetadata(assembly, out byte* metadata, out int length))
+            {
+                return ModuleMetadata.CreateFromMetadata((IntPtr)metadata, length).GetReference();
+            }
+
+            throw new InvalidOperationException($"Could not access metadata for runtime assembly '{assembly.GetName().Name}'.");
+        }
+
+        private static bool IsPluginCompilationException(Exception exception)
+        {
+            return exception is ArgumentException || exception is BadImageFormatException || exception is IOException ||
+                exception is InvalidOperationException || exception is NotSupportedException || exception is UnauthorizedAccessException;
+        }
+
+        private sealed class PluginCompilationResult
+        {
+            public Assembly Assembly;
+            public string Error;
         }
 
         public static BitmapSource GetDefaultUserBitmapSource()
