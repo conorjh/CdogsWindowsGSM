@@ -384,6 +384,7 @@
     <Compile Include="Functions\ServerConsole.cs" />
     <Compile Include="Functions\SystemMetrics.cs" />
     <Compile Include="Functions\UI.cs" />
+    <Compile Include="Localization\LocalizationManager.cs" />
     <Compile Include="GameServer\Addon\AMXModX.cs" />
     <Compile Include="GameServer\Addon\SourceMod.cs" />
     <Compile Include="GameServer\ARKSE.cs" />
@@ -505,6 +506,11 @@
       <Generator>ResXFileCodeGenerator</Generator>
       <LastGenOutput>Resources.Designer.cs</LastGenOutput>
       <SubType>Designer</SubType>
+    </EmbeddedResource>
+    <EmbeddedResource Include="Localization\Strings.resx" />
+    <EmbeddedResource Include="Localization\Strings.es.resx">
+      <WithCulture>false</WithCulture>
+      <LogicalName>WindowsGSM.Localization.Strings.es.resources</LogicalName>
     </EmbeddedResource>
     <None Include="app.manifest" />
     <None Include="packages.config" />

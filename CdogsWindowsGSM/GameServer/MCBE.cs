@@ -8,6 +8,7 @@ using System.Windows;
 using System.Collections.Generic;
 using System;
 using Newtonsoft.Json.Linq;
+using WindowsGSM.Localization;
 
 namespace WindowsGSM.GameServer
 {
@@ -210,10 +211,10 @@ namespace WindowsGSM.GameServer
         public async Task<Process> Install()
         {
             //EULA and Privacy Policy
-            MessageBoxResult result = System.Windows.MessageBox.Show("By continuing you are indicating your agreement to the Minecraft End User License Agreement and Privacy Policy.\nEULA: (https://minecraft.net/terms)\nPrivacy Policy: (https://go.microsoft.com/fwlink/?LinkId=521839)", "Agreement to the EULA", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            MessageBoxResult result = System.Windows.MessageBox.Show(LocalizationManager.Get("MinecraftBedrockEulaPrivacyPrompt"), LocalizationManager.Get("MinecraftEulaTitle"), MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (result != MessageBoxResult.Yes)
             {
-                Error = "Disagree to the EULA and Privacy Policy";
+                Error = LocalizationManager.Get("MinecraftBedrockEulaDeclined");
                 return null;
             }
 

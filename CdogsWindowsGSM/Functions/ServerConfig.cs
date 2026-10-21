@@ -2,6 +2,7 @@
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using WindowsGSM.Localization;
 
 namespace WindowsGSM.Functions
 {
@@ -199,19 +200,19 @@ namespace WindowsGSM.Functions
             error = string.Empty;
             if (!int.TryParse(alliesBots, out int allies) || allies < 0 || allies > 32)
             {
-                error = "Allies bots must be an integer from 0 to 32.";
+                error = LocalizationManager.Get("Cod1AlliesBotsRangeError");
                 return false;
             }
 
             if (!int.TryParse(axisBots, out int axis) || axis < 0 || axis > 32)
             {
-                error = "Axis bots must be an integer from 0 to 32.";
+                error = LocalizationManager.Get("Cod1AxisBotsRangeError");
                 return false;
             }
 
             if (!int.TryParse(maxPlayers, out int playerLimit) || playerLimit < 1 || allies + axis > playerLimit)
             {
-                error = "The total bot count cannot exceed the server max-player limit.";
+                error = LocalizationManager.Get("Cod1BotCountLimitError");
                 return false;
             }
 

@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using System.Web;
 using Microsoft.Win32;
 using Newtonsoft.Json.Linq;
+using WindowsGSM.Localization;
 
 namespace WindowsGSM
 {
@@ -23,6 +24,8 @@ namespace WindowsGSM
 
         protected override void OnStartup(StartupEventArgs e)
         {
+            LocalizationManager.Initialize();
+
             bool forceStart = false, showCrashHint = false;
             foreach (string arg in e.Args)
             {
@@ -56,7 +59,7 @@ namespace WindowsGSM
                     if (process.Id != Process.GetCurrentProcess().Id)
                     {
                         System.Media.SystemSounds.Beep.Play();
-                        MessageBox.Show("Another instance is already running", "WindowsGSM already running", MessageBoxButton.OK, MessageBoxImage.Warning);
+                        MessageBox.Show(LocalizationManager.Get("AnotherInstanceMessage"), LocalizationManager.Get("AnotherInstanceTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
                         SetForegroundWindow(process.MainWindowHandle);
                         Process.GetCurrentProcess().Kill();
                     }
@@ -83,7 +86,7 @@ namespace WindowsGSM
                         {
                             WorkingDirectory = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName),
                             FileName = "cmd.exe",
-                            Arguments = "/C echo WindowsGSM will auto restart after 10 seconds... & echo Close this windows to cancel... & ping 0 -w 1000 -n 10 > NUL & start CdogsWindowsGSM.exe /ForceStart /ShowCrashHint",
+                            Arguments = $"/C echo {LocalizationManager.Get("CrashAutoRestartMessage")} & echo {LocalizationManager.Get("CrashAutoRestartCancelMessage")} & ping 0 -w 1000 -n 10 > NUL & start CdogsWindowsGSM.exe /ForceStart /ShowCrashHint",
                             UseShellExecute = false
                         }
                     };

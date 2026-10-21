@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
+using System.Globalization;
+using WindowsGSM.Localization;
 
 namespace WindowsGSM.Functions
 {
@@ -10,6 +12,7 @@ namespace WindowsGSM.Functions
         public string Game { get; set; }
         public string Icon { get; set; }
         public string Status { get; set; }
+        public MainWindow.ServerStatus StatusCode { get; set; }
         public string Name { get; set; }
         public string IP { get; set; }
         public string Port { get; set; }
@@ -41,18 +44,40 @@ namespace WindowsGSM.Functions
         { 
             get
             {
+                if (string.IsNullOrWhiteSpace(PID) || !int.TryParse(PID, out int pid))
+                {
+                    return string.Empty;
+                }
+
+                TimeSpan time;
                 try
                 {
-                    if (!string.IsNullOrWhiteSpace(PID) && int.TryParse(PID, out int pid))
-                    {
-                        var time = DateTime.Now - Process.GetProcessById(pid).StartTime;
-                        int numberOfDay = (int)time.TotalDays;
-                        return $"{numberOfDay} Day{(numberOfDay > 1 ? "s" : string.Empty)}, {time.Hours:D2}:{time.Minutes:D2}";
-                    }
+                    time = DateTime.Now - Process.GetProcessById(pid).StartTime;
                 }
-                catch { }
+                catch (ArgumentException)
+                {
+                    return string.Empty;
+                }
+                catch (InvalidOperationException)
+                {
+                    return string.Empty;
+                }
+                catch (System.ComponentModel.Win32Exception)
+                {
+                    return string.Empty;
+                }
+                catch (System.Security.SecurityException)
+                {
+                    return string.Empty;
+                }
+                catch (NotSupportedException)
+                {
+                    return string.Empty;
+                }
 
-                return string.Empty;
+                int numberOfDay = (int)time.TotalDays;
+                string resourceKey = numberOfDay == 0 ? "UptimeZero" : numberOfDay == 1 ? "UptimeSingular" : "UptimePlural";
+                return string.Format(CultureInfo.CurrentUICulture, LocalizationManager.Get(resourceKey), numberOfDay, time.Hours, time.Minutes);
             }
         }
     }

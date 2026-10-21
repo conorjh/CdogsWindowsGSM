@@ -7,6 +7,7 @@ using System.Net;
 using Newtonsoft.Json.Linq;
 using System.Text.RegularExpressions;
 using WindowsGSM.Functions;
+using WindowsGSM.Localization;
 
 namespace WindowsGSM.GameServer
 {
@@ -146,10 +147,10 @@ namespace WindowsGSM.GameServer
         public async Task<Process> Install()
         {
             //EULA
-            MessageBoxResult result = MessageBox.Show("By continuing you are indicating your agreement to the EULA.\n(https://account.mojang.com/documents/minecraft_eula)", "Agreement to the EULA", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            MessageBoxResult result = MessageBox.Show(LocalizationManager.Get("MinecraftJavaLegacyEulaPrompt"), LocalizationManager.Get("MinecraftEulaTitle"), MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (result != MessageBoxResult.Yes)
             {
-                Error = "Disagree to the EULA";
+                Error = LocalizationManager.Get("MinecraftEulaDeclined");
                 return null;
             }
 
@@ -157,10 +158,10 @@ namespace WindowsGSM.GameServer
             if (!JavaHelper.IsJREInstalled())
             {
                 //Java
-                result = MessageBox.Show("Java is not installed\n\nWould you like to install?", "Confirmation", MessageBoxButton.YesNo, MessageBoxImage.Question);
+                result = MessageBox.Show(LocalizationManager.Get("JavaInstallPrompt"), LocalizationManager.Get("ConfirmationTitle"), MessageBoxButton.YesNo, MessageBoxImage.Question);
                 if (result != MessageBoxResult.Yes)
                 {
-                    Error = "Java is not installed";
+                    Error = LocalizationManager.Get("JavaNotInstalled");
                     return null;
                 }
 

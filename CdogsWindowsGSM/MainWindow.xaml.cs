@@ -24,6 +24,7 @@ using System.Management;
 using System.Windows.Media.Imaging;
 using ControlzEx.Theming;
 using WindowsGSM.Functions;
+using WindowsGSM.Localization;
 using Label = System.Windows.Controls.Label;
 using Orientation = System.Windows.Controls.Orientation;
 using System.Windows.Documents;
@@ -150,6 +151,9 @@ namespace WindowsGSM
 
             InitializeComponent();
             Title = $"Cdog's WindowsGSM {WGSM_VERSION}";
+            comboBox_Language.SelectionChanged -= ComboBox_Language_SelectionChanged;
+            comboBox_Language.SelectedValue = LocalizationManager.SelectedLanguage;
+            comboBox_Language.SelectionChanged += ComboBox_Language_SelectionChanged;
 
             //Close SplashScreen
             splashScreen.Close(new TimeSpan(0, 0, 1));
@@ -268,7 +272,7 @@ namespace WindowsGSM
             notifyIcon = new NotifyIcon
             {
                 BalloonTipTitle = "WindowsGSM",
-                BalloonTipText = "WindowsGSM is running in the background",
+                BalloonTipText = LocalizationManager.Get("RunningInBackground"),
                 Text = "WindowsGSM",
                 BalloonTipIcon = ToolTipIcon.Info,
                 Visible = true
@@ -334,7 +338,7 @@ namespace WindowsGSM
             if (showCrashHint)
             {
                 string logFile = $"CRASH_{DateTime.Now:yyyyMMdd}.log";
-                Log("System", $"WindowsGSM crashed unexpectedly, please view the crash log {logFile}");
+                Log("System", string.Format(LocalizationManager.Get("CrashLogHint"), logFile));
             }
 
             AutoStartServer();
@@ -558,7 +562,7 @@ namespace WindowsGSM
             // If a server is installing or import => return
             if (progressbar_InstallProgress.IsIndeterminate || progressbar_ImportProgress.IsIndeterminate)
             {
-                MessageBox.Show("WindowsGSM is currently installing/importing server!", "ERROR", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(LocalizationManager.Get("BusyDuringImportInstall"), LocalizationManager.Get("ErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
@@ -612,7 +616,7 @@ namespace WindowsGSM
             // If a server is installing or import => return
             if (progressbar_InstallProgress.IsIndeterminate || progressbar_ImportProgress.IsIndeterminate)
             {
-                MessageBox.Show("WindowsGSM is currently installing/importing server!", "ERROR", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(LocalizationManager.Get("BusyDuringImportInstall"), LocalizationManager.Get("ErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
@@ -656,29 +660,13 @@ namespace WindowsGSM
                 //If Game server not exist return
                 if (GameServer.Data.Class.Get(serverConfig.ServerGame, pluginList: PluginsList) == null) { continue; }
 
-                string status;
-                switch (GetServerMetadata(i).ServerStatus)
+                ServerStatus statusCode = GetServerMetadata(i).ServerStatus;
+                if (!Enum.IsDefined(typeof(ServerStatus), statusCode))
                 {
-                    case ServerStatus.Started: status = "Started"; break;
-                    case ServerStatus.Starting: status = "Starting"; break;
-                    case ServerStatus.Stopped: status = "Stopped"; break;
-                    case ServerStatus.Stopping: status = "Stopping"; break;
-                    case ServerStatus.Restarted: status = "Restarted"; break;
-                    case ServerStatus.Restarting: status = "Restarting"; break;
-                    case ServerStatus.Updated: status = "Updated"; break;
-                    case ServerStatus.Updating: status = "Updating"; break;
-                    case ServerStatus.Backuped: status = "Backuped"; break;
-                    case ServerStatus.Backuping: status = "Backuping"; break;
-                    case ServerStatus.Restored: status = "Restored"; break;
-                    case ServerStatus.Restoring: status = "Restoring"; break;
-                    case ServerStatus.Deleting: status = "Deleting"; break;
-                    default:
-                        {
-                            _serverMetadata[i].ServerStatus = ServerStatus.Stopped;
-                            status = "Stopped";
-                            break;
-                        }
+                    statusCode = ServerStatus.Stopped;
+                    _serverMetadata[i].ServerStatus = statusCode;
                 }
+                string status = LocalizationManager.Get("Status" + statusCode);
 
                 try
                 {
@@ -716,6 +704,7 @@ namespace WindowsGSM
                         Game = serverConfig.ServerGame,
                         Icon = icon,
                         Status = status,
+                        StatusCode = statusCode,
                         Name = serverConfig.ServerName,
                         IP = serverConfig.ServerIP,
                         Port = serverConfig.ServerPort,
@@ -887,7 +876,7 @@ namespace WindowsGSM
 
         public int GetStartedServerCount()
         {
-            return ServerGrid.Items.Cast<ServerTable>().Where(s => s.Status == "Started").Count();
+            return ServerGrid.Items.Cast<ServerTable>().Count(s => s.StatusCode == ServerStatus.Started);
         }
 
         public int GetActivePlayers()
@@ -899,7 +888,7 @@ namespace WindowsGSM
         {
             // List<(ServerType, PlayerCount)> Example: ("Ricochet Dedicated Server", 0)
             List<(string, int)> typePlayers = ServerGrid.Items.Cast<ServerTable>()
-                .Where(s => s.Status == "Started" && s.Maxplayers != null && s.Maxplayers.Contains("/"))
+                .Where(s => s.StatusCode == ServerStatus.Started && s.Maxplayers != null && s.Maxplayers.Contains("/"))
                 .Select(s => (type: s.Game, players: int.Parse(s.Maxplayers.Split('/')[0])))
                 .GroupBy(s => s.type)
                 .Select(s => (type: s.Key, players: s.Sum(p => p.players)))
@@ -1143,7 +1132,7 @@ namespace WindowsGSM
                 if (!ServerConfig.ValidateCod1Settings(newServerConfig.Cod1AlliesBots, newServerConfig.Cod1AxisBots,
                     "32", out string settingsError))
                 {
-                    MessageBox.Show(settingsError, "Invalid Call of Duty 1 settings", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show(settingsError, LocalizationManager.Get("CallOfDutySettingsTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
             }
@@ -1157,7 +1146,7 @@ namespace WindowsGSM
                 }
                 catch
                 {
-                    System.Windows.Forms.MessageBox.Show(installPath + " is not accessible!", "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    System.Windows.Forms.MessageBox.Show(string.Format(LocalizationManager.Get("InstallPathInaccessible"), installPath), LocalizationManager.Get("ErrorTitle"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
             }
@@ -1168,7 +1157,7 @@ namespace WindowsGSM
             textbox_InstallServerName.IsEnabled = false;
             comboBox_InstallGameServer.IsEnabled = false;
             progressbar_InstallProgress.IsIndeterminate = true;
-            textblock_InstallProgress.Text = "Installing";
+            textblock_InstallProgress.Text = LocalizationManager.Get("InstallProgress");
             button_Install.IsEnabled = false;
             textbox_InstallLog.Text = string.Empty;
 
@@ -1209,7 +1198,7 @@ namespace WindowsGSM
             if (isCod1 && (!baseInstallValid || Installer == null || Installer.ExitCode != 0))
             {
                 string steamFailure = installFailure;
-                textblock_InstallProgress.Text = "SteamCMD failed or returned an invalid install; trying configured HTTPS fallback";
+                textblock_InstallProgress.Text = LocalizationManager.Get("InstallFallbackMessage");
                 await gameServer.InstallFallback();
                 baseInstallValid = gameServer.IsBaseInstallValid();
                 if (!baseInstallValid)
@@ -1291,12 +1280,12 @@ namespace WindowsGSM
                 textbox_InstallServerName.IsEnabled = true;
                 comboBox_InstallGameServer.IsEnabled = true;
                 progressbar_InstallProgress.IsIndeterminate = false;
-                textblock_InstallProgress.Text = "Install";
+                textblock_InstallProgress.Text = LocalizationManager.Get("Install");
                 button_Install.IsEnabled = true;
 
                 if (!string.IsNullOrWhiteSpace(componentFailure)) { installFailure += Environment.NewLine + "MeatBots installation: " + componentFailure; }
                 if (string.IsNullOrWhiteSpace(installFailure)) { installFailure = gameServer.Error; }
-                textblock_InstallProgress.Text = $"Fail to install [ERROR] {installFailure}";
+                textblock_InstallProgress.Text = string.Format(LocalizationManager.Get("InstallFailed"), installFailure);
             }
         }
 
@@ -1365,7 +1354,7 @@ namespace WindowsGSM
                 comboBox_ImportGameServer.IsEnabled = true;
                 progressbar_ImportProgress.IsIndeterminate = false;
                 textblock_ImportProgress.Text = string.Empty;
-                button_Import.Content = "Import";
+                button_Import.Content = LocalizationManager.Get("Import");
 
                 var newServerConfig = new ServerConfig(null);
                 textbox_ImportServerName.Text = $"WindowsGSM - Server #{newServerConfig.ServerID}";
@@ -1375,7 +1364,7 @@ namespace WindowsGSM
         private async void Button_Import_Click(object sender, RoutedEventArgs e)
         {
             var selectedgame = (Images.Row)comboBox_ImportGameServer.SelectedItem;
-            label_ServerDirWarn.Content = Directory.Exists(textbox_ServerDir.Text) ? string.Empty : "Server Dir is invalid";
+            label_ServerDirWarn.Content = Directory.Exists(textbox_ServerDir.Text) ? string.Empty : LocalizationManager.Get("ServerDirectoryInvalid");
             if (string.IsNullOrWhiteSpace(textbox_ImportServerName.Text) || selectedgame == null) { return; }
 
             string servername = textbox_ImportServerName.Text;
@@ -1399,7 +1388,7 @@ namespace WindowsGSM
                 }
                 catch
                 {
-                    System.Windows.Forms.MessageBox.Show(importPath + " is not accessible!", "ERROR", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    System.Windows.Forms.MessageBox.Show(string.Format(LocalizationManager.Get("ImportPathInaccessible"), importPath), LocalizationManager.Get("ErrorTitle"), MessageBoxButtons.OK, MessageBoxIcon.Error);
                     return;
                 }
             }
@@ -1410,7 +1399,7 @@ namespace WindowsGSM
             textbox_ServerDir.IsEnabled = false;
             button_Browse.IsEnabled = false;
             progressbar_ImportProgress.IsIndeterminate = true;
-            textblock_ImportProgress.Text = "Importing";
+            textblock_ImportProgress.Text = LocalizationManager.Get("ImportProgress");
 
             string sourcePath = textbox_ServerDir.Text;
             string importLog = await Task.Run(() =>
@@ -1440,8 +1429,9 @@ namespace WindowsGSM
                 textbox_ServerDir.IsEnabled = true;
                 button_Browse.IsEnabled = true;
                 progressbar_ImportProgress.IsIndeterminate = false;
-                textblock_ImportProgress.Text = "[ERROR] Fail to import";
-                MessageBox.Show($"Fail to copy the directory.\n{textbox_ServerDir.Text}\nto\n{importPath}\n\nYou may install a new server and copy the old servers file to the new server.\n\nException: {importLog}", "ERROR", MessageBoxButton.OK, MessageBoxImage.Error);
+                textblock_ImportProgress.Text = LocalizationManager.Get("ImportFailed");
+                string message = string.Format(LocalizationManager.Get("ImportCopyFailure"), textbox_ServerDir.Text, importPath, importLog);
+                MessageBox.Show(message, LocalizationManager.Get("ErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
@@ -1479,7 +1469,7 @@ namespace WindowsGSM
 
             if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped) { return; }
 
-            MessageBoxResult result = MessageBox.Show("Do you want to delete this server?\n(There is no comeback)", "Confirmation", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            MessageBoxResult result = MessageBox.Show(LocalizationManager.Get("DeleteServerConfirmation"), LocalizationManager.Get("ConfirmationTitle"), MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (result != MessageBoxResult.Yes) { return; }
 
             await GameServer_Delete(server);
@@ -1494,11 +1484,11 @@ namespace WindowsGSM
 
             var settings = new MetroDialogSettings
             {
-                AffirmativeButtonText = "Save",
+                AffirmativeButtonText = LocalizationManager.Get("SaveButton"),
                 DefaultText = webhookUrl
             };
 
-            webhookUrl = await this.ShowInputAsync("Discord Webhook URL", "Please enter the discord webhook url.", settings);
+            webhookUrl = await this.ShowInputAsync(LocalizationManager.Get("DiscordWebhookTitle"), LocalizationManager.Get("DiscordWebhookPrompt"), settings);
             if (webhookUrl == null) { return; } //If pressed cancel
 
             _serverMetadata[int.Parse(server.ID)].DiscordWebhook = webhookUrl;
@@ -1514,11 +1504,11 @@ namespace WindowsGSM
 
             var settings = new MetroDialogSettings
             {
-                AffirmativeButtonText = "Save",
+                AffirmativeButtonText = LocalizationManager.Get("SaveButton"),
                 DefaultText = message
             };
 
-            message = await this.ShowInputAsync("Discord Custom Message", "Please enter the custom message.\n\nExample ping message <@discorduserid>:\n<@348921660361146380>", settings);
+            message = await this.ShowInputAsync(LocalizationManager.Get("DiscordCustomMessageTitle"), LocalizationManager.Get("DiscordCustomMessagePrompt"), settings);
             if (message == null) { return; } //If pressed cancel
 
             _serverMetadata[int.Parse(server.ID)].DiscordMessage = message;
@@ -1717,7 +1707,7 @@ namespace WindowsGSM
 
             if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped) { return; }
 
-            MessageBoxResult result = System.Windows.MessageBox.Show("Do you want to update this server?", "Confirmation", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            MessageBoxResult result = System.Windows.MessageBox.Show(LocalizationManager.Get("UpdateServerConfirmation"), LocalizationManager.Get("ConfirmationTitle"), MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (result != MessageBoxResult.Yes) { return; }
 
             await GameServer_Update(server);
@@ -1730,7 +1720,7 @@ namespace WindowsGSM
 
             if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped) { return; }
 
-            MessageBoxResult result = System.Windows.MessageBox.Show("Do you want to validate this server?", "Confirmation", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            MessageBoxResult result = System.Windows.MessageBox.Show(LocalizationManager.Get("ValidateServerConfirmation"), LocalizationManager.Get("ConfirmationTitle"), MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (result != MessageBoxResult.Yes) { return; }
 
             await GameServer_Update(server, notes: " | Validate", validate: true);
@@ -1743,7 +1733,7 @@ namespace WindowsGSM
 
             if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped) { return; }
 
-            MessageBoxResult result = System.Windows.MessageBox.Show("Do you want to backup on this server?", "Confirmation", MessageBoxButton.YesNo, MessageBoxImage.Question);
+            MessageBoxResult result = System.Windows.MessageBox.Show(LocalizationManager.Get("BackupServerConfirmation"), LocalizationManager.Get("ConfirmationTitle"), MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (result != MessageBoxResult.Yes) { return; }
 
             await GameServer_Backup(server);
@@ -2783,17 +2773,23 @@ namespace WindowsGSM
 
         private void SetServerStatus(ServerTable server, string status, string pid = null)
         {
-            server.Status = status;
+            if (!Enum.TryParse(status, out ServerStatus statusCode) || !Enum.IsDefined(typeof(ServerStatus), statusCode))
+            {
+                throw new ArgumentException("The server status is invalid.", nameof(status));
+            }
+
+            server.StatusCode = statusCode;
+            server.Status = LocalizationManager.Get("Status" + statusCode);
             if (pid != null)
             {
                 server.PID = pid;
             }
-            if (status == "Stopped")
+            if (statusCode == ServerStatus.Stopped)
             {
                 server.PID = string.Empty;
             }
 
-            if (server.Status != "Started" && server.Maxplayers.Contains('/'))
+            if (statusCode != ServerStatus.Started && server.Maxplayers.Contains('/'))
             {
                 var serverConfig = new ServerConfig(server.ID);
                 server.Maxplayers = serverConfig.ServerMaxPlayer;
@@ -3045,6 +3041,19 @@ namespace WindowsGSM
         }
         #endregion
 
+        #region Language Settings
+        private void ComboBox_Language_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            string language = comboBox_Language.SelectedValue as string;
+            if (string.IsNullOrEmpty(language) || language == LocalizationManager.SelectedLanguage)
+            {
+                return;
+            }
+
+            LocalizationManager.SaveLanguage(language);
+        }
+        #endregion
+
         #region Theme Settings
         private void ComboBox_Themes_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
@@ -3073,30 +3082,30 @@ namespace WindowsGSM
 
         private async void Help_SoftwareUpdates_Click(object sender, RoutedEventArgs e)
         {
-            ProgressDialogController controller = await this.ShowProgressAsync("Checking updates...", "Please wait...");
+            ProgressDialogController controller = await this.ShowProgressAsync(LocalizationManager.Get("CheckingUpdates"), LocalizationManager.Get("PleaseWait"));
             controller.SetIndeterminate();
             string latestVersion = await GetLatestVersion();
             await controller.CloseAsync();
 
             if (string.IsNullOrEmpty(latestVersion))
             {
-                await this.ShowMessageAsync("Software Updates", "Could not load a usable release from CdogsWindowsGSM. Check your connection and ensure the latest release includes CdogsWindowsGSM.exe and CdogsWindowsGSM-Updater.exe.");
+                await this.ShowMessageAsync(LocalizationManager.Get("SoftwareUpdates"), LocalizationManager.Get("UpdateReleaseUnavailable"));
                 return;
             }
 
             if (latestVersion == WGSM_VERSION)
             {
-                await this.ShowMessageAsync("Software Updates", "CdogsWindowsGSM is up to date.");
+                await this.ShowMessageAsync(LocalizationManager.Get("SoftwareUpdates"), LocalizationManager.Get("SoftwareUpToDate"));
                 return;
             }
 
             var settings = new MetroDialogSettings
             {
-                AffirmativeButtonText = "Update",
+                AffirmativeButtonText = LocalizationManager.Get("UpdateButton"),
                 DefaultButtonFocus = MessageDialogResult.Affirmative
             };
 
-            var result = await this.ShowMessageAsync("Software Updates", $"Version {latestVersion} is available, would you like to update now?\n\nWarning: All servers will be shutdown!", MessageDialogStyle.AffirmativeAndNegative, settings);
+            var result = await this.ShowMessageAsync(LocalizationManager.Get("SoftwareUpdates"), string.Format(LocalizationManager.Get("UpdateAvailable"), latestVersion), MessageDialogStyle.AffirmativeAndNegative, settings);
 
             if (result.ToString().Equals("Affirmative"))
             {
@@ -3104,14 +3113,14 @@ namespace WindowsGSM
                 Directory.CreateDirectory(installPath);
 
                 string filePath = Path.Combine(installPath, UpdaterFileName);
-                controller = await this.ShowProgressAsync("Downloading CdogsWindowsGSM-Updater...", "Please wait...");
+                controller = await this.ShowProgressAsync(LocalizationManager.Get("DownloadingUpdater"), LocalizationManager.Get("PleaseWait"));
                 controller.SetIndeterminate();
                 bool updaterDownloaded = await DownloadWindowsGSMUpdater();
                 await controller.CloseAsync();
 
                 if (!updaterDownloaded || !File.Exists(filePath))
                 {
-                    await this.ShowMessageAsync("Software Updates", $"Unable to download {UpdaterFileName}. The latest release must include both CdogsWindowsGSM.exe and {UpdaterFileName}.");
+                    await this.ShowMessageAsync(LocalizationManager.Get("SoftwareUpdates"), string.Format(LocalizationManager.Get("UpdaterDownloadFailed"), UpdaterFileName));
                     return;
                 }
 
@@ -3147,7 +3156,7 @@ namespace WindowsGSM
                 }
                 else
                 {
-                    await this.ShowMessageAsync("Software Updates", $"Fail to download {UpdaterFileName}");
+                    await this.ShowMessageAsync(LocalizationManager.Get("SoftwareUpdates"), string.Format(LocalizationManager.Get("UpdaterDownloadError"), UpdaterFileName));
                 }
             }
         }
@@ -3297,7 +3306,7 @@ namespace WindowsGSM
 
         private async void Help_AboutWindowsGSM_Click(object sender, RoutedEventArgs e)
         {
-            await this.ShowMessageAsync("About Cdog's WindowsGSM", $"Product:\t\tCdog's WindowsGSM\nVersion:\t\t{WGSM_VERSION.Substring(1)}\nCreator:\t\tCdogsWindowsGSM contributors");
+            await this.ShowMessageAsync(LocalizationManager.Get("AboutTitle"), string.Format(LocalizationManager.Get("AboutDetails"), WGSM_VERSION.Substring(1)));
         }
         #endregion
 
@@ -3310,25 +3319,30 @@ namespace WindowsGSM
             if (row.Game == GameServer.MCPE.FullName || row.Game == GameServer.MC.FullName ||
                 row.Game == GameServer.PaperMC.FullName || row.Game == GameServer.ForgeMC.FullName)
             {
-                Log(row.ID, $"This feature is not applicable on {row.Game}");
+                Log(row.ID, string.Format(LocalizationManager.Get("GlobalFeatureNotApplicable"), row.Game));
                 return;
             }
 
             string publicIP = GetPublicIP();
             if (publicIP == null)
             {
-                Log(row.ID, "Fail to check. Reason: Fail to get the public ip.");
+                Log(row.ID, LocalizationManager.Get("GlobalCheckPublicIpFailed"));
                 return;
             }
 
-            string messageText = $"Server Name: {row.Name}\nPublic IP: {publicIP}\nQuery Port: {row.QueryPort}";
+            string messageText = string.Join(Environment.NewLine, new[]
+            {
+                string.Format(LocalizationManager.Get("GlobalServerName"), row.Name),
+                string.Format(LocalizationManager.Get("GlobalPublicIp"), publicIP),
+                string.Format(LocalizationManager.Get("GlobalQueryPort"), row.QueryPort)
+            });
             if (GlobalServerList.IsServerOnSteamServerList(publicIP, row.QueryPort))
             {
-                MessageBox.Show(messageText + "\n\nResult: Online\n\nYour server is on the global server list!", "Global Server List Check", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBox.Show(string.Format(LocalizationManager.Get("GlobalServerListOnline"), messageText), LocalizationManager.Get("GlobalServerListCheckTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
             }
             else
             {
-                MessageBox.Show(messageText + "\n\nResult: Offline\n\nYour server is not on the global server list.", "Global Server List Check", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(string.Format(LocalizationManager.Get("GlobalServerListOffline"), messageText), LocalizationManager.Get("GlobalServerListCheckTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
 
@@ -3340,26 +3354,26 @@ namespace WindowsGSM
             bool? existed = InstallAddons.IsAMXModXAndMetaModPExists(server);
             if (existed == null)
             {
-                await this.ShowMessageAsync("Tools - Install AMX Mod X & MetaMod-P", $"Doesn't support on {server.Game} (ID: {server.ID})");
+                await this.ShowMessageAsync(LocalizationManager.Get("AddonAmxTitle"), string.Format(LocalizationManager.Get("AddonUnsupported"), server.Game, server.ID));
                 return;
             }
 
             if (existed == true)
             {
-                await this.ShowMessageAsync("Tools - Install AMX Mod X & MetaMod-P", $"Already Installed (ID: {server.ID})");
+                await this.ShowMessageAsync(LocalizationManager.Get("AddonAmxTitle"), string.Format(LocalizationManager.Get("AddonAlreadyInstalled"), server.ID));
                 return;
             }
 
-            var result = await this.ShowMessageAsync("Tools - Install AMX Mod X & MetaMod-P", $"Are you sure to install? (ID: {server.ID})", MessageDialogStyle.AffirmativeAndNegative);
+            var result = await this.ShowMessageAsync(LocalizationManager.Get("AddonAmxTitle"), string.Format(LocalizationManager.Get("AddonInstallConfirm"), server.ID), MessageDialogStyle.AffirmativeAndNegative);
             if (result == MessageDialogResult.Affirmative)
             {
-                ProgressDialogController controller = await this.ShowProgressAsync("Installing...", "Please wait...");
+                ProgressDialogController controller = await this.ShowProgressAsync(LocalizationManager.Get("InstallingProgress"), LocalizationManager.Get("PleaseWait"));
                 controller.SetIndeterminate();
                 bool installed = await InstallAddons.AMXModXAndMetaModP(server);
                 await controller.CloseAsync();
 
-                string message = installed ? $"Installed successfully" : $"Fail to install";
-                await this.ShowMessageAsync("Tools - Install AMX Mod X & MetaMod-P", $"{message} (ID: {server.ID})");
+                string message = LocalizationManager.Get(installed ? "AddonInstallSuccess" : "AddonInstallFailed");
+                await this.ShowMessageAsync(LocalizationManager.Get("AddonAmxTitle"), string.Format(LocalizationManager.Get("AddonResultWithId"), message, server.ID));
             }
         }
 
@@ -3371,26 +3385,26 @@ namespace WindowsGSM
             bool? existed = InstallAddons.IsSourceModAndMetaModExists(server);
             if (existed == null)
             {
-                await this.ShowMessageAsync("Tools - Install SourceMod & MetaMod", $"Doesn't support on {server.Game} (ID: {server.ID})");
+                await this.ShowMessageAsync(LocalizationManager.Get("AddonSourceTitle"), string.Format(LocalizationManager.Get("AddonUnsupported"), server.Game, server.ID));
                 return;
             }
 
             if (existed == true)
             {
-                await this.ShowMessageAsync("Tools - Install SourceMod & MetaMod", $"Already Installed (ID: {server.ID})");
+                await this.ShowMessageAsync(LocalizationManager.Get("AddonSourceTitle"), string.Format(LocalizationManager.Get("AddonAlreadyInstalled"), server.ID));
                 return;
             }
 
-            var result = await this.ShowMessageAsync("Tools - Install SourceMod & MetaMod", $"Are you sure to install? (ID: {server.ID})", MessageDialogStyle.AffirmativeAndNegative);
+            var result = await this.ShowMessageAsync(LocalizationManager.Get("AddonSourceTitle"), string.Format(LocalizationManager.Get("AddonInstallConfirm"), server.ID), MessageDialogStyle.AffirmativeAndNegative);
             if (result == MessageDialogResult.Affirmative)
             {
-                var controller = await this.ShowProgressAsync("Installing...", "Please wait...");
+                var controller = await this.ShowProgressAsync(LocalizationManager.Get("InstallingProgress"), LocalizationManager.Get("PleaseWait"));
                 controller.SetIndeterminate();
                 bool installed = await InstallAddons.SourceModAndMetaMod(server);
                 await controller.CloseAsync();
 
-                var message = installed ? $"Installed successfully" : $"Fail to install";
-                await this.ShowMessageAsync("Tools - Install SourceMod & MetaMod", $"{message} (ID: {server.ID})");
+                var message = LocalizationManager.Get(installed ? "AddonInstallSuccess" : "AddonInstallFailed");
+                await this.ShowMessageAsync(LocalizationManager.Get("AddonSourceTitle"), string.Format(LocalizationManager.Get("AddonResultWithId"), message, server.ID));
             }
         }
 
@@ -3402,26 +3416,26 @@ namespace WindowsGSM
             bool? existed = InstallAddons.IsDayZSALModServerExists(server);
             if (existed == null)
             {
-                await this.ShowMessageAsync("Tools - Install DayZSAL Mod Server", $"Doesn't support on {server.Game} (ID: {server.ID})");
+                await this.ShowMessageAsync(LocalizationManager.Get("AddonDayzTitle"), string.Format(LocalizationManager.Get("AddonUnsupported"), server.Game, server.ID));
                 return;
             }
 
             if (existed == true)
             {
-                await this.ShowMessageAsync("Tools - Install DayZSAL Mod Server", $"Already Installed (ID: {server.ID})");
+                await this.ShowMessageAsync(LocalizationManager.Get("AddonDayzTitle"), string.Format(LocalizationManager.Get("AddonAlreadyInstalled"), server.ID));
                 return;
             }
 
-            var result = await this.ShowMessageAsync("Tools - Install DayZSAL Mod Server", $"Are you sure to install? (ID: {server.ID})", MessageDialogStyle.AffirmativeAndNegative);
+            var result = await this.ShowMessageAsync(LocalizationManager.Get("AddonDayzTitle"), string.Format(LocalizationManager.Get("AddonInstallConfirm"), server.ID), MessageDialogStyle.AffirmativeAndNegative);
             if (result == MessageDialogResult.Affirmative)
             {
-                ProgressDialogController controller = await this.ShowProgressAsync("Installing...", "Please wait...");
+                ProgressDialogController controller = await this.ShowProgressAsync(LocalizationManager.Get("InstallingProgress"), LocalizationManager.Get("PleaseWait"));
                 controller.SetIndeterminate();
                 bool installed = await InstallAddons.DayZSALModServer(server);
                 await controller.CloseAsync();
 
-                string message = installed ? $"Installed successfully" : $"Fail to install";
-                await this.ShowMessageAsync("Tools - Install DayZSAL Mod Server", $"{message} (ID: {server.ID})");
+                string message = LocalizationManager.Get(installed ? "AddonInstallSuccess" : "AddonInstallFailed");
+                await this.ShowMessageAsync(LocalizationManager.Get("AddonDayzTitle"), string.Format(LocalizationManager.Get("AddonResultWithId"), message, server.ID));
             }
         }
 
@@ -3430,25 +3444,25 @@ namespace WindowsGSM
             var server = (ServerTable)ServerGrid.SelectedItem;
             if (server == null) { return; }
 
-            string messageTitle = "Tools - Install OxideMod";
+            string messageTitle = LocalizationManager.Get("AddonOxideTitle");
 
             bool? existed = InstallAddons.IsOxideModExists(server);
             if (existed == null)
             {
-                await this.ShowMessageAsync(messageTitle, $"Doesn't support on {server.Game} (ID: {server.ID})");
+                await this.ShowMessageAsync(messageTitle, string.Format(LocalizationManager.Get("AddonUnsupported"), server.Game, server.ID));
                 return;
             }
 
-            var result = await this.ShowMessageAsync(messageTitle, $"Are you sure to install/Update? (ID: {server.ID})", MessageDialogStyle.AffirmativeAndNegative);
+            var result = await this.ShowMessageAsync(messageTitle, string.Format(LocalizationManager.Get("AddonInstallOrUpdateConfirm"), server.ID), MessageDialogStyle.AffirmativeAndNegative);
             if (result == MessageDialogResult.Affirmative)
             {
-                ProgressDialogController controller = await this.ShowProgressAsync("Installing...", "Please wait...");
+                ProgressDialogController controller = await this.ShowProgressAsync(LocalizationManager.Get("InstallingProgress"), LocalizationManager.Get("PleaseWait"));
                 controller.SetIndeterminate();
                 bool installed = await InstallAddons.OxideMod(server);
                 await controller.CloseAsync();
 
-                string message = installed ? $"Installed successfully" : $"Fail to install";
-                await this.ShowMessageAsync(messageTitle, $"{message} (ID: {server.ID})");
+                string message = LocalizationManager.Get(installed ? "AddonInstallSuccess" : "AddonInstallFailed");
+                await this.ShowMessageAsync(messageTitle, string.Format(LocalizationManager.Get("AddonResultWithId"), message, server.ID));
             }
         }
         #endregion
@@ -3558,8 +3572,8 @@ namespace WindowsGSM
                 }
 
                 textBlock_EC_MapRotationStatus.Text = availableMaps.Count == 0
-                    ? $"No .bsp maps found in {mapDirectory}"
-                    : $"{availableMaps.Count} maps found in {mapDirectory}";
+                    ? string.Format(LocalizationManager.Get("MapRotationNoBspMapsFound"), mapDirectory)
+                    : string.Format(LocalizationManager.Get("MapRotationBspMapsFound"), availableMaps.Count, mapDirectory);
             }
 
             textbox_EC_ServerID.Text = serverConfig.ServerID;
@@ -3594,7 +3608,7 @@ namespace WindowsGSM
                     numericUpDown_EC_ServerMaxplayer.Value.ToString(),
                     out string settingsError))
             {
-                MessageBox.Show(settingsError, "Invalid Call of Duty 1 settings", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(settingsError, LocalizationManager.Get("CallOfDutySettingsTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
@@ -3618,7 +3632,7 @@ namespace WindowsGSM
                 }
                 catch (Exception ex)
                 {
-                    MessageBox.Show($"Failed to save map rotation: {ex.Message}", "Save Error", MessageBoxButton.OK, MessageBoxImage.Error);
+                    MessageBox.Show(string.Format(LocalizationManager.Get("MapRotationSaveError"), ex.Message), LocalizationManager.Get("SaveErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
             }
@@ -3805,11 +3819,11 @@ namespace WindowsGSM
 
             var settings = new MetroDialogSettings
             {
-                AffirmativeButtonText = "Save",
+                AffirmativeButtonText = LocalizationManager.Get("SaveButton"),
                 DefaultText = crontabFormat
             };
 
-            crontabFormat = await this.ShowInputAsync("Crontab Format", "Please enter the crontab expressions", settings);
+            crontabFormat = await this.ShowInputAsync(LocalizationManager.Get("CrontabFormatTitle"), LocalizationManager.Get("CrontabFormatPrompt"), settings);
             if (crontabFormat == null) { return; } //If pressed cancel
 
             _serverMetadata[int.Parse(server.ID)].CrontabFormat = crontabFormat;
@@ -3901,16 +3915,16 @@ namespace WindowsGSM
 
         private void Button_DiscordBotPrefixEdit_Click(object sender, RoutedEventArgs e)
         {
-            if (button_DiscordBotPrefixEdit.Content.ToString() == "Edit")
+            if (button_DiscordBotPrefixEdit.Content.ToString() == LocalizationManager.Get("Edit"))
             {
-                button_DiscordBotPrefixEdit.Content = "Save";
+                button_DiscordBotPrefixEdit.Content = LocalizationManager.Get("Save");
                 textBox_DiscordBotPrefix.IsEnabled = true;
                 textBox_DiscordBotPrefix.Focus();
                 textBox_DiscordBotPrefix.SelectAll();
             }
             else
             {
-                button_DiscordBotPrefixEdit.Content = "Edit";
+                button_DiscordBotPrefixEdit.Content = LocalizationManager.Get("Edit");
                 textBox_DiscordBotPrefix.IsEnabled = false;
                 DiscordBot.Configs.SetBotPrefix(textBox_DiscordBotPrefix.Text);
                 label_DiscordBotCommands.Content = DiscordBot.Configs.GetCommandsList();
@@ -3919,10 +3933,10 @@ namespace WindowsGSM
 
         private void Button_DiscordBotTokenEdit_Click(object sender, RoutedEventArgs e)
         {
-            if (button_DiscordBotTokenEdit.Content.ToString() == "Edit")
+            if (button_DiscordBotTokenEdit.Content.ToString() == LocalizationManager.Get("Edit"))
             {
                 rectangle_DiscordBotTokenSpoiler.Visibility = Visibility.Hidden;
-                button_DiscordBotTokenEdit.Content = "Save";
+                button_DiscordBotTokenEdit.Content = LocalizationManager.Get("Save");
                 textBox_DiscordBotToken.IsEnabled = true;
                 textBox_DiscordBotToken.Focus();
                 textBox_DiscordBotToken.SelectAll();
@@ -3930,7 +3944,7 @@ namespace WindowsGSM
             else
             {
                 rectangle_DiscordBotTokenSpoiler.Visibility = Visibility.Visible;
-                button_DiscordBotTokenEdit.Content = "Edit";
+                button_DiscordBotTokenEdit.Content = LocalizationManager.Get("Edit");
                 textBox_DiscordBotToken.IsEnabled = false;
                 DiscordBot.Configs.SetBotToken(textBox_DiscordBotToken.Text);
             }
@@ -3966,10 +3980,10 @@ namespace WindowsGSM
         {
             var settings = new MetroDialogSettings
             {
-                AffirmativeButtonText = "Add"
+                AffirmativeButtonText = LocalizationManager.Get("AddButton")
             };
 
-            string newAdminID = await this.ShowInputAsync("Add Admin ID", "Please enter the discord user ID.", settings);
+            string newAdminID = await this.ShowInputAsync(LocalizationManager.Get("AddAdminId"), LocalizationManager.Get("DiscordUserIdPrompt"), settings);
             if (newAdminID == null) { return; } //If pressed cancel
 
             var adminList = DiscordBot.Configs.GetBotAdminList();
@@ -3985,12 +3999,14 @@ namespace WindowsGSM
 
             var settings = new MetroDialogSettings
             {
-                AffirmativeButtonText = "Save",
+                AffirmativeButtonText = LocalizationManager.Get("SaveButton"),
                 DefaultText = adminListItem.ServerIds
             };
 
-            string example = "0 - Grant All servers Permission.\n\nExamples:\n0\n1,2,3,4,5\n";
-            string newServerIds = await this.ShowInputAsync($"Edit Server IDs ({adminListItem.AdminId})", $"Please enter the server Ids where admin has access to the server.\n{example}", settings);
+            string example = LocalizationManager.Get("ServerIdsExample");
+            string title = string.Format(LocalizationManager.Get("EditServerIdsTitle"), adminListItem.AdminId);
+            string prompt = string.Format(LocalizationManager.Get("EditServerIdsPrompt"), example);
+            string newServerIds = await this.ShowInputAsync(title, prompt, settings);
             if (newServerIds == null) { return; } //If pressed cancel
 
             var adminList = DiscordBot.Configs.GetBotAdminList();
@@ -4191,11 +4207,11 @@ namespace WindowsGSM
             if (HamburgerMenuControl.SelectedIndex == 2)
             {
                 label_DiscordBotCommands.Content = DiscordBot.Configs.GetCommandsList();
-                button_DiscordBotPrefixEdit.Content = "Edit";
+                button_DiscordBotPrefixEdit.Content = LocalizationManager.Get("Edit");
                 textBox_DiscordBotPrefix.IsEnabled = false;
                 textBox_DiscordBotPrefix.Text = DiscordBot.Configs.GetBotPrefix();
 
-                button_DiscordBotTokenEdit.Content = "Edit";
+                button_DiscordBotTokenEdit.Content = LocalizationManager.Get("Edit");
                 textBox_DiscordBotToken.IsEnabled = false;
                 textBox_DiscordBotToken.Text = DiscordBot.Configs.GetBotToken();
                 //textBox_DiscordBotDashboard.Text = DiscordBot.Configs.GetDashboardChannel();
