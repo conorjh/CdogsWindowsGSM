@@ -14,6 +14,7 @@ A community-maintained Windows desktop application for installing, importing, an
 - **CoD4x:** downloads the upstream [CoD4x 21.2](https://github.com/callofduty4x/CoD4x_Server/releases/tag/21.2) server binary (AGPL-3.0); a licensed Call of Duty 4 game installation is required and proprietary game data is not redistributed. No third-party bot package is included.
 - **Map rotation:** double-click to add or remove maps in the Source and GoldSrc map-rotation interfaces.
 - **GoldSrc IP binding:** passes the configured Server IP using `+ip` so HLDS uses the selected local address on multi-NIC hosts. Avoid conflicting `+ip` entries in Server Parameters.
+- **Server-list actions:** update all stopped servers sequentially, alongside the existing start/stop/restart all actions; hover over a game icon to see the full game name.
 - **In-app updates:** checks for releases from this fork.
 
 |               | 🎮 Game Server  | Supported | Query |
@@ -23,8 +24,8 @@ A community-maintained Windows desktop application for installing, importing, an
 | ![logo](CdogsWindowsGSM/Images/Games/avorion.png?raw=true)| Avorion Dedicated Server                          |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/bt.png?raw=true)     | Barotrauma Dedicated Server                       |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/bw.png?raw=true)     | BlackWake Dedicated Server                        |✅|      |
-| ![logo](CdogsWindowsGSM/Images/Games/dod.png?raw=true)    | Call of Duty 1 Dedicated Server                   |✅|      |
-| ![logo](CdogsWindowsGSM/Images/WindowsGSM.png?raw=true)   | Call of Duty 4: Modern Warfare Dedicated Server (CoD4x) |✅|      |
+| ![logo](CdogsWindowsGSM/Images/Games/cod1.png?raw=true)   | Call of Duty 1 Dedicated Server                   |✅|      |
+| ![logo](CdogsWindowsGSM/Images/Games/cod4.png?raw=true)   | Call of Duty 4: Modern Warfare Dedicated Server (CoD4x) |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/ce.png?raw=true)     | Conan Exiles Dedicated Server                     |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/cs.png?raw=true)     | Counter-Strike: 1.6 Dedicated Server              |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/cscz.png?raw=true)   | Counter-Strike: Condition Zero Dedicated Server   |✅| A2S  |
@@ -45,18 +46,26 @@ A community-maintained Windows desktop application for installing, importing, an
 | ![logo](CdogsWindowsGSM/Images/Games/inss.png?raw=true)   | Insurgency: Sandstorm Dedicated Server            |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/l4d2.png?raw=true)   | Left 4 Dead 2 Dedicated Server                    |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/mcbe.png?raw=true)   | Minecraft: Bedrock Edition Server                 |✅|      |
+| ![logo](CdogsWindowsGSM/Images/Games/mc.png?raw=true)     | Minecraft: Forge Server                           |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/mc.png?raw=true)     | Minecraft: Java Edition Server                    |✅| UT3  |
+| ![logo](CdogsWindowsGSM/Images/Games/mc.png?raw=true)     | Minecraft: Paper Server                           |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/mcpe.png?raw=true)   | Minecraft: Pocket Edition Server ([PocketMine-MP](https://github.com/pmmp/PocketMine-MP)) |✅| UT3  |
-| ![logo](CdogsWindowsGSM/Images/WindowsGSM.png?raw=true)   | Mindustry Dedicated Server                        |✅|      |
+| ![logo](CdogsWindowsGSM/Images/Games/mindustry.png?raw=true) | Mindustry Dedicated Server                     |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/mordhau.png?raw=true)| Mordhau Dedicated Server                          |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/nmrih.png?raw=true)  | No More Room in Hell Dedicated Server             |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/onset.png?raw=true)  | Onset Dedicated Server                            |✅|      |
+| ![logo](CdogsWindowsGSM/Images/Games/openra.png?raw=true) | OpenRA Dedicated Server                           |✅|      |
+| ![logo](CdogsWindowsGSM/Images/Games/openttd.png?raw=true) | OpenTTD Dedicated Server                         |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/olow.png?raw=true)   | Outlaws of the Old West Dedicated Server          |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/ps.png?raw=true)     | Post Scriptum Dedicated Server                    |✅| A2S  |
-| ![logo](CdogsWindowsGSM/Images/Games/rok.png?raw=true)    | Reign Of Kings Dedicated Server                   |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/rcc.png?raw=true)    | Ricochet Dedicated Server                         |✅| A2S  |
-| ![logo](CdogsWindowsGSM/Images/Games/rcc.png?raw=true)    | Risk of Rain 2 Dedicated Server                   |✅| A2S  |
+| ![logo](CdogsWindowsGSM/Images/Games/rct2.png?raw=true)  | RCT2 Dedicated Server                             |✅|      |
+| ![logo](CdogsWindowsGSM/Images/Games/redm.png?raw=true)  | Red Dead Redemption 2 Server                      |✅|      |
+| ![logo](CdogsWindowsGSM/Images/Games/rok.png?raw=true)   | Reign Of Kings Dedicated Server                   |✅|      |
+| ![logo](CdogsWindowsGSM/Images/Games/ror2.png?raw=true)  | Risk of Rain 2 Dedicated Server                   |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/rust.png?raw=true)   | Rust Dedicated Server                             |✅| A2S  |
+| ![logo](CdogsWindowsGSM/Images/Games/scum.png?raw=true)  | SCUM dedicated server                             |✅| A2S  |
+| ![logo](CdogsWindowsGSM/Images/Games/soldat.png?raw=true) | Soldat Dedicated Server                           |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/se.png?raw=true)     | Space Engineers Dedicated Server                  |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/sq.png?raw=true)     | Squad Dedicated Server                            |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/sw.png?raw=true)     | Stormworks Dedicated Server                       |✅|      |
@@ -106,7 +115,7 @@ Allow support more game servers by installing plugins!
 
 ## Releases and updates
 
-Download builds from [Releases](https://github.com/conorjh/CdogsWindowsGSM/releases). In-app updates use releases published in this repository.
+The current release is [CdogsWindowsGSM 1.24.1](https://github.com/conorjh/CdogsWindowsGSM/releases/tag/v1.24.1). Download both `CdogsWindowsGSM.exe` and `CdogsWindowsGSM-Updater.exe` from its release assets. In-app updates use releases published in this repository.
 
 ## Upstream resources
 - **Original source:** [WindowsGSM/WindowsGSM](https://github.com/WindowsGSM/WindowsGSM)
