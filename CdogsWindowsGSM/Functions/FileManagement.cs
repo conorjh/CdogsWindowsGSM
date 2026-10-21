@@ -56,7 +56,7 @@ namespace WindowsGSM.Functions
                     string rootWithSeparator = extractionRoot.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar) + Path.DirectorySeparatorChar;
                     var entries = new List<KeyValuePair<IArchiveEntry, string>>();
 
-                    using (var archive = ArchiveFactory.Open(sourceArchiveFileName, new ReaderOptions()))
+                    using (var archive = ArchiveFactory.OpenArchive(sourceArchiveFileName, new ReaderOptions()))
                     {
                         foreach (IArchiveEntry entry in archive.Entries)
                         {

@@ -6,7 +6,7 @@
         xmlns:local="clr-namespace:WindowsGSM"
         xmlns:loc="clr-namespace:WindowsGSM.Localization"
         xmlns:mah="http://metro.mahapps.com/winfx/xaml/controls"          
-        xmlns:lvc="clr-namespace:LiveCharts.Wpf;assembly=LiveCharts.Wpf"
+        xmlns:lvc="clr-namespace:LiveChartsCore.SkiaSharpView.WPF;assembly=LiveChartsCore.SkiaSharpView.WPF"
         mc:Ignorable="d"
         Title="WindowsGSM" 
         Height="650" 
@@ -576,14 +576,7 @@
                     </DockPanel>
 
                     <DockPanel DockPanel.Dock="Top">
-                        <lvc:CartesianChart x:Name="livechart_players" LegendLocation="Right" Margin="0,10,0,0">
-                            <lvc:CartesianChart.AxisX>
-                                <lvc:Axis x:Name="livechart_players_axisX" Title="" Labels=""></lvc:Axis>
-                            </lvc:CartesianChart.AxisX>
-                            <lvc:CartesianChart.AxisY>
-                            <lvc:Axis x:Name="livechart_players_axisY" Title="{loc:Loc Key=Players}" MinValue="0" MaxValue="10"/>
-                            </lvc:CartesianChart.AxisY>
-                        </lvc:CartesianChart>
+                        <lvc:CartesianChart x:Name="livechart_players" LegendPosition="Right" Margin="0,10,0,0" />
                     </DockPanel>
                 </DockPanel>
             </Grid>

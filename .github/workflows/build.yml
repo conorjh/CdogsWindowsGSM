@@ -3,14 +3,26 @@ on: [push, pull_request]
 
 jobs:
   Build:
-    runs-on: windows-2019
+    runs-on: windows-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Setup MSBuild.exe
-      uses: microsoft/setup-msbuild@v1
-      env:
-        ACTIONS_ALLOW_UNSECURE_COMMANDS: true
-    - name: Restore packages
-      run: msbuild CdogsWindowsGSM.sln /t:restore
-    - name: Build with MSBuild
-      run: msbuild CdogsWindowsGSM.sln
+    - uses: actions/checkout@v4
+    - name: Setup .NET 10
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 10.0.x
+    - name: Restore
+      run: dotnet restore CdogsWindowsGSM.sln
+    - name: Build
+      run: dotnet build CdogsWindowsGSM.sln --configuration Release --no-restore
+    - name: Publish single-file app
+      run: dotnet publish .\CdogsWindowsGSM\CdogsWindowsGSM.csproj --configuration Release --no-restore --self-contained true --output .\artifacts\app
+    - name: Publish updater
+      run: dotnet publish .\CdogsWindowsGSM.Updater\CdogsWindowsGSM.Updater.csproj --configuration Release --no-restore --output .\artifacts\updater
+    - name: Upload release assets
+      uses: actions/upload-artifact@v4
+      with:
+        name: CdogsWindowsGSM-win-x64
+        path: |
+          artifacts\app\CdogsWindowsGSM.exe
+          artifacts\updater\CdogsWindowsGSM-Updater.exe
+        if-no-files-found: error
