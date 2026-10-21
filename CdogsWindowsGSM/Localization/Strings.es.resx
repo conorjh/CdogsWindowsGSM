@@ -26,6 +26,15 @@
   <data name="LanguageSystem"><value>Usar el idioma de Windows</value></data>
   <data name="LanguageEnglish"><value>English</value></data>
   <data name="LanguageSpanish"><value>Español</value></data>
+	<data name="LanguageFrench"><value>Français</value></data>
+  <data name="LanguageGerman"><value>Deutsch</value></data>
+  <data name="LanguageItalian"><value>Italiano</value></data>
+  <data name="LanguageDutch"><value>Nederlands</value></data>
+  <data name="LanguagePolish"><value>Polski</value></data>
+  <data name="LanguagePortuguese"><value>Português</value></data>
+  <data name="LanguageRomanian"><value>Română</value></data>
+  <data name="LanguageRussian"><value>Русский</value></data>
+  <data name="LanguageUkrainian"><value>Українська</value></data>
   <data name="LanguageRestartRequired"><value>Reinicia WindowsGSM para aplicar el cambio de idioma.</value></data>
   <data name="LanguageSaveFailed"><value>No se pudo guardar el idioma: {0}</value></data>
   <data name="DiscordAlertSettings"><value>Configuración de alertas de Discord</value></data>

@@ -105,6 +105,15 @@
                                 <ComboBoxItem Tag="system" Content="{loc:Loc Key=LanguageSystem}"/>
                                 <ComboBoxItem Tag="en" Content="{loc:Loc Key=LanguageEnglish}"/>
                                 <ComboBoxItem Tag="es" Content="{loc:Loc Key=LanguageSpanish}"/>
+                                <ComboBoxItem Tag="fr" Content="{loc:Loc Key=LanguageFrench}"/>
+                                <ComboBoxItem Tag="de" Content="{loc:Loc Key=LanguageGerman}"/>
+                                <ComboBoxItem Tag="it" Content="{loc:Loc Key=LanguageItalian}"/>
+                                <ComboBoxItem Tag="pt" Content="{loc:Loc Key=LanguagePortuguese}"/>
+                                <ComboBoxItem Tag="nl" Content="{loc:Loc Key=LanguageDutch}"/>
+                                <ComboBoxItem Tag="pl" Content="{loc:Loc Key=LanguagePolish}"/>
+                                <ComboBoxItem Tag="ro" Content="{loc:Loc Key=LanguageRomanian}"/>
+                                <ComboBoxItem Tag="ru" Content="{loc:Loc Key=LanguageRussian}"/>
+                                <ComboBoxItem Tag="uk" Content="{loc:Loc Key=LanguageUkrainian}"/>
                             </ComboBox>
                             <TextBlock Text="{loc:Loc Key=LanguageRestartRequired}" Margin="0,5,0,0" TextWrapping="Wrap"/>
                         </DockPanel>

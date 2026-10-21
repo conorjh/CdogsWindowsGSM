@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Globalization;
 using System.Resources;
@@ -13,6 +14,18 @@ namespace WindowsGSM.Localization
         private const string LanguageSettingName = "Language";
         private static readonly ResourceManager EnglishResources = new ResourceManager("WindowsGSM.Localization.Strings", typeof(LocalizationManager).Assembly);
         private static readonly ResourceManager SpanishResources = new ResourceManager("WindowsGSM.Localization.Strings.es", typeof(LocalizationManager).Assembly);
+        private static readonly Dictionary<string, string> LocalizedResourcePrefixes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+        {
+            { "fr", "fr." },
+            { "de", "de." },
+            { "it", "it." },
+            { "pt", "pt." },
+            { "nl", "nl." },
+            { "pl", "pl." },
+            { "ro", "ro." },
+            { "ru", "ru." },
+            { "uk", "uk." }
+        };
         private static CultureInfo _systemUiCulture;
 
         public static string SelectedLanguage { get; private set; } = "system";
@@ -47,7 +60,18 @@ namespace WindowsGSM.Localization
                 throw new ArgumentException("A localization key is required.", nameof(key));
             }
 
-            ResourceManager resources = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName.Equals("es", StringComparison.OrdinalIgnoreCase)
+            string language = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
+            string resourcePrefix;
+            if (LocalizedResourcePrefixes.TryGetValue(language, out resourcePrefix))
+            {
+                string localizedValue = EnglishResources.GetString(resourcePrefix + key, CultureInfo.InvariantCulture);
+                if (localizedValue != null)
+                {
+                    return localizedValue;
+                }
+            }
+
+            ResourceManager resources = language.Equals("es", StringComparison.OrdinalIgnoreCase)
                 ? SpanishResources
                 : EnglishResources;
             string value = resources.GetString(key, CultureInfo.InvariantCulture);
@@ -86,16 +110,22 @@ namespace WindowsGSM.Localization
 
         private static bool IsSupportedLanguage(string language)
         {
-            return language == "system" || language == "en" || language == "es";
+            if (string.IsNullOrEmpty(language))
+            {
+                return false;
+            }
+
+            return language == "system"
+                || language == "en"
+                || language == "es"
+                || LocalizedResourcePrefixes.ContainsKey(language);
         }
 
         private static void ApplyCulture(string language)
         {
-            CultureInfo culture = language == "es"
-                ? CultureInfo.GetCultureInfo("es")
-                : language == "en"
-                    ? CultureInfo.GetCultureInfo("en")
-                    : _systemUiCulture;
+            CultureInfo culture = language == "system"
+                ? _systemUiCulture
+                : CultureInfo.GetCultureInfo(language);
 
             CultureInfo.DefaultThreadCurrentUICulture = culture;
             CultureInfo.CurrentUICulture = culture;

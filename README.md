@@ -105,11 +105,11 @@ A community-maintained Windows desktop application for installing, importing, an
 
 ### Languages
 
-WindowsGSM includes English and Spanish UI text. Choose **Use Windows language**, **English**, or **Español** in **Settings > Language**. The preference is saved for the current Windows user and takes effect the next time WindowsGSM starts. Unsupported Windows UI languages fall back to English.
+WindowsGSM includes English, Spanish, French, German, Italian, Portuguese, Dutch, Polish, Romanian, Russian, and Ukrainian UI text. Choose **Use Windows language** or a language in **Settings > Language**. The preference is saved for the current Windows user and takes effect the next time WindowsGSM starts. Unsupported Windows UI languages fall back to English.
 
-Translations cover the main window, settings, common server-management dialogs, status labels, and Minecraft EULA prompts. Game names, game-specific installer output, third-party plugin text, server logs, and game-server console output are provided by their respective sources and are not translated. Language resources are embedded in the application executable so the existing updater keeps them in sync.
+Translations cover the main window, settings, common server-management dialogs, status labels, and Minecraft EULA prompts. Game names, game-specific installer output, third-party plugin text, server logs, and game-server console output are provided by their respective sources and are not translated.
 
-To add a language, provide a matching `Strings.<culture>.resx`, embed it in the application, and add the culture to the language selector and localization manager. Keep resource keys and format placeholders consistent with `Strings.resx`.
+Translations are embedded in the application executable so the existing updater keeps them in sync. To add a language, add a `<culture>.<key>` entry to `Localization/Strings.resx` for every neutral resource key, register the culture prefix in `LocalizationManager`, and add a language option and display name. Keep format placeholders consistent with `Strings.resx`.
 
 ### Plugins
 Allow support more game servers by installing plugins!
