@@ -9,7 +9,7 @@ using WindowsGSM.Functions;
 
 namespace WindowsGSM.GameServer.Query
 {
-    public class A2S
+    public class A2S : IQueryPortDiscoveryProvider
     {
         private static readonly byte[] A2S_INFO = Encoding.Default.GetBytes("TSource Engine Query\0");
         private static readonly byte[] A2S_PLAYER = Encoding.Default.GetBytes("U");
@@ -20,6 +20,8 @@ namespace WindowsGSM.GameServer.Query
 
         private IPEndPoint _IPEndPoint;
         private int _timeout;
+
+        public QueryPortTransport Transport => QueryPortTransport.Udp;
 
         public A2S() { }
 
@@ -32,6 +34,18 @@ namespace WindowsGSM.GameServer.Query
         {
             _IPEndPoint = new IPEndPoint(IPAddress.Parse(address), port);
             _timeout = timeout * 1000;
+        }
+
+        public async Task<bool> RespondsOnPortAsync(string address, int port, int timeoutSeconds)
+        {
+            if (!IPAddress.TryParse(address, out IPAddress _) || port < 1 || port > ushort.MaxValue) { return false; }
+
+            var query = new A2S(address, port, timeoutSeconds);
+            Dictionary<string, string> response = await query.GetInfo();
+            return response != null &&
+                response.TryGetValue("Header", out string header) &&
+                (header == SOURCE_RESPONSE.ToString() || header == GOLDSOURCE_RESPONSE.ToString()) &&
+                response.ContainsKey("Name") && response.ContainsKey("Game");
         }
 
         /// <summary>Retrieves information about the server including, but not limited to: its name, the map currently being played, and the number of players.</summary>
@@ -104,14 +118,14 @@ namespace WindowsGSM.GameServer.Query
                             keys["Version"] = ReadString(br);
 
                             var edf = br.ReadByte();
-                            if ((edf & 0x80) == 1) { keys["Port"] = br.ReadInt16().ToString(); }
-                            if ((edf & 0x10) == 1) { keys["SteamID"] = br.ReadUInt64().ToString(); }
-                            if ((edf & 0x40) == 1)
+                            if ((edf & 0x80) != 0) { keys["Port"] = br.ReadUInt16().ToString(); }
+                            if ((edf & 0x10) != 0) { keys["SteamID"] = br.ReadUInt64().ToString(); }
+                            if ((edf & 0x40) != 0)
                             {
-                                keys["SpectatorPort"] = br.ReadInt16().ToString();
+                                keys["SpectatorPort"] = br.ReadUInt16().ToString();
                                 keys["SpectatorName"] = ReadString(br);
                             }
-                            if ((edf & 0x20) == 1)
+                            if ((edf & 0x20) != 0)
                             {
                                 keys["Keywords"] = ReadString(br);
 
@@ -139,7 +153,7 @@ namespace WindowsGSM.GameServer.Query
                             keys["Map"] = ReadString(br);
                             keys["Folder"] = ReadString(br);
                             keys["Game"] = ReadString(br);
-                            keys["Address"] = ReadString(br);
+                            keys["ID"] = br.ReadUInt16().ToString();
                             keys["Players"] = br.ReadByte().ToString();
                             keys["MaxPlayers"] = br.ReadByte().ToString();
                             keys["Protocol"] = br.ReadByte().ToString();

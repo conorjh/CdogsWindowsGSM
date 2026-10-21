@@ -382,6 +382,7 @@
     <Compile Include="Functions\ServerAddon.cs" />
     <Compile Include="Functions\ServerCache.cs" />
     <Compile Include="Functions\ServerConsole.cs" />
+    <Compile Include="Functions\ServerPortDiscovery.cs" />
     <Compile Include="Functions\SystemMetrics.cs" />
     <Compile Include="Functions\UI.cs" />
     <Compile Include="GameServer\Addon\AMXModX.cs" />

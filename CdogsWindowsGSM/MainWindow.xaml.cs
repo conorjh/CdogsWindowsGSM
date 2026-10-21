@@ -60,6 +60,8 @@ namespace WindowsGSM
         {
             public ServerStatus ServerStatus = ServerStatus.Stopped;
             public Process Process;
+            public int? DetectedQueryPort;
+            public int? DetectedQueryPortProcessId;
             public IntPtr MainWindow;
             public ServerConsole ServerConsole;
 
@@ -321,7 +323,8 @@ namespace WindowsGSM
                         */
 
                         _serverMetadata[int.Parse(server.ID)].MainWindow = ServerCache.GetWindowsIntPtr(server.ID);
-                        p.Exited += (sender, e) => OnGameServerExited(server);
+                        Process process = p;
+                        p.Exited += (sender, e) => OnGameServerExited(server, process);
 
                         StartAutoUpdateCheck(server);
                         StartRestartCrontabCheck(server);
@@ -720,6 +723,7 @@ namespace WindowsGSM
                         IP = serverConfig.ServerIP,
                         Port = serverConfig.ServerPort,
                         QueryPort = serverConfig.ServerQueryPort,
+                        DetectedQueryPort = GetDetectedQueryPort(GetServerMetadata(i)),
                         Defaultmap = serverConfig.ServerMap,
                         Maxplayers = (GetServerMetadata(i).ServerStatus != ServerStatus.Started) ? serverConfig.ServerMaxPlayer : livePlayerData[i]
                     };
@@ -743,6 +747,49 @@ namespace WindowsGSM
 
             grid_action.Visibility = (ServerGrid.Items.Count != 0) ? Visibility.Visible : Visibility.Hidden;
             label_select.Visibility = grid_action.Visibility == Visibility.Hidden ? Visibility.Visible : Visibility.Hidden;
+        }
+
+        private int? GetDetectedQueryPort(ServerMetadata metadata)
+        {
+            if (metadata == null || metadata.Process == null || !metadata.DetectedQueryPort.HasValue) { return null; }
+
+            try
+            {
+                return !metadata.Process.HasExited && metadata.DetectedQueryPortProcessId == metadata.Process.Id
+                    ? metadata.DetectedQueryPort
+                    : null;
+            }
+            catch (InvalidOperationException)
+            {
+                return null;
+            }
+        }
+
+        private void ClearDetectedQueryPort(ServerTable server)
+        {
+            ServerMetadata metadata = GetServerMetadata(server.ID);
+            if (metadata != null)
+            {
+                metadata.DetectedQueryPort = null;
+                metadata.DetectedQueryPortProcessId = null;
+            }
+
+            RefreshServerQueryPortDisplay(server, null);
+        }
+
+        private void RefreshServerQueryPortDisplay(ServerTable server, int? detectedPort)
+        {
+            server.DetectedQueryPort = detectedPort;
+            for (int i = 0; i < ServerGrid.Items.Count; i++)
+            {
+                ServerTable row = ServerGrid.Items[i] as ServerTable;
+                if (row != null && row.ID == server.ID)
+                {
+                    row.DetectedQueryPort = detectedPort;
+                    ServerGrid.Items.Refresh();
+                    return;
+                }
+            }
         }
 
         private void SaveServerConfigToServerMetadata(object serverId, ServerConfig serverConfig)
@@ -1629,6 +1676,7 @@ namespace WindowsGSM
                         Log(server.ID, "Actions: Kill");
                         p.Kill();
 
+                        ClearDetectedQueryPort(server);
                         _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Stopped;
                         Log(server.ID, "Server: Killed");
                         SetServerStatus(server, "Stopped");
@@ -1875,6 +1923,7 @@ namespace WindowsGSM
 
         private async Task<dynamic> Server_BeginStart(ServerTable server)
         {
+            ClearDetectedQueryPort(server);
             dynamic gameServer = GameServer.Data.Class.Get(server.Game, new ServerConfig(server.ID), PluginsList);
             if (gameServer == null) { return null; }
 
@@ -1908,7 +1957,8 @@ namespace WindowsGSM
             }
 
             _serverMetadata[int.Parse(server.ID)].Process = p;
-            p.Exited += (sender, e) => OnGameServerExited(server);
+            Process startedProcess = p;
+            p.Exited += (sender, e) => OnGameServerExited(server, startedProcess);
 
             await Task.Run(() =>
             {
@@ -1997,6 +2047,7 @@ namespace WindowsGSM
         private async Task<bool> Server_BeginStop(ServerTable server, Process p)
         {
             _serverMetadata[int.Parse(server.ID)].Process = null;
+            ClearDetectedQueryPort(server);
 
             dynamic gameServer = GameServer.Data.Class.Get(server.Game, pluginList: PluginsList);
             await gameServer.Stop(p);
@@ -2439,15 +2490,19 @@ namespace WindowsGSM
         }
         #endregion
 
-        private async void OnGameServerExited(ServerTable server)
+        private async void OnGameServerExited(ServerTable server, Process process)
         {
             if (System.Windows.Application.Current == null) { return; }
 
             await System.Windows.Application.Current.Dispatcher.Invoke(async () =>
             {
                 int serverId = int.Parse(server.ID);
+                ServerMetadata metadata = GetServerMetadata(server.ID);
+                if (metadata == null || !ReferenceEquals(metadata.Process, process)) { return; }
 
-                if (GetServerMetadata(server.ID).ServerStatus == ServerStatus.Started)
+                ClearDetectedQueryPort(server);
+
+                if (metadata.ServerStatus == ServerStatus.Started)
                 {
                     bool autoRestart = GetServerMetadata(serverId).AutoRestart;
                     _serverMetadata[int.Parse(server.ID)].ServerStatus = autoRestart ? ServerStatus.Restarting : ServerStatus.Stopped;
@@ -2700,30 +2755,58 @@ namespace WindowsGSM
         private async void StartQuery(ServerTable server)
         {
             if (string.IsNullOrWhiteSpace(server.IP) || string.IsNullOrWhiteSpace(server.QueryPort)) { return; }
+            if (!IsValidIPAddress(server.IP) || !IsValidPort(server.QueryPort)) { return; }
 
             // Check the server support Query Method
             dynamic gameServer = GameServer.Data.Class.Get(server.Game, pluginList: PluginsList);
             if (gameServer == null) { return; }
-            if (gameServer.QueryMethod == null) { return; }
+            object queryMethod = gameServer.QueryMethod;
+            if (queryMethod == null) { return; }
 
             // Save the process of game server
             Process p = GetServerMetadata(server.ID).Process;
+            if (p == null) { return; }
+
+            IQueryPortDiscoveryProvider discoveryProvider = queryMethod as IQueryPortDiscoveryProvider;
+            int? discoveredQueryPort = null;
+            if (discoveryProvider != null)
+            {
+                try
+                {
+                    discoveredQueryPort = await DiscoverQueryPort(server, p, discoveryProvider);
+                }
+                catch (System.ComponentModel.Win32Exception e)
+                {
+                    Log(server.ID, $"[NOTICE] Query port discovery failed: {e.Message}");
+                    return;
+                }
+
+                if (!IsCurrentServerProcess(server.ID, p)) { return; }
+                if (!discoveredQueryPort.HasValue)
+                {
+                    Log(server.ID, "[NOTICE] Query port could not be verified; the configured value remains displayed.");
+                    return;
+                }
+
+                ServerMetadata metadata = GetServerMetadata(server.ID);
+                metadata.DetectedQueryPort = discoveredQueryPort;
+                metadata.DetectedQueryPortProcessId = p.Id;
+                RefreshServerQueryPortDisplay(server, discoveredQueryPort);
+            }
+
+            dynamic query = queryMethod;
 
             // Query server every 5 seconds
-            while (p != null && !p.HasExited)
+            while (IsCurrentServerProcess(server.ID, p))
             {
-                if (GetServerMetadata(server.ID).ServerStatus == ServerStatus.Stopped)
+                ServerMetadata metadata = GetServerMetadata(server.ID);
+                if (metadata.ServerStatus == ServerStatus.Stopped || metadata.ServerStatus == ServerStatus.Stopping)
                 {
                     break;
                 }
 
-                if (!IsValidIPAddress(server.IP) || !IsValidPort(server.QueryPort))
-                {
-                    continue;
-                }
-
-                dynamic query = gameServer.QueryMethod;
-                query.SetAddressPort(server.IP, int.Parse(server.QueryPort));
+                int queryPort = discoveryProvider == null ? int.Parse(server.QueryPort) : discoveredQueryPort.Value;
+                query.SetAddressPort(server.IP, queryPort);
                 string players = await query.GetPlayersAndMaxPlayers();
 
                 if (players != null)
@@ -2744,6 +2827,38 @@ namespace WindowsGSM
                 }
 
                 await Task.Delay(5000);
+            }
+        }
+
+        private async Task<int?> DiscoverQueryPort(ServerTable server, Process process, IQueryPortDiscoveryProvider provider)
+        {
+            if (!int.TryParse(server.QueryPort, out int configuredPort) || !IsValidPort(server.QueryPort)) { return null; }
+
+            for (int attempt = 0; attempt < 5; attempt++)
+            {
+                if (!IsCurrentServerProcess(server.ID, process)) { return null; }
+                if (attempt == 0) { await Task.Delay(1000); }
+
+                int? detectedPort = await ServerPortDiscovery.FindQueryPortAsync(process, server.IP, configuredPort, provider);
+                if (detectedPort.HasValue) { return detectedPort; }
+                if (attempt < 4) { await Task.Delay(1000); }
+            }
+
+            return null;
+        }
+
+        private bool IsCurrentServerProcess(string serverId, Process process)
+        {
+            ServerMetadata metadata = GetServerMetadata(serverId);
+            if (metadata == null || process == null || !ReferenceEquals(metadata.Process, process)) { return false; }
+
+            try
+            {
+                return !process.HasExited;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
             }
         }
 

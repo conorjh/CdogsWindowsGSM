@@ -767,7 +767,13 @@
                         <DataGridTextColumn Header="Server Name" IsReadOnly="True" Binding="{Binding Path=Name}" Width="10*" MinWidth="105"/>
                         <DataGridTextColumn Header="IP Address" IsReadOnly="True" Binding="{Binding Path=IP}" Width="4*" MinWidth="88"/>
                         <DataGridTextColumn Header="Port" IsReadOnly="True" Binding="{Binding Path=Port}" SortMemberPath="PortSort" Width="4*" MinWidth="52"/>
-                        <DataGridTextColumn Header="Query Port" IsReadOnly="True" Binding="{Binding Path=QueryPort}" SortMemberPath="QueryPortSort" Width="4*" MinWidth="93"/>
+                        <DataGridTextColumn Header="Query Port" IsReadOnly="True" Binding="{Binding Path=QueryPortDisplay}" SortMemberPath="QueryPortSort" Width="4*" MinWidth="93">
+                            <DataGridTextColumn.CellStyle>
+                                <Style TargetType="{x:Type DataGridCell}">
+                                    <Setter Property="ToolTip" Value="{Binding Path=QueryPortToolTip}"/>
+                                </Style>
+                            </DataGridTextColumn.CellStyle>
+                        </DataGridTextColumn>
                         <DataGridTextColumn Header="Map" IsReadOnly="True" Binding="{Binding Path=Defaultmap}" Width="7*" MinWidth="50"/>
                         <DataGridTextColumn Header="Players" IsReadOnly="True" Binding="{Binding Path=Maxplayers}" SortMemberPath="PlayerCapacitySort" Width="3*" MinWidth="70"/>
                         <DataGridTextColumn Header="Uptime" IsReadOnly="True" Binding="{Binding Path=Uptime}" Width="4*" MinWidth="80"/>

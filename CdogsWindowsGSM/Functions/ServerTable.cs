@@ -14,14 +14,36 @@ namespace WindowsGSM.Functions
         public string IP { get; set; }
         public string Port { get; set; }
         public string QueryPort { get; set; }
+        public int? DetectedQueryPort { get; set; }
         public string Defaultmap { get; set; }
         public string Maxplayers { get; set; }
         public int IDSort => ParseSortValue(ID);
         public int PIDSort => ParseSortValue(PID);
         public int PortSort => ParseSortValue(Port);
-        public int QueryPortSort => ParseSortValue(QueryPort);
+        public int QueryPortSort => DetectedQueryPort ?? ParseSortValue(QueryPort);
         public int PlayerCapacitySort => GetPlayerCapacity(Maxplayers);
         public int PlayerCapacity => GetPlayerCapacity(Maxplayers);
+        public string QueryPortDisplay
+        {
+            get
+            {
+                if (!DetectedQueryPort.HasValue || !int.TryParse(QueryPort, out int configuredPort)) { return QueryPort; }
+                return DetectedQueryPort.Value == configuredPort
+                    ? $"{QueryPort} \u2713"
+                    : $"{QueryPort} \u2717 ({DetectedQueryPort.Value})";
+            }
+        }
+        public string QueryPortToolTip
+        {
+            get
+            {
+                if (!DetectedQueryPort.HasValue) { return $"Configured query port: {QueryPort}; runtime value not verified."; }
+                if (!int.TryParse(QueryPort, out int configuredPort)) { return $"Detected query port: {DetectedQueryPort.Value}."; }
+                return DetectedQueryPort.Value == configuredPort
+                    ? $"Detected query port matches configured value ({configuredPort})."
+                    : $"Configured query port: {configuredPort}; detected query port: {DetectedQueryPort.Value}.";
+            }
+        }
 
         private static int ParseSortValue(string value)
         {
