@@ -227,7 +227,7 @@ namespace WindowsGSM.GameServer
 
             try
             {
-                if (process.StartInfo.RedirectStandardInput)
+                if (Functions.ServerConsole.IsStandardInputRedirected(process))
                 {
                     process.StandardInput.WriteLine("quit");
                     process.StandardInput.Flush();

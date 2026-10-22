@@ -99,7 +99,7 @@ namespace WindowsGSM.GameServer
         {
             await Task.Run(async () =>
             {
-                if (p.StartInfo.RedirectStandardInput)
+                if (Functions.ServerConsole.IsStandardInputRedirected(p))
                 {
                     p.Kill();
                 }

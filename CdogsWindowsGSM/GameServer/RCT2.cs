@@ -428,7 +428,7 @@ namespace WindowsGSM.GameServer
             {
                 if (process.HasExited) { return; }
 
-                if (process.StartInfo.RedirectStandardInput)
+                if (Functions.ServerConsole.IsStandardInputRedirected(process))
                 {
                     process.StandardInput.WriteLine("exit");
                 }

@@ -257,7 +257,7 @@ namespace WindowsGSM.GameServer.Engine
 
         public Task Stop(Process process)
         {
-            if (process.StartInfo.RedirectStandardInput) process.StandardInput.WriteLine("stop");
+            if (ServerConsole.IsStandardInputRedirected(process)) process.StandardInput.WriteLine("stop");
             else ServerConsole.SendMessageToMainWindow(process.MainWindowHandle, "stop");
             return Task.CompletedTask;
         }

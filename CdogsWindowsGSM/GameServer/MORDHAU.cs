@@ -137,7 +137,7 @@ namespace WindowsGSM.GameServer
         {
             await Task.Run(() =>
             {
-                if (p.StartInfo.CreateNoWindow)
+                if (Functions.ServerConsole.IsCreatedWithoutWindow(p))
                 {
                     p.Kill();
                 }

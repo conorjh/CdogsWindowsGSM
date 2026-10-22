@@ -120,7 +120,7 @@ namespace WindowsGSM.GameServer
         {
             await Task.Run(() =>
             {
-                if (p.StartInfo.RedirectStandardInput)
+                if (Functions.ServerConsole.IsStandardInputRedirected(p))
                 {
                     p.StandardInput.WriteLine("stop");
                 }

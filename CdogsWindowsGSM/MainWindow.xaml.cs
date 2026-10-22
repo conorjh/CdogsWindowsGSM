@@ -343,11 +343,17 @@ namespace WindowsGSM
                     string pName = ServerCache.GetProcessName(server.ID);
                     if (!string.IsNullOrWhiteSpace(pName) && p.ProcessName == pName)
                     {
-                        _serverMetadata[int.Parse(server.ID)].Process = p;
-                        _serverMetadata[int.Parse(server.ID)].ProcessStartInfoAvailable = false;
-                        _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Started;
+                        ServerMetadata metadata = GetServerMetadata(server.ID);
+                        metadata.Process = p;
+                        metadata.ProcessStartInfoAvailable = false;
+                        IntPtr cachedWindow = ServerCache.GetWindowsIntPtr(server.ID);
+                        if (!Functions.ServerConsole.HasUsableWindow(p, cachedWindow))
+                        {
+                            cachedWindow = p.MainWindowHandle;
+                        }
+                        metadata.MainWindow = Functions.ServerConsole.HasUsableWindow(p, cachedWindow) ? cachedWindow : IntPtr.Zero;
+                        metadata.ServerStatus = ServerStatus.Started;
                         SetServerStatus(server, "Started");
-                        Log(server.ID, "[NOTICE] Reattached to an already-running process. Console controls are unavailable until the server is restarted from WindowsGSM.");
 
                         /*// Get Console process - untested
                         Process console = GetConsoleProcess(pid);
@@ -357,7 +363,6 @@ namespace WindowsGSM
                         }
                         */
 
-                        _serverMetadata[int.Parse(server.ID)].MainWindow = ServerCache.GetWindowsIntPtr(server.ID);
                         Process process = p;
                         p.Exited += (sender, e) => OnGameServerExited(server, process);
 
@@ -1204,13 +1209,18 @@ namespace WindowsGSM
                     button_Restart.IsEnabled = true;
                     ServerMetadata metadata = GetServerMetadata(row.ID);
                     Process p = metadata.Process;
-                    bool hasProcessStartInfo = metadata.ProcessStartInfoAvailable && p != null && !p.HasExited;
-                    button_Console.IsEnabled = hasProcessStartInfo && !(p.StartInfo.CreateNoWindow || p.StartInfo.RedirectStandardOutput);
+                    bool processRunning = p != null && !p.HasExited;
+                    bool hasConsoleWindow = processRunning && Functions.ServerConsole.HasUsableWindow(p, metadata.MainWindow);
+                    bool standardInputRedirected = processRunning && Functions.ServerConsole.IsStandardInputRedirected(p);
+                    button_Console.IsEnabled = processRunning && hasConsoleWindow
+                        && !Functions.ServerConsole.IsCreatedWithoutWindow(p)
+                        && !Functions.ServerConsole.IsStandardOutputRedirected(p);
                     button_Update.IsEnabled = false;
                     button_Backup.IsEnabled = false;
 
-                    textbox_servercommand.IsEnabled = hasProcessStartInfo;
-                    button_servercommand.IsEnabled = hasProcessStartInfo;
+                    bool canSendConsoleCommand = processRunning && (standardInputRedirected || hasConsoleWindow);
+                    textbox_servercommand.IsEnabled = canSendConsoleCommand;
+                    button_servercommand.IsEnabled = canSendConsoleCommand;
                 }
                 else
                 {
@@ -1853,11 +1863,11 @@ namespace WindowsGSM
 
             ServerMetadata metadata = GetServerMetadata(server.ID);
             Process p = metadata.Process;
-            if (p == null || p.HasExited || !metadata.ProcessStartInfoAvailable) { return; }
+            if (p == null || p.HasExited || Functions.ServerConsole.IsCreatedWithoutWindow(p)
+                || Functions.ServerConsole.IsStandardOutputRedirected(p)
+                || !Functions.ServerConsole.HasUsableWindow(p, metadata.MainWindow)) { return; }
 
             //If console is useless, return
-            if (p.StartInfo.RedirectStandardOutput) { return; }
-
             IntPtr hWnd = metadata.MainWindow;
             ShowWindow(hWnd, ShowWindow(hWnd, WindowShowStyle.Hide) ? WindowShowStyle.Hide : WindowShowStyle.ShowNormal);
         }
@@ -3895,7 +3905,9 @@ namespace WindowsGSM
         {
             ServerMetadata metadata = GetServerMetadata(server.ID);
             Process p = metadata.Process;
-            if (p == null || p.HasExited || !metadata.ProcessStartInfoAvailable) { return; }
+            if (p == null || p.HasExited) { return; }
+            if (!Functions.ServerConsole.IsStandardInputRedirected(p)
+                && !Functions.ServerConsole.HasUsableWindow(p, metadata.MainWindow)) { return; }
 
             textbox_servercommand.Focusable = false;
             metadata.ServerConsole.Input(p, command, metadata.MainWindow);

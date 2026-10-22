@@ -18,6 +18,9 @@ namespace WindowsGSM.Functions
         [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = false)]
         private static extern bool PostMessage(IntPtr hWnd, uint Msg, IntPtr wParam, IntPtr lParam);
 
+        [DllImport("user32.dll")]
+        private static extern bool IsWindow(IntPtr hWnd);
+
         private const int WM_KEYDOWN = 0x0100;
         private const int WM_CHAR = 0x0102;
         private const int WM_GETTEXT = 0x000D;
@@ -27,6 +30,50 @@ namespace WindowsGSM.Functions
         private readonly List<string> _consoleList = new List<string>();
         private readonly string _serverId;
         private int _lineNumber = 0;
+
+        public static bool IsStandardInputRedirected(Process process)
+        {
+            return GetStartInfoOrDefault(process).RedirectStandardInput;
+        }
+
+        public static bool IsStandardOutputRedirected(Process process)
+        {
+            return GetStartInfoOrDefault(process).RedirectStandardOutput;
+        }
+
+        public static bool IsCreatedWithoutWindow(Process process)
+        {
+            return GetStartInfoOrDefault(process).CreateNoWindow;
+        }
+
+        public static bool HasUsableWindow(Process process, IntPtr window)
+        {
+            if (process == null || process.HasExited || window == IntPtr.Zero || !IsWindow(window))
+            {
+                return false;
+            }
+
+            IntPtr processWindow = process.MainWindowHandle;
+            return processWindow == IntPtr.Zero || processWindow == window;
+        }
+
+        private static ProcessStartInfo GetStartInfoOrDefault(Process process)
+        {
+            if (process == null)
+            {
+                return new ProcessStartInfo();
+            }
+
+            try
+            {
+                return process.StartInfo;
+            }
+            catch (InvalidOperationException)
+            {
+                // .NET Framework exposed a default StartInfo for processes attached by PID.
+                return new ProcessStartInfo();
+            }
+        }
 
         public ServerConsole(string serverId)
         {
@@ -50,7 +97,7 @@ namespace WindowsGSM.Functions
         {
             if (!process.HasExited)
             {
-                if (process.StartInfo.RedirectStandardInput)
+                if (IsStandardInputRedirected(process))
                 {
                     try
                     {
@@ -62,7 +109,7 @@ namespace WindowsGSM.Functions
                         //ignore
                     }
                 }
-                else
+                else if (HasUsableWindow(process, mainWindow))
                 {
                     await Task.Run(() =>
                     {
