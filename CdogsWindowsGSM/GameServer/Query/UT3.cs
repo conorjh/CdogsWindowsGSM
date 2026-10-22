@@ -8,7 +8,7 @@ using WindowsGSM.Functions;
 
 namespace WindowsGSM.GameServer.Query
 {
-    public class UT3 : IQueryPortDiscoveryProvider
+    public class UT3
     {
         private static readonly byte[] UT3_MAGIC = { 0xFE, 0xFD };
         private static readonly byte[] UT3_HANDSHAKE = { 0x09 };
@@ -17,8 +17,6 @@ namespace WindowsGSM.GameServer.Query
 
         private IPEndPoint _IPEndPoint;
         private int _timeout;
-
-        public QueryPortTransport Transport => QueryPortTransport.Udp;
 
         public UT3() { }
 
@@ -31,19 +29,6 @@ namespace WindowsGSM.GameServer.Query
         {
             _IPEndPoint = new IPEndPoint(IPAddress.Parse(address), port);
             _timeout = timeout * 1000;
-        }
-
-        public async Task<bool> RespondsOnPortAsync(string address, int port, int timeoutSeconds)
-        {
-            if (!IPAddress.TryParse(address, out IPAddress _) || port < 1 || port > ushort.MaxValue) { return false; }
-
-            var query = new UT3(address, port, timeoutSeconds);
-            Dictionary<string, string> response = await query.GetInfo();
-            return response != null &&
-                response.ContainsKey("MOTD") &&
-                response.ContainsKey("GameType") &&
-                response.ContainsKey("Map") &&
-                response.ContainsKey("Port");
         }
 
         public async Task<Dictionary<string, string>> GetInfo()

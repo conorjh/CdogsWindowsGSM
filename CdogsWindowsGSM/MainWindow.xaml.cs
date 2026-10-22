@@ -66,8 +66,6 @@ namespace WindowsGSM
             public bool ProcessStartInfoAvailable;
             public int? DetectedMainPort;
             public int? DetectedMainPortProcessId;
-            public int? DetectedQueryPort;
-            public int? DetectedQueryPortProcessId;
             public bool ProcessExitedUnexpectedly;
             public bool? QuerySupported;
             public bool QueryInProgress;
@@ -756,7 +754,6 @@ namespace WindowsGSM
                         Port = serverConfig.ServerPort,
                         DetectedMainPort = GetDetectedMainPort(GetServerMetadata(i)),
                         QueryPort = serverConfig.ServerQueryPort,
-                        DetectedQueryPort = GetDetectedQueryPort(GetServerMetadata(i)),
                         Defaultmap = serverConfig.ServerMap,
                         Maxplayers = (GetServerMetadata(i).ServerStatus != ServerStatus.Started) ? serverConfig.ServerMaxPlayer : livePlayerData[i]
                     };
@@ -782,22 +779,6 @@ namespace WindowsGSM
             grid_action.Visibility = (ServerGrid.Items.Count != 0) ? Visibility.Visible : Visibility.Hidden;
             label_select.Visibility = grid_action.Visibility == Visibility.Hidden ? Visibility.Visible : Visibility.Hidden;
             ServerGroups_EndServerReload();
-        }
-
-        private int? GetDetectedQueryPort(ServerMetadata metadata)
-        {
-            if (metadata == null || metadata.Process == null || !metadata.DetectedQueryPort.HasValue) { return null; }
-
-            try
-            {
-                return !metadata.Process.HasExited && metadata.DetectedQueryPortProcessId == metadata.Process.Id
-                    ? metadata.DetectedQueryPort
-                    : null;
-            }
-            catch (InvalidOperationException)
-            {
-                return null;
-            }
         }
 
         private int? GetDetectedMainPort(ServerMetadata metadata)
@@ -916,19 +897,16 @@ namespace WindowsGSM
             metadata.LastQueryFailureMessage = null;
         }
 
-        private void ClearDetectedPorts(ServerTable server)
+        private void ClearDetectedMainPort(ServerTable server)
         {
             ServerMetadata metadata = GetServerMetadata(server.ID);
             if (metadata != null)
             {
                 metadata.DetectedMainPort = null;
                 metadata.DetectedMainPortProcessId = null;
-                metadata.DetectedQueryPort = null;
-                metadata.DetectedQueryPortProcessId = null;
             }
 
             RefreshServerMainPortDisplay(server, null);
-            RefreshServerQueryPortDisplay(server, null);
         }
 
         private void RefreshServerMainPortDisplay(ServerTable server, int? detectedPort)
@@ -939,19 +917,6 @@ namespace WindowsGSM
                 if (row != null && row.ID == server.ID)
                 {
                     row.DetectedMainPort = detectedPort;
-                    return;
-                }
-            }
-        }
-
-        private void RefreshServerQueryPortDisplay(ServerTable server, int? detectedPort)
-        {
-            server.DetectedQueryPort = detectedPort;
-            foreach (ServerTable row in ServerGroups_GetAllServerRows())
-            {
-                if (row != null && row.ID == server.ID)
-                {
-                    row.DetectedQueryPort = detectedPort;
                     return;
                 }
             }
@@ -1869,7 +1834,7 @@ namespace WindowsGSM
                         Log(server.ID, "Actions: Kill");
                         p.Kill();
 
-                        ClearDetectedPorts(server);
+                        ClearDetectedMainPort(server);
                         _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Stopped;
                         Log(server.ID, "Server: Killed");
                         SetServerStatus(server, "Stopped");
@@ -2461,7 +2426,7 @@ namespace WindowsGSM
         private async Task<dynamic> Server_BeginStart(ServerTable server)
         {
             ServerMetadata metadata = GetServerMetadata(server.ID);
-            ClearDetectedPorts(server);
+            ClearDetectedMainPort(server);
             dynamic gameServer = GameServer.Data.Class.Get(server.Game, new ServerConfig(server.ID), PluginsList);
             if (gameServer == null) { return null; }
 
@@ -2615,7 +2580,7 @@ namespace WindowsGSM
             bool processStartInfoAvailable = metadata.ProcessStartInfoAvailable;
             metadata.Process = null;
             metadata.ProcessStartInfoAvailable = false;
-            ClearDetectedPorts(server);
+            ClearDetectedMainPort(server);
 
             dynamic gameServer = GameServer.Data.Class.Get(server.Game, pluginList: PluginsList);
             try
@@ -3099,7 +3064,7 @@ namespace WindowsGSM
                 ServerMetadata metadata = GetServerMetadata(server.ID);
                 if (metadata == null || !ReferenceEquals(metadata.Process, process)) { return; }
 
-                ClearDetectedPorts(server);
+                ClearDetectedMainPort(server);
 
                 if (metadata.ServerStatus == ServerStatus.Started)
                 {
@@ -3487,16 +3452,14 @@ namespace WindowsGSM
                 if (attempt == 0) { await Task.Delay(1000); }
                 if (!IsCurrentServerProcess(server.ID, process)) { return; }
 
-                int? detectedQueryPort = GetDetectedQueryPort(GetServerMetadata(server.ID));
                 int? detectedMainPort;
                 try
                 {
-                    detectedMainPort = await Task.Run(() => ServerPortDiscovery.FindMainPort(
+                    detectedMainPort = await Task.Run(() => ServerPortDiscovery.FindClientPort(
                         process,
                         server.IP,
                         configuredPort,
-                        configuredQueryPort,
-                        detectedQueryPort));
+                        configuredQueryPort));
                 }
                 catch (System.ComponentModel.Win32Exception e)
                 {
@@ -3562,38 +3525,8 @@ namespace WindowsGSM
             metadata.QuerySupported = true;
             RefreshServerHealth(server);
 
-            IQueryPortDiscoveryProvider discoveryProvider = queryMethod as IQueryPortDiscoveryProvider;
-            int? discoveredQueryPort = null;
-            if (discoveryProvider != null)
-            {
-                int mainPort = GetDetectedMainPort(GetServerMetadata(server.ID)) ??
-                    (int.TryParse(server.Port, out int configuredMainPort) ? configuredMainPort : 0);
-                try
-                {
-                    discoveredQueryPort = await DiscoverQueryPort(server, p, mainPort, discoveryProvider);
-                }
-                catch (System.ComponentModel.Win32Exception e)
-                {
-                    Log(server.ID, $"[NOTICE] Query port discovery failed: {e.Message}");
-                }
-
-                if (!IsCurrentServerProcess(server.ID, p)) { return; }
-                if (!discoveredQueryPort.HasValue)
-                {
-                    Log(server.ID, "[NOTICE] Query port could not be verified; the configured value remains displayed.");
-                }
-                else
-                {
-                    metadata = GetServerMetadata(server.ID);
-                    if (metadata == null) { return; }
-                    metadata.DetectedQueryPort = discoveredQueryPort;
-                    metadata.DetectedQueryPortProcessId = p.Id;
-                    RefreshServerQueryPortDisplay(server, discoveredQueryPort);
-                }
-            }
-
             dynamic query = queryMethod;
-            int queryPort = discoveredQueryPort ?? int.Parse(server.QueryPort);
+            int queryPort = int.Parse(server.QueryPort);
 
             // Query server every 5 seconds
             while (IsCurrentServerProcess(server.ID, p))
@@ -3663,23 +3596,6 @@ namespace WindowsGSM
                 exception is InvalidOperationException ||
                 exception is ArgumentException ||
                 exception is System.Security.SecurityException;
-        }
-
-        private async Task<int?> DiscoverQueryPort(ServerTable server, Process process, int mainPort, IQueryPortDiscoveryProvider provider)
-        {
-            if (!int.TryParse(server.QueryPort, out int configuredPort) || !IsValidPort(server.QueryPort)) { return null; }
-
-            for (int attempt = 0; attempt < 5; attempt++)
-            {
-                if (!IsCurrentServerProcess(server.ID, process)) { return null; }
-                if (attempt == 0) { await Task.Delay(1000); }
-
-                int? detectedPort = await ServerPortDiscovery.FindQueryPortAsync(process, server.IP, configuredPort, mainPort, provider);
-                if (detectedPort.HasValue) { return detectedPort; }
-                if (attempt < 4) { await Task.Delay(1000); }
-            }
-
-            return null;
         }
 
         private bool IsCurrentServerProcess(string serverId, Process process)

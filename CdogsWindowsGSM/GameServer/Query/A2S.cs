@@ -9,7 +9,7 @@ using WindowsGSM.Functions;
 
 namespace WindowsGSM.GameServer.Query
 {
-    public class A2S : IQueryPortDiscoveryProvider
+    public class A2S
     {
         private static readonly byte[] A2S_INFO = Encoding.Default.GetBytes("TSource Engine Query\0");
         private static readonly byte[] A2S_PLAYER = Encoding.Default.GetBytes("U");
@@ -20,8 +20,6 @@ namespace WindowsGSM.GameServer.Query
 
         private IPEndPoint _IPEndPoint;
         private int _timeout;
-
-        public QueryPortTransport Transport => QueryPortTransport.Udp;
 
         public A2S() { }
 
@@ -34,18 +32,6 @@ namespace WindowsGSM.GameServer.Query
         {
             _IPEndPoint = new IPEndPoint(IPAddress.Parse(address), port);
             _timeout = timeout * 1000;
-        }
-
-        public async Task<bool> RespondsOnPortAsync(string address, int port, int timeoutSeconds)
-        {
-            if (!IPAddress.TryParse(address, out IPAddress _) || port < 1 || port > ushort.MaxValue) { return false; }
-
-            var query = new A2S(address, port, timeoutSeconds);
-            Dictionary<string, string> response = await query.GetInfo();
-            return response != null &&
-                response.TryGetValue("Header", out string header) &&
-                (header == SOURCE_RESPONSE.ToString() || header == GOLDSOURCE_RESPONSE.ToString()) &&
-                response.ContainsKey("Name") && response.ContainsKey("Game");
         }
 
         /// <summary>Retrieves information about the server including, but not limited to: its name, the map currently being played, and the number of players.</summary>

@@ -981,18 +981,7 @@
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
-                        <DataGridTemplateColumn Header="{loc:Loc Key=ColumnQueryPort}" IsReadOnly="True" SortMemberPath="QueryPortSort" Width="4*" MinWidth="93">
-                            <DataGridTemplateColumn.CellTemplate>
-                                <DataTemplate>
-                                    <Grid Background="Transparent" ToolTip="{Binding Path=QueryPortToolTip}">
-                                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
-                                            <TextBlock Text="{Binding Path=QueryPort}"/>
-                                            <TextBlock Text="{Binding Path=QueryPortMismatchDisplay}" Foreground="Firebrick" Margin="4,0,0,0"/>
-                                        </StackPanel>
-                                    </Grid>
-                                </DataTemplate>
-                            </DataGridTemplateColumn.CellTemplate>
-                        </DataGridTemplateColumn>
+                        <DataGridTextColumn Header="{loc:Loc Key=ColumnQueryPort}" IsReadOnly="True" Binding="{Binding Path=QueryPort}" SortMemberPath="QueryPortSort" Width="4*" MinWidth="93"/>
                         <DataGridTextColumn Header="{loc:Loc Key=ColumnMap}" IsReadOnly="True" Binding="{Binding Path=Defaultmap}" Width="7*" MinWidth="50"/>
                         <DataGridTextColumn Header="{loc:Loc Key=ColumnPlayers}" IsReadOnly="True" Binding="{Binding Path=Maxplayers}" SortMemberPath="PlayerCapacitySort" Width="3*" MinWidth="70"/>
                         <DataGridTextColumn Header="{loc:Loc Key=ColumnUptime}" IsReadOnly="True" Binding="{Binding Path=Uptime}" Width="4*" MinWidth="80"/>

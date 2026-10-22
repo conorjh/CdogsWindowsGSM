@@ -236,10 +236,6 @@
   <data name="MainPortDetected"><value>Puerto principal detectado: {0}.</value></data>
   <data name="MainPortMatches"><value>El puerto principal detectado coincide con el valor configurado ({0}).</value></data>
   <data name="MainPortMismatch"><value>Puerto principal configurado: {0}; puerto principal detectado: {1}.</value></data>
-  <data name="QueryPortNotVerified"><value>Puerto de consulta configurado: {0}; valor en tiempo de ejecución no verificado.</value></data>
-  <data name="QueryPortDetected"><value>Puerto de consulta detectado: {0}.</value></data>
-  <data name="QueryPortMatches"><value>El puerto de consulta detectado coincide con el valor configurado ({0}).</value></data>
-  <data name="QueryPortMismatch"><value>Puerto de consulta configurado: {0}; puerto de consulta detectado: {1}.</value></data>
   <data name="ColumnMap"><value>Mapa</value></data>
   <data name="ColumnPlayers"><value>Jugadores</value></data>
   <data name="ColumnUptime"><value>Tiempo activo</value></data>

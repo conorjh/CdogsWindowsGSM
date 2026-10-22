@@ -5,17 +5,14 @@ using System.Net;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using WindowsGSM.Functions;
 
 namespace WindowsGSM.GameServer.Query
 {
-    public class FIVEM : IQueryPortDiscoveryProvider
+    public class FIVEM
     {
         private string _address;
         private int _port;
         private int _timeout;
-
-        public QueryPortTransport Transport => QueryPortTransport.Tcp;
 
         public FIVEM() { }
 
@@ -29,17 +26,6 @@ namespace WindowsGSM.GameServer.Query
             _address = address;
             _port = port;
             _timeout = Math.Max(1000, timeout * 1000);
-        }
-
-        public async Task<bool> RespondsOnPortAsync(string address, int port, int timeoutSeconds)
-        {
-            if (port < 1 || port > ushort.MaxValue) { return false; }
-
-            var query = new FIVEM(address, port, timeoutSeconds);
-            Dictionary<string, string> response = await query.GetInfo();
-            return response != null &&
-                response.ContainsKey("clients") &&
-                response.ContainsKey("sv_maxclients");
         }
 
         /// <summary>Get general information of specific game server.</summary>

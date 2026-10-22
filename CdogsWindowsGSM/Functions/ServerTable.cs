@@ -10,7 +10,6 @@ namespace WindowsGSM.Functions
 {
     class ServerTable : INotifyPropertyChanged
     {
-        private int? _detectedQueryPort;
         private int? _detectedMainPort;
         private string _maxplayers;
         private ServerHealthStatus _healthStatus = ServerHealthStatus.Unknown;
@@ -44,20 +43,6 @@ namespace WindowsGSM.Functions
             }
         }
         public string QueryPort { get; set; }
-        public int? DetectedQueryPort
-        {
-            get => _detectedQueryPort;
-            set
-            {
-                if (_detectedQueryPort == value) { return; }
-
-                _detectedQueryPort = value;
-                OnPropertyChanged(nameof(DetectedQueryPort));
-                OnPropertyChanged(nameof(QueryPortSort));
-                OnPropertyChanged(nameof(QueryPortMismatchDisplay));
-                OnPropertyChanged(nameof(QueryPortToolTip));
-            }
-        }
         public string Defaultmap { get; set; }
         public ServerHealthStatus HealthStatus
         {
@@ -119,7 +104,7 @@ namespace WindowsGSM.Functions
         public int IDSort => ParseSortValue(ID);
         public int PIDSort => ParseSortValue(PID);
         public int PortSort => DetectedMainPort ?? ParseSortValue(Port);
-        public int QueryPortSort => DetectedQueryPort ?? ParseSortValue(QueryPort);
+        public int QueryPortSort => ParseSortValue(QueryPort);
         public int PlayerCapacitySort => GetPlayerCapacity(Maxplayers);
         public int PlayerCapacity => GetPlayerCapacity(Maxplayers);
         public string MainPortMismatchDisplay =>
@@ -150,35 +135,6 @@ namespace WindowsGSM.Functions
                 return string.Format(CultureInfo.CurrentUICulture, LocalizationManager.Get("MainPortMismatch"), configuredPort, DetectedMainPort.Value);
             }
         }
-        public string QueryPortMismatchDisplay =>
-            DetectedQueryPort.HasValue &&
-            int.TryParse(QueryPort, out int configuredPort) &&
-            DetectedQueryPort.Value != configuredPort
-                ? $"\u2717 ({DetectedQueryPort.Value})"
-                : string.Empty;
-        public string QueryPortToolTip
-        {
-            get
-            {
-                if (!DetectedQueryPort.HasValue)
-                {
-                    return string.Format(CultureInfo.CurrentUICulture, LocalizationManager.Get("QueryPortNotVerified"), QueryPort);
-                }
-
-                if (!int.TryParse(QueryPort, out int configuredPort))
-                {
-                    return string.Format(CultureInfo.CurrentUICulture, LocalizationManager.Get("QueryPortDetected"), DetectedQueryPort.Value);
-                }
-
-                if (DetectedQueryPort.Value == configuredPort)
-                {
-                    return string.Format(CultureInfo.CurrentUICulture, LocalizationManager.Get("QueryPortMatches"), configuredPort);
-                }
-
-                return string.Format(CultureInfo.CurrentUICulture, LocalizationManager.Get("QueryPortMismatch"), configuredPort, DetectedQueryPort.Value);
-            }
-        }
-
         private static int ParseSortValue(string value)
         {
             return int.TryParse(value, out int number) ? number : int.MinValue;
