@@ -2,6 +2,7 @@
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Automation;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -254,13 +255,20 @@ namespace WindowsGSM
                     Margin = new Thickness(15, 0, 0, 0)
                 };
 
-                _checkBoxes.Add(new System.Windows.Controls.CheckBox());
-                _checkBoxes[i].Focusable = false;
+                string cpuLabel = string.Format(CultureInfo.CurrentUICulture, "{0} {1}", LocalizationManager.Get("Cpu"), i);
+                System.Windows.Controls.CheckBox checkBox = new System.Windows.Controls.CheckBox
+                {
+                    IsTabStop = true
+                };
+                AutomationProperties.SetName(checkBox, cpuLabel);
+                _checkBoxes.Add(checkBox);
                 var label = new Label
                 {
-                    Content = $"CPU {i}",
+                    Content = cpuLabel,
+                    Target = checkBox,
                     Padding = new Thickness(0, 5, 0, 5)
                 };
+                AutomationProperties.SetLabeledBy(checkBox, label);
 
                 stackPanel.Children.Add(_checkBoxes[i]);
                 stackPanel.Children.Add(label);
@@ -880,6 +888,8 @@ namespace WindowsGSM
             {
                 label_ServerHealthDetails.Text = summary.CompactDetails;
                 label_ServerHealthDetails.ToolTip = summary.Details;
+                AutomationProperties.SetName(label_ServerHealthDetails, summary.CompactDetails);
+                AutomationProperties.SetHelpText(label_ServerHealthDetails, summary.Details);
             }
         }
 
@@ -1092,6 +1102,14 @@ namespace WindowsGSM
                 .Select(s => (type: s.Key, players: s.Sum(p => p.players)))
                 .ToList();
 
+            dashboard_player_chart_summary.Text = typePlayers.Count == 0
+                ? string.Format(CultureInfo.CurrentUICulture, "{0}: 0", LocalizationManager.Get("Players"))
+                : string.Join(Environment.NewLine, typePlayers.Select(item => string.Format(
+                    CultureInfo.CurrentCulture,
+                    "{0}: {1}",
+                    item.Item1,
+                    item.Item2)));
+
             // Ajust the maxvalue of axis Y base on PlayerCount
             if (typePlayers.Count > 0)
             {
@@ -1267,11 +1285,13 @@ namespace WindowsGSM
                 button_Status.Background = (GetServerMetadata(row.ID).ServerStatus == ServerStatus.Started) ? System.Windows.Media.Brushes.LimeGreen : System.Windows.Media.Brushes.Orange;
                 label_ServerHealthDetails.Text = row.HealthCompactDetails;
                 label_ServerHealthDetails.ToolTip = row.HealthDetails;
+                AutomationProperties.SetName(label_ServerHealthDetails, row.HealthCompactDetails);
+                AutomationProperties.SetHelpText(label_ServerHealthDetails, row.HealthDetails);
 
                 var gameServer = GameServer.Data.Class.Get(row.Game, pluginList: PluginsList);
                 switch_embedconsole.IsEnabled = gameServer.AllowsEmbedConsole;
                 switch_embedconsole.IsOn = gameServer.AllowsEmbedConsole ? GetServerMetadata(row.ID).EmbedConsole : false;
-                Button_AutoScroll.Content = GetServerMetadata(row.ID).AutoScroll ? "✔️ AUTO SCROLL" : "❌ AUTO SCROLL";
+                SetAutoScrollButtonStatus(GetServerMetadata(row.ID).AutoScroll);
 
                 switch_autorestart.IsOn = GetServerMetadata(row.ID).AutoRestart;
                 switch_restartcrontab.IsOn = GetServerMetadata(row.ID).RestartCrontab;
@@ -1519,6 +1539,7 @@ namespace WindowsGSM
             // Set the elements visibility of Install Server Flyout
             var selectedgame = (Images.Row)comboBox_InstallGameServer.SelectedItem;
             button_InstallSetAccount.IsEnabled = false;
+            label_InstallToken.Visibility = Visibility.Hidden;
             textBox_InstallToken.Visibility = Visibility.Hidden;
             button_InstallSendToken.Visibility = Visibility.Hidden;
             stackPanel_Install_CfxSettings.Visibility = selectedgame != null && IsCfxGame(selectedgame.Name) ? Visibility.Visible : Visibility.Collapsed;
@@ -1531,6 +1552,7 @@ namespace WindowsGSM
                 if (!gameServer.loginAnonymous)
                 {
                     button_InstallSetAccount.IsEnabled = true;
+                    label_InstallToken.Visibility = Visibility.Visible;
                     textBox_InstallToken.Visibility = Visibility.Visible;
                     button_InstallSendToken.Visibility = Visibility.Visible;
                 }
@@ -1769,6 +1791,8 @@ namespace WindowsGSM
         {
             if (e.Key == Key.Enter)
             {
+                e.Handled = true;
+
                 if (textbox_servercommand.Text.Length != 0)
                 {
                     GetServerMetadata(0).ServerConsole.Add(textbox_servercommand.Text);
@@ -3909,9 +3933,7 @@ namespace WindowsGSM
             if (!Functions.ServerConsole.IsStandardInputRedirected(p)
                 && !Functions.ServerConsole.HasUsableWindow(p, metadata.MainWindow)) { return; }
 
-            textbox_servercommand.Focusable = false;
             metadata.ServerConsole.Input(p, command, metadata.MainWindow);
-            textbox_servercommand.Focusable = true;
         }
 
         private static bool IsValidIPAddress(string ip)
@@ -4116,8 +4138,60 @@ namespace WindowsGSM
         #region Menu - Help
         private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
+            AssociateAccessibleLabels();
+
             string latestVersion = await GetLatestVersion();
             SetUpdateAvailableIndicator(latestVersion);
+        }
+
+        private void AssociateAccessibleLabels()
+        {
+            var visited = new HashSet<DependencyObject>();
+            AssociateAccessibleLabels(this, visited);
+
+            foreach (DependencyObject flyout in new DependencyObject[]
+            {
+                MahAppFlyout_ViewPlugins,
+                MahAppFlyout_Settings,
+                MahAppFlyout_DiscordAlert,
+                MahAppFlyout_RestoreBackup,
+                MahAppFlyout_SetAffinity,
+                MahAppFlyout_EditConfig,
+                MahAppFlyout_ManageAddons,
+                MahAppFlyout_InstallGameServer,
+                MahAppFlyout_ImportGameServer,
+                MahAppFlyout_ServerGroups
+            })
+            {
+                AssociateAccessibleLabels(flyout, visited);
+            }
+        }
+
+        private static void AssociateAccessibleLabels(DependencyObject element, HashSet<DependencyObject> visited)
+        {
+            if (element == null || !visited.Add(element)) { return; }
+
+            if (element is Label label && label.Target != null)
+            {
+                AutomationProperties.SetLabeledBy(label.Target, label);
+            }
+
+            foreach (object child in LogicalTreeHelper.GetChildren(element))
+            {
+                if (child is DependencyObject dependencyObject)
+                {
+                    AssociateAccessibleLabels(dependencyObject, visited);
+                }
+            }
+
+            if (element is Visual || element is System.Windows.Media.Media3D.Visual3D)
+            {
+                int childCount = VisualTreeHelper.GetChildrenCount(element);
+                for (int i = 0; i < childCount; i++)
+                {
+                    AssociateAccessibleLabels(VisualTreeHelper.GetChild(element, i), visited);
+                }
+            }
         }
 
         private void SetUpdateAvailableIndicator(string latestVersion)
@@ -5358,9 +5432,16 @@ namespace WindowsGSM
             var server = (ServerTable)ServerGrid.SelectedItem;
             if (server == null) { return; }
 
-            Button_AutoScroll.Content = Button_AutoScroll.Content.ToString() == "✔️ AUTO SCROLL" ? "❌ AUTO SCROLL" : "✔️ AUTO SCROLL";
-            _serverMetadata[int.Parse(server.ID)].AutoScroll = Button_AutoScroll.Content.ToString().Contains("✔️");
-            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.AutoScroll, GetServerMetadata(server.ID).AutoScroll ? "1" : "0");
+            ServerMetadata metadata = GetServerMetadata(server.ID);
+            metadata.AutoScroll = !metadata.AutoScroll;
+            SetAutoScrollButtonStatus(metadata.AutoScroll);
+            ServerConfig.SetSetting(server.ID, ServerConfig.SettingName.AutoScroll, metadata.AutoScroll ? "1" : "0");
+        }
+
+        private void SetAutoScrollButtonStatus(bool isEnabled)
+        {
+            Button_AutoScroll.Content = LocalizationManager.Get(isEnabled ? "AutoScrollEnabled" : "AutoScrollDisabled");
+            AutomationProperties.SetItemStatus(Button_AutoScroll, LocalizationManager.Get(isEnabled ? "ScheduleEnabled" : "ScheduleDisabled"));
         }
     }
 }

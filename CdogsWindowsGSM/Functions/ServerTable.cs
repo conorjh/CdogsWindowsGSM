@@ -54,6 +54,8 @@ namespace WindowsGSM.Functions
 
                 _healthStatus = value;
                 OnPropertyChanged(nameof(HealthStatus));
+                OnPropertyChanged(nameof(HealthStatusLabel));
+                OnPropertyChanged(nameof(HealthStatusDisplay));
                 OnPropertyChanged(nameof(HealthStatusIcon));
                 OnPropertyChanged(nameof(HealthStatusIconBrush));
             }
@@ -67,8 +69,13 @@ namespace WindowsGSM.Functions
 
                 _healthCompactDetails = value;
                 OnPropertyChanged(nameof(HealthCompactDetails));
+                OnPropertyChanged(nameof(HealthStatusDisplay));
             }
         }
+        public string HealthStatusDisplay => string.IsNullOrWhiteSpace(HealthCompactDetails)
+            ? HealthStatusLabel
+            : HealthCompactDetails;
+        public string HealthStatusLabel => LocalizationManager.Get("Health" + HealthStatus);
         public string HealthDetails
         {
             get => _healthDetails;

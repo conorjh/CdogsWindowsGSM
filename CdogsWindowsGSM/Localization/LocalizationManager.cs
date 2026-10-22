@@ -24,7 +24,11 @@ namespace WindowsGSM.Localization
             { "pl", "pl." },
             { "ro", "ro." },
             { "ru", "ru." },
-            { "uk", "uk." }
+            { "uk", "uk." },
+            { "ja", "ja." },
+            { "zh-CN", "zh-CN." },
+            { "ko", "ko." },
+            { "tr", "tr." }
         };
         private static CultureInfo _systemUiCulture;
 
@@ -60,9 +64,15 @@ namespace WindowsGSM.Localization
                 throw new ArgumentException("A localization key is required.", nameof(key));
             }
 
-            string language = CultureInfo.CurrentUICulture.TwoLetterISOLanguageName;
+            CultureInfo culture = CultureInfo.CurrentUICulture;
+            string language = culture.TwoLetterISOLanguageName;
             string resourcePrefix;
-            if (LocalizedResourcePrefixes.TryGetValue(language, out resourcePrefix))
+            if (!LocalizedResourcePrefixes.TryGetValue(culture.Name, out resourcePrefix))
+            {
+                LocalizedResourcePrefixes.TryGetValue(language, out resourcePrefix);
+            }
+
+            if (!string.IsNullOrEmpty(resourcePrefix))
             {
                 string localizedValue = EnglishResources.GetString(resourcePrefix + key, CultureInfo.InvariantCulture);
                 if (localizedValue != null)

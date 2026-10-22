@@ -87,6 +87,7 @@
   <data name="Progress"><value>Progreso</value></data>
   <data name="InstallLog"><value>Registro de instalación</value></data>
   <data name="SendToken"><value>Enviar token</value></data>
+  <data name="SteamGuardCodeLabel"><value>Código de Steam Guard</value></data>
   <data name="ImportGameServer"><value>Importar servidor de juego</value></data>
   <data name="OldServerDirectory"><value>Directorio anterior del servidor:</value></data>
   <data name="Browse"><value>Examinar</value></data>
@@ -250,6 +251,8 @@
   <data name="AutoScrollButton"><value>✔ Desplazar</value></data>
   <data name="AutoScrollEnabled"><value>✔️ DESPLAZAR</value></data>
   <data name="AutoScrollDisabled"><value>❌ DESPLAZAR</value></data>
+	<data name="ServerConsoleOutput"><value>Salida de la consola del servidor</value></data>
+  <data name="ServerConsoleCommand"><value>Comando de la consola del servidor</value></data>
   <data name="Send"><value>Enviar</value></data>
   <data name="NavHome"><value>Inicio</value></data>
   <data name="NavDashboard"><value>Panel</value></data>

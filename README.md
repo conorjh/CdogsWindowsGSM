@@ -105,7 +105,7 @@ A community-maintained Windows desktop application for installing, importing, an
 
 ### Languages
 
-WindowsGSM includes English, Spanish, French, German, Italian, Portuguese, Dutch, Polish, Romanian, Russian, and Ukrainian UI text. Choose **Use Windows language** or a language in **Settings > Language**. The preference is saved for the current Windows user and takes effect the next time WindowsGSM starts. Unsupported Windows UI languages fall back to English.
+WindowsGSM includes English, Spanish, French, German, Italian, Portuguese, Dutch, Polish, Romanian, Russian, Ukrainian, Simplified Chinese, Japanese, Korean, and Turkish UI text. Choose **Use Windows language** or a language in **Settings > Language**. The preference is saved for the current Windows user and takes effect the next time WindowsGSM starts. Unsupported Windows UI languages fall back to English.
 
 Translations cover the main window, settings, common server-management dialogs, status labels, and Minecraft EULA prompts. Game names, game-specific installer output, third-party plugin text, server logs, and game-server console output are provided by their respective sources and are not translated.
 

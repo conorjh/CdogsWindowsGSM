@@ -96,11 +96,11 @@
                         <mah:ToggleSwitch x:Name="MahAppSwitch_RestartOnCrash" Header="{loc:Loc Key=AutoRestartWindowsGSMOnCrash}" Margin="20,0,0,15" Toggled="RestartOnCrash_IsCheckedChanged"/>
                         <mah:ToggleSwitch x:Name="MahAppSwitch_SendStatistics" Header="{loc:Loc Key=SendStatistics}" Margin="20,0,0,15" Toggled="SendStatistics_IsCheckedChanged"/>
                         <DockPanel Margin="20,0,20,20">
-                            <Label Content="{loc:Loc Key=WindowsGSMTheme}" FontSize="13.5" Padding="0" DockPanel.Dock="Top"></Label>
+                            <Label Content="{loc:Loc Key=WindowsGSMTheme}" Target="{Binding ElementName=comboBox_Themes}" FontSize="13.5" Padding="0" DockPanel.Dock="Top"></Label>
                             <ComboBox x:Name="comboBox_Themes" Margin="0,5,0,0" Height="25" DockPanel.Dock="Top" SelectionChanged="ComboBox_Themes_SelectionChanged"></ComboBox>
                         </DockPanel>
                         <DockPanel Margin="20,0,20,20">
-                            <Label Content="{loc:Loc Key=LanguageLabel}" FontSize="13.5" Padding="0" DockPanel.Dock="Top"/>
+                            <Label Content="{loc:Loc Key=LanguageLabel}" Target="{Binding ElementName=comboBox_Language}" FontSize="13.5" Padding="0" DockPanel.Dock="Top"/>
                             <ComboBox x:Name="comboBox_Language" Margin="0,5,0,0" Height="25" DockPanel.Dock="Top" SelectedValuePath="Tag" SelectionChanged="ComboBox_Language_SelectionChanged">
                                 <ComboBoxItem Tag="system" Content="{loc:Loc Key=LanguageSystem}"/>
                                 <ComboBoxItem Tag="en" Content="{loc:Loc Key=LanguageEnglish}"/>
@@ -114,6 +114,10 @@
                                 <ComboBoxItem Tag="ro" Content="{loc:Loc Key=LanguageRomanian}"/>
                                 <ComboBoxItem Tag="ru" Content="{loc:Loc Key=LanguageRussian}"/>
                                 <ComboBoxItem Tag="uk" Content="{loc:Loc Key=LanguageUkrainian}"/>
+                                <ComboBoxItem Tag="zh-CN" Content="{loc:Loc Key=LanguageChineseSimplified}"/>
+                                <ComboBoxItem Tag="ja" Content="{loc:Loc Key=LanguageJapanese}"/>
+                                <ComboBoxItem Tag="ko" Content="{loc:Loc Key=LanguageKorean}"/>
+                                <ComboBoxItem Tag="tr" Content="{loc:Loc Key=LanguageTurkish}"/>
                             </ComboBox>
                             <TextBlock Text="{loc:Loc Key=LanguageRestartRequired}" Margin="0,5,0,0" TextWrapping="Wrap"/>
                         </DockPanel>
@@ -138,7 +142,7 @@
                             <Label DockPanel.Dock="Left" Content="{loc:Loc Key=ServerLabel}" Padding="5,5,0,5"/>
                             <Label x:Name="label_RestoreBackupServerName" Content="{loc:Loc Key=ServerNameLabel}"/>
                         </DockPanel>
-                        <Label DockPanel.Dock="Top" Content="{loc:Loc Key=PleaseSelectBackup}"/>
+                        <Label DockPanel.Dock="Top" Content="{loc:Loc Key=PleaseSelectBackup}" Target="{Binding ElementName=listbox_RestoreBackup}"/>
                         <ListBox x:Name="listbox_RestoreBackup" DockPanel.Dock="Top" BorderThickness="1" Width="300"/>
                     </DockPanel>
                     <Button VerticalAlignment="Bottom" x:Name="button_RestoreBackup" Content="{loc:Loc Key=Restore}" Click="Button_RestoreBackup_Click"/>
@@ -155,38 +159,38 @@
                         <StackPanel DockPanel.Dock="Top">
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                                 <StackPanel>
-                                    <Label Content="{loc:Loc Key=ServerIdLabel}"></Label>
+                                    <Label Content="{loc:Loc Key=ServerIdLabel}" Target="{Binding ElementName=textbox_EC_ServerID}"></Label>
                                     <TextBox x:Name="textbox_EC_ServerID" Height="23" Width="120" TextWrapping="Wrap" Text="" FontFamily="Consolas" VerticalAlignment="Top" IsReadOnly="True"/>
                                 </StackPanel>
                                 <StackPanel Margin="5,0,0,0">
-                                    <Label Content="{loc:Loc Key=ServerGameLabel}"></Label>
+                                    <Label Content="{loc:Loc Key=ServerGameLabel}" Target="{Binding ElementName=textbox_EC_ServerGame}"></Label>
                                     <TextBox x:Name="textbox_EC_ServerGame" Height="23" Width="375" TextWrapping="Wrap" Text="" FontFamily="Consolas" VerticalAlignment="Top" IsReadOnly="True"/>
                                 </StackPanel>
                             </StackPanel>
                             <StackPanel Margin="0,0,0,10">
-                                <Label Content="{loc:Loc Key=ServerNameLabel}"></Label>
+                                <Label Content="{loc:Loc Key=ServerNameLabel}" Target="{Binding ElementName=textbox_EC_ServerName}"></Label>
                                 <TextBox x:Name="textbox_EC_ServerName" Height="23" Width="500" TextWrapping="Wrap" Text="" FontFamily="Consolas" VerticalAlignment="Top"/>
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,10">
                                 <StackPanel>
-                                    <Label Content="{loc:Loc Key=ServerIpAddressLabel}"></Label>
+                                    <Label Content="{loc:Loc Key=ServerIpAddressLabel}" Target="{Binding ElementName=textbox_EC_ServerIP}"></Label>
                                     <TextBox x:Name="textbox_EC_ServerIP" Height="23" Width="120" TextWrapping="Wrap" Text="" FontFamily="Consolas" VerticalAlignment="Top"/>
                                 </StackPanel>
                                 <StackPanel Margin="5,0,0,0">
-                                    <Label Content="{loc:Loc Key=ServerPortLabel}"></Label>
+                                    <Label Content="{loc:Loc Key=ServerPortLabel}" Target="{Binding ElementName=numericUpDown_EC_ServerPort}"></Label>
                                     <mah:NumericUpDown x:Name="numericUpDown_EC_ServerPort" Minimum="1" Maximum="65535" FontFamily="Consolas" Interval="1" Height="5" Width="120"/>
                                 </StackPanel>
                                 <StackPanel Margin="5,0,0,0">
-                                    <Label Content="{loc:Loc Key=ServerQueryPortLabel}"></Label>
+                                    <Label Content="{loc:Loc Key=ServerQueryPortLabel}" Target="{Binding ElementName=numericUpDown_EC_ServerQueryPort}"></Label>
                                     <mah:NumericUpDown x:Name="numericUpDown_EC_ServerQueryPort" Minimum="1" Maximum="65535" FontFamily="Consolas" Interval="1" Height="5" Width="120"/>
                                 </StackPanel>
                                 <StackPanel Margin="5,0,0,0">
-                                    <Label Content="{loc:Loc Key=ServerMaxPlayersLabel}"></Label>
+                                    <Label Content="{loc:Loc Key=ServerMaxPlayersLabel}" Target="{Binding ElementName=numericUpDown_EC_ServerMaxplayer}"></Label>
                                     <mah:NumericUpDown x:Name="numericUpDown_EC_ServerMaxplayer" Minimum="1" Maximum="100000" FontFamily="Consolas" Interval="1" Height="5" Width="120"/>
                                 </StackPanel>
                             </StackPanel>
                             <StackPanel Margin="0,0,0,10">
-                                <Label Content="{loc:Loc Key=ServerStartMapLabel}"></Label>
+                                <Label Content="{loc:Loc Key=ServerStartMapLabel}" Target="{Binding ElementName=textbox_EC_ServerMap}"></Label>
                                 <TextBox x:Name="textbox_EC_ServerMap" Height="23" Width="500" FontFamily="Consolas" TextWrapping="Wrap" Text="" VerticalAlignment="Top"/>
                             </StackPanel>
                             <StackPanel x:Name="stackPanel_EC_MapRotation" Margin="0,0,0,10" Visibility="Collapsed">
@@ -199,7 +203,7 @@
                                         <ColumnDefinition Width="*"/>
                                     </Grid.ColumnDefinitions>
                                     <StackPanel Grid.Column="0">
-                                        <Label Content="{loc:Loc Key=AvailableMaps}"/>
+                                        <Label Content="{loc:Loc Key=AvailableMaps}" Target="{Binding ElementName=listBox_EC_AvailableMaps}"/>
                                         <ListBox x:Name="listBox_EC_AvailableMaps" Height="100" FontFamily="Consolas" MouseDoubleClick="ListBox_EC_AvailableMaps_MouseDoubleClick"/>
                                     </StackPanel>
                                     <StackPanel Grid.Column="1" VerticalAlignment="Center" Margin="5,0">
@@ -207,7 +211,7 @@
                                         <Button Content="{loc:Loc Key=RemoveMap}" Click="Button_EC_RemoveMap_Click" Margin="0,2"/>
                                     </StackPanel>
                                     <StackPanel Grid.Column="2">
-                                        <Label Content="{loc:Loc Key=RotationOrder}"/>
+                                        <Label Content="{loc:Loc Key=RotationOrder}" Target="{Binding ElementName=listBox_EC_MapRotation}"/>
                                         <ListBox x:Name="listBox_EC_MapRotation" Height="100" FontFamily="Consolas" MouseDoubleClick="ListBox_EC_MapRotation_MouseDoubleClick"/>
                                     </StackPanel>
                                 </Grid>
@@ -218,24 +222,24 @@
                                 </StackPanel>
                             </StackPanel>
                             <StackPanel Margin="0,0,0,10">
-                                <Label Content="{loc:Loc Key=ServerGsltLabel}"></Label>
+                                <Label Content="{loc:Loc Key=ServerGsltLabel}" Target="{Binding ElementName=textbox_EC_ServerGSLT}"></Label>
                                 <TextBox x:Name="textbox_EC_ServerGSLT" Height="23" Width="500" FontFamily="Consolas" TextWrapping="Wrap" Text="" VerticalAlignment="Top"/>
                             </StackPanel>
                             <StackPanel>
-                                <Label Content="{loc:Loc Key=ServerStartParamLabel}"></Label>
+                                <Label Content="{loc:Loc Key=ServerStartParamLabel}" Target="{Binding ElementName=textbox_EC_ServerParam}"></Label>
                             </StackPanel>
                         </StackPanel>
                         <TextBox x:Name="textbox_EC_ServerParam" Width="500" TextWrapping="Wrap" FontFamily="Consolas" Text="" DockPanel.Dock="Top"/>
                         <StackPanel x:Name="stackPanel_EC_CfxSettings" Visibility="Collapsed" Margin="0,10,0,0" DockPanel.Dock="Top">
-                            <Label Content="{loc:Loc Key=CfxLicenseKeyKeepCurrent}" Padding="0,5,0,2"/>
+                            <Label Content="{loc:Loc Key=CfxLicenseKeyKeepCurrent}" Target="{Binding ElementName=passwordBox_EC_CfxLicenseKey}" Padding="0,5,0,2"/>
                             <PasswordBox x:Name="passwordBox_EC_CfxLicenseKey" Height="23"/>
                         </StackPanel>
                         <StackPanel x:Name="stackPanel_EC_Cod1Settings" Visibility="Collapsed" Margin="0,10,0,0" DockPanel.Dock="Top">
                             <CheckBox x:Name="checkBox_EC_Cod1MeatBots" Content="{loc:Loc Key=EnableMeatBots}" Margin="0,0,0,5"/>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
-                                <Label Content="{loc:Loc Key=AlliesBots}" Padding="0,5,5,5"/>
+                                <Label Content="{loc:Loc Key=AlliesBots}" Target="{Binding ElementName=numericUpDown_EC_Cod1AlliesBots}" Padding="0,5,5,5"/>
                                 <mah:NumericUpDown x:Name="numericUpDown_EC_Cod1AlliesBots" Minimum="0" Maximum="32" Value="0" Interval="1" Width="90"/>
-                                <Label Content="{loc:Loc Key=AxisBots}" Padding="10,5,5,5"/>
+                                <Label Content="{loc:Loc Key=AxisBots}" Target="{Binding ElementName=numericUpDown_EC_Cod1AxisBots}" Padding="10,5,5,5"/>
                                 <mah:NumericUpDown x:Name="numericUpDown_EC_Cod1AxisBots" Minimum="0" Maximum="32" Value="0" Interval="1" Width="90"/>
                             </StackPanel>
                         </StackPanel>
@@ -275,7 +279,7 @@
                 <DockPanel VerticalAlignment="Stretch" Height="Auto">
                     <DockPanel Margin="20,0,20,0">
                         <DockPanel DockPanel.Dock="Top">
-                            <Label Content="{loc:Loc Key=GameServerLabel}"></Label>
+                            <Label Content="{loc:Loc Key=GameServerLabel}" Target="{Binding ElementName=comboBox_InstallGameServer}"></Label>
                             <Label x:Name="label_GameServerCount" Content="" HorizontalAlignment="Right"></Label>
                         </DockPanel>
                         <DockPanel Margin="0,0,0,15" DockPanel.Dock="Top" MinWidth="350">
@@ -291,22 +295,22 @@
                             </ComboBox>
                         </DockPanel>
 
-                        <Label Content="{loc:Loc Key=ServerNameLabel}" DockPanel.Dock="Top"></Label>
+                        <Label Content="{loc:Loc Key=ServerNameLabel}" Target="{Binding ElementName=textbox_InstallServerName}" DockPanel.Dock="Top"></Label>
                         <DockPanel Margin="0,0,0,15" DockPanel.Dock="Top">
                             <TextBox x:Name="textbox_InstallServerName" Height="23" TextWrapping="Wrap" Text="" VerticalAlignment="Top"/>
                         </DockPanel>
 
                         <StackPanel x:Name="stackPanel_Install_CfxSettings" Visibility="Collapsed" Margin="0,0,0,15" DockPanel.Dock="Top">
-                            <Label Content="{loc:Loc Key=CfxLicenseKeyFromPortal}" Padding="0,5,0,2"/>
+                            <Label Content="{loc:Loc Key=CfxLicenseKeyFromPortal}" Target="{Binding ElementName=passwordBox_Install_CfxLicenseKey}" Padding="0,5,0,2"/>
                             <PasswordBox x:Name="passwordBox_Install_CfxLicenseKey" Height="23"/>
                         </StackPanel>
 
                         <StackPanel x:Name="stackPanel_Install_Cod1Settings" Visibility="Collapsed" Margin="0,0,0,15" DockPanel.Dock="Top">
                             <CheckBox x:Name="checkBox_Install_Cod1MeatBots" Content="{loc:Loc Key=InstallMeatBots}" Margin="0,0,0,5"/>
                             <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
-                                <Label Content="{loc:Loc Key=AlliesBots}" Padding="0,5,5,5"/>
+                                <Label Content="{loc:Loc Key=AlliesBots}" Target="{Binding ElementName=numericUpDown_Install_Cod1AlliesBots}" Padding="0,5,5,5"/>
                                 <mah:NumericUpDown x:Name="numericUpDown_Install_Cod1AlliesBots" Minimum="0" Maximum="32" Value="0" Interval="1" Width="90"/>
-                                <Label Content="{loc:Loc Key=AxisBots}" Padding="10,5,5,5"/>
+                                <Label Content="{loc:Loc Key=AxisBots}" Target="{Binding ElementName=numericUpDown_Install_Cod1AxisBots}" Padding="10,5,5,5"/>
                                 <mah:NumericUpDown x:Name="numericUpDown_Install_Cod1AxisBots" Minimum="0" Maximum="32" Value="0" Interval="1" Width="90"/>
                             </StackPanel>
                         </StackPanel>
@@ -316,18 +320,19 @@
                             <Button x:Name="button_Install" Content="{loc:Loc Key=Install}" VerticalAlignment="Top" Click="Button_Install_Click"/>
                         </DockPanel>
 
-                        <Label Content="{loc:Loc Key=Progress}" DockPanel.Dock="Top"></Label>
+                        <Label Content="{loc:Loc Key=Progress}" Target="{Binding ElementName=progressbar_InstallProgress}" DockPanel.Dock="Top"></Label>
                         <DockPanel Margin="0,0,0,15" DockPanel.Dock="Top">
                             <Grid Height="23" VerticalAlignment="Top">
-                                <ProgressBar x:Name="progressbar_InstallProgress" Value="0"/>
+                                <ProgressBar x:Name="progressbar_InstallProgress" Value="0" AutomationProperties.Name="{loc:Loc Key=Progress}"/>
                                 <TextBlock x:Name="textblock_InstallProgress" Text="" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Grid>
                         </DockPanel>
 
                         <DockPanel Margin="0,0,0,5" DockPanel.Dock="Top">
-                            <Label Content="{loc:Loc Key=InstallLog}" DockPanel.Dock="Left"></Label>
+                            <Label Content="{loc:Loc Key=InstallLog}" Target="{Binding ElementName=textbox_InstallLog}" DockPanel.Dock="Left"></Label>
                             <DockPanel HorizontalAlignment="Right">
-                                <TextBox x:Name="textBox_InstallToken" Height="23" TextWrapping="Wrap" DockPanel.Dock="Left" MaxLines="1" Margin="5,0,5,0" Width="100"/>
+                                <Label x:Name="label_InstallToken" Content="{loc:Loc Key=SteamGuardCodeLabel}" Target="{Binding ElementName=textBox_InstallToken}" DockPanel.Dock="Left" Margin="5,0,0,0" Visibility="Hidden"/>
+                                <TextBox x:Name="textBox_InstallToken" AutomationProperties.Name="{loc:Loc Key=SteamGuardCodeLabel}" Height="23" TextWrapping="Wrap" DockPanel.Dock="Left" MaxLines="1" Margin="5,0,5,0" Width="100"/>
                                 <Button x:Name="button_InstallSendToken" Content="{loc:Loc Key=SendToken}" DockPanel.Dock="Right" Width="100" Click="Button_SendToken_Click"/>
                             </DockPanel>
                         </DockPanel>
@@ -340,7 +345,7 @@
                     <DockPanel Margin="20,0,20,0">
 
                         <DockPanel DockPanel.Dock="Top">
-                            <Label Content="{loc:Loc Key=GameServerLabel}"></Label>
+                            <Label Content="{loc:Loc Key=GameServerLabel}" Target="{Binding ElementName=comboBox_ImportGameServer}"></Label>
                         </DockPanel>
                         <DockPanel Margin="0,0,0,15" DockPanel.Dock="Top" MinWidth="350">
                             <ComboBox x:Name="comboBox_ImportGameServer" VerticalAlignment="Top">
@@ -356,15 +361,15 @@
                             </ComboBox>
                         </DockPanel>
 
-                        <Label Content="{loc:Loc Key=ServerNameLabel}" DockPanel.Dock="Top"></Label>
+                        <Label Content="{loc:Loc Key=ServerNameLabel}" Target="{Binding ElementName=textbox_ImportServerName}" DockPanel.Dock="Top"></Label>
                         <DockPanel Margin="0,0,0,15" DockPanel.Dock="Top">
                             <TextBox x:Name="textbox_ImportServerName" Height="23" TextWrapping="Wrap" Text="" VerticalAlignment="Top"/>
                         </DockPanel>
 
-                        <Label Content="{loc:Loc Key=OldServerDirectory}" DockPanel.Dock="Top"/>
+                        <Label Content="{loc:Loc Key=OldServerDirectory}" Target="{Binding ElementName=textbox_ServerDir}" DockPanel.Dock="Top"/>
                         <DockPanel Margin="0,0,0,0" DockPanel.Dock="Top">
                             <TextBox x:Name="textbox_ServerDir" Height="23" TextWrapping="Wrap" Text="" DockPanel.Dock="Left" Width="280"/>
-                            <Button x:Name="button_Browse" Content="{loc:Loc Key=Browse}" Height="26" Width="70" Click="Button_Browse_Click"/>
+                            <Button x:Name="button_Browse" Content="{loc:Loc Key=Browse}" AutomationProperties.HelpText="{loc:Loc Key=OldServerDirectory}" Height="26" Width="70" Click="Button_Browse_Click"/>
                         </DockPanel>
                         <Label x:Name="label_ServerDirWarn" Content="" DockPanel.Dock="Top"/>
 
@@ -372,10 +377,10 @@
                             <Button x:Name="button_Import" Content="{loc:Loc Key=Import}" VerticalAlignment="Top" Click="Button_Import_Click"/>
                         </DockPanel>
 
-                        <Label Content="{loc:Loc Key=Progress}" DockPanel.Dock="Top"></Label>
+                        <Label Content="{loc:Loc Key=Progress}" Target="{Binding ElementName=progressbar_ImportProgress}" DockPanel.Dock="Top"></Label>
                         <DockPanel Margin="0,0,0,15" DockPanel.Dock="Top">
                             <Grid Height="23" VerticalAlignment="Top">
-                                <ProgressBar x:Name="progressbar_ImportProgress" Value="0"/>
+                                <ProgressBar x:Name="progressbar_ImportProgress" Value="0" AutomationProperties.Name="{loc:Loc Key=Progress}"/>
                                 <TextBlock x:Name="textblock_ImportProgress" Text="" HorizontalAlignment="Center" VerticalAlignment="Center"/>
                             </Grid>
                         </DockPanel>
@@ -387,7 +392,7 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="15">
                         <TextBlock Text="{loc:Loc Key=ServerGroupTargetLabel}" Margin="3,0,3,5"/>
-                        <ComboBox x:Name="comboBox_ServerGroupTarget" Height="26" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="ServerGroups_Target_SelectionChanged"/>
+                        <ComboBox x:Name="comboBox_ServerGroupTarget" AutomationProperties.Name="{loc:Loc Key=ServerGroupTargetLabel}" Height="26" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="ServerGroups_Target_SelectionChanged"/>
                         <WrapPanel Margin="0,10,0,0">
                             <Button x:Name="button_ServerGroupCreate" Content="{loc:Loc Key=ServerGroupCreate}" Click="ServerGroups_Create_Click" Margin="3,1" Padding="6,2"/>
                             <Button x:Name="button_ServerGroupRename" Content="{loc:Loc Key=ServerGroupRename}" Click="ServerGroups_Rename_Click" Margin="3,1" Padding="6,2" IsEnabled="False"/>
@@ -404,7 +409,7 @@
                             <Button x:Name="button_ServerGroupUpdate" Content="{loc:Loc Key=ServerGroupUpdate}" Click="ServerGroups_Update_Click" Margin="3,1" Padding="6,2" IsEnabled="False"/>
                         </WrapPanel>
                         <TextBlock x:Name="textBlock_ServerGroupStatus" Margin="3,10,3,2" TextWrapping="Wrap" Foreground="Gray"/>
-                        <TextBox x:Name="textBlock_ServerGroupActionResults" Margin="3,2" Height="160" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" IsTabStop="False"/>
+                        <TextBox x:Name="textBlock_ServerGroupActionResults" AutomationProperties.Name="{loc:Loc Key=Log}" Margin="3,2" Height="160" IsReadOnly="True" TextWrapping="Wrap" VerticalScrollBarVisibility="Auto" IsTabStop="True"/>
                     </StackPanel>
                 </ScrollViewer>
             </mah:Flyout>
@@ -433,7 +438,7 @@
                                 <mah:ToggleSwitch DockPanel.Dock="Left" VerticalAlignment="Center" x:Name="MahAppSwitch_DiscordBotAutoStart" Header="{loc:Loc Key=AutoStart}" Style="{StaticResource MahApps.Styles.ToggleSwitch}" Width="140" Toggled="Switch_DiscordBotAutoStart_Click"/>
                                 <DockPanel DockPanel.Dock="Top" Margin="10,0,0,0">
                                     <DockPanel DockPanel.Dock="Top">
-                                        <Label DockPanel.Dock="Left" Content="{loc:Loc Key=BotPrefix}"/>
+                            <Label DockPanel.Dock="Left" Content="{loc:Loc Key=BotPrefix}" Target="{Binding ElementName=textBox_DiscordBotPrefix}"/>
                                         <Button DockPanel.Dock="Right" x:Name="button_DiscordBotPrefixEdit" Content="{loc:Loc Key=Edit}" Margin="0,0,0,5" HorizontalAlignment="Right" Width="75" Height="23" Click="Button_DiscordBotPrefixEdit_Click"/>
                                     </DockPanel>
                                     <TextBox x:Name="textBox_DiscordBotPrefix" Height="11" DockPanel.Dock="Top" Text="" Margin="0,0,0,0" Width="170" IsEnabled="False" FontFamily="Consolas"/>
@@ -441,7 +446,7 @@
                             </DockPanel>
 
                             <DockPanel DockPanel.Dock="Top" Margin="0,10,0,0">
-                                <Label Content="{loc:Loc Key=DiscordBotToken}"/>
+                                <Label Content="{loc:Loc Key=DiscordBotToken}" Target="{Binding ElementName=textBox_DiscordBotToken}"/>
                                 <Button x:Name="button_DiscordBotTokenEdit" Content="{loc:Loc Key=Edit}" Margin="0,0,0,5" HorizontalAlignment="Right" Width="75" Height="23" Click="Button_DiscordBotTokenEdit_Click"/>
                             </DockPanel>
                             <Grid DockPanel.Dock="Top">
@@ -464,20 +469,20 @@
                             </DockPanel>-->
 
                             <DockPanel DockPanel.Dock="Top" Margin="0,10,0,0">
-                                <Label Content="{loc:Loc Key=DiscordBotLog}"/>
+                            <Label Content="{loc:Loc Key=DiscordBotLog}" Target="{Binding ElementName=textBox_DiscordBotLog}"/>
                             </DockPanel>
                             <TextBox x:Name="textBox_DiscordBotLog" FontFamily="Consolas" MaxWidth="465" DockPanel.Dock="Top" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" IsReadOnly="True" TextWrapping="NoWrap"/>
                         </DockPanel>
                         <DockPanel DockPanel.Dock="Right" Margin="20,0,0,0">
                             <DockPanel DockPanel.Dock="Top">
-                                <Label Content="{loc:Loc Key=AdminList}"/>
+                                <Label Content="{loc:Loc Key=AdminList}" Target="{Binding ElementName=listBox_DiscordBotAdminList}"/>
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                     <Button x:Name="button_DiscordBotAddID" Content="{loc:Loc Key=AddAdminId}" Margin="0,0,5,5" HorizontalAlignment="Right" Width="97" Height="23" Click="Button_DiscordBotAddID_Click"/>
                                     <Button x:Name="button_DiscordBotEditServerID" Content="{loc:Loc Key=EditServerId}" Margin="0,0,5,5" HorizontalAlignment="Right" Width="97" Height="23" Click="Button_DiscordBotEditServerID_Click"/>
                                     <Button x:Name="button_DiscordBotRemoveID" Content="{loc:Loc Key=Remove}" Margin="0,0,0,5" HorizontalAlignment="Right" Width="70" Height="23" Click="Button_DiscordBotRemoveID_Click"/>
                                 </StackPanel>
                             </DockPanel>
-                            <DataGrid x:Name="listBox_DiscordBotAdminList" SelectionMode="Single" BorderThickness="1" DockPanel.Dock="Top">
+                            <DataGrid x:Name="listBox_DiscordBotAdminList" AutomationProperties.Name="{loc:Loc Key=AdminList}" SelectionMode="Single" BorderThickness="1" DockPanel.Dock="Top">
                                 <DataGrid.Columns>
                                     <DataGridTextColumn Header="{loc:Loc Key=AdminId}" IsReadOnly="True" Binding="{Binding Path=AdminId}" Width="150" MinWidth="150" MaxWidth="150" FontFamily="Consolas"/>
                                     <DataGridTextColumn Header="{loc:Loc Key=ServerIds}" IsReadOnly="True" Binding="{Binding Path=ServerIds}" Width="1*" FontFamily="Consolas"/>
@@ -515,7 +520,7 @@
                                         <Label DockPanel.Dock="Left" Content="0%" Padding="0" x:Name="dashboard_cpu_usage"/>
                                         <Label DockPanel.Dock="Left" Content="" Padding="0"/>
                                     </DockPanel>
-                                    <mah:MetroProgressBar DockPanel.Dock="Left" Height="20" Value="30" Background="{DynamicResource MahApps.Brushes.Gray7}" Foreground="RoyalBlue" x:Name="dashboard_cpu_bar"/>
+                                    <mah:MetroProgressBar DockPanel.Dock="Left" Height="20" Value="30" Background="{DynamicResource MahApps.Brushes.Gray7}" Foreground="RoyalBlue" x:Name="dashboard_cpu_bar" AutomationProperties.Name="{loc:Loc Key=Cpu}"/>
                                 </DockPanel>
                             </DockPanel>
                             <DockPanel Grid.Column="2" Background="{DynamicResource MahApps.Brushes.Gray10}">
@@ -529,7 +534,7 @@
                                         <Label DockPanel.Dock="Left" Content="0%" Padding="0" x:Name="dashboard_ram_usage"/>
                                         <Label DockPanel.Dock="Right" Content="/" Padding="0" HorizontalAlignment="Right" x:Name="dashboard_ram_ratio"/>
                                     </DockPanel>
-                                    <mah:MetroProgressBar DockPanel.Dock="Left" Height="20" Value="50" Background="{DynamicResource MahApps.Brushes.Gray7}" Foreground="Purple" x:Name="dashboard_ram_bar"/>
+                                    <mah:MetroProgressBar DockPanel.Dock="Left" Height="20" Value="50" Background="{DynamicResource MahApps.Brushes.Gray7}" Foreground="Purple" x:Name="dashboard_ram_bar" AutomationProperties.Name="{loc:Loc Key=Memory}"/>
                                 </DockPanel>
                             </DockPanel>
                             <DockPanel Grid.Column="4" Background="{DynamicResource MahApps.Brushes.Gray10}">
@@ -544,7 +549,7 @@
                                         <Label DockPanel.Dock="Left" Content="0%" Padding="0" x:Name="dashboard_disk_usage"/>
                                         <Label DockPanel.Dock="Right" Content="/" Padding="0" HorizontalAlignment="Right" x:Name="dashboard_disk_ratio"/>
                                     </DockPanel>
-                                    <mah:MetroProgressBar DockPanel.Dock="Left" Height="20" Value="50" Background="{DynamicResource MahApps.Brushes.Gray7}" Foreground="ForestGreen" x:Name="dashboard_disk_bar"/>
+                                    <mah:MetroProgressBar DockPanel.Dock="Left" Height="20" Value="50" Background="{DynamicResource MahApps.Brushes.Gray7}" Foreground="ForestGreen" x:Name="dashboard_disk_bar" AutomationProperties.Name="{loc:Loc Key=Disk}"/>
                                 </DockPanel>
                             </DockPanel>
                         </Grid>
@@ -596,7 +601,7 @@
                                         <Label DockPanel.Dock="Left" Content="0%" Padding="0" x:Name="dashboard_servers_usage"/>
                                         <Label DockPanel.Dock="Right" Content="/" Padding="0" HorizontalAlignment="Right" x:Name="dashboard_servers_ratio"/>
                                     </DockPanel>
-                                    <mah:MetroProgressBar DockPanel.Dock="Left" Height="20" Value="30" Background="{DynamicResource MahApps.Brushes.Gray7}" Foreground="MediumVioletRed" x:Name="dashboard_servers_bar"/>
+                                    <mah:MetroProgressBar DockPanel.Dock="Left" Height="20" Value="30" Background="{DynamicResource MahApps.Brushes.Gray7}" Foreground="MediumVioletRed" x:Name="dashboard_servers_bar" AutomationProperties.Name="{loc:Loc Key=Servers}"/>
                                 </DockPanel>
                             </DockPanel>
                             <DockPanel Grid.Column="2" Background="{DynamicResource MahApps.Brushes.Gray10}">
@@ -610,7 +615,7 @@
                                         <Label DockPanel.Dock="Left" Content="0%" Padding="0" x:Name="dashboard_started_usage"/>
                                         <Label DockPanel.Dock="Right" Content="/" Padding="0" HorizontalAlignment="Right" x:Name="dashboard_started_ratio"/>
                                     </DockPanel>
-                                    <mah:MetroProgressBar DockPanel.Dock="Left" Height="20" Value="50" Background="{DynamicResource MahApps.Brushes.Gray7}" Foreground="SpringGreen" x:Name="dashboard_started_bar"/>
+                                    <mah:MetroProgressBar DockPanel.Dock="Left" Height="20" Value="50" Background="{DynamicResource MahApps.Brushes.Gray7}" Foreground="SpringGreen" x:Name="dashboard_started_bar" AutomationProperties.Name="{loc:Loc Key=StartedServerCount}"/>
                                 </DockPanel>
                             </DockPanel>
                             <DockPanel Grid.Column="4" Background="{DynamicResource MahApps.Brushes.Gray10}">
@@ -629,7 +634,9 @@
                         <TextBlock x:Name="dashboard_fleet_summary" TextWrapping="Wrap"/>
                     </Button>
                     <DockPanel DockPanel.Dock="Top">
-                        <lvc:CartesianChart x:Name="livechart_players" LegendPosition="Right" Margin="0,10,0,0" />
+                        <TextBlock Text="{loc:Loc Key=Players}" DockPanel.Dock="Top" Margin="0,10,0,0"/>
+                        <TextBlock x:Name="dashboard_player_chart_summary" DockPanel.Dock="Top" TextWrapping="Wrap"/>
+                        <lvc:CartesianChart x:Name="livechart_players" AutomationProperties.Name="{loc:Loc Key=Players}" AutomationProperties.HelpText="{Binding Text, ElementName=dashboard_player_chart_summary}" LegendPosition="Right" Margin="0,10,0,0" />
                     </DockPanel>
                   </DockPanel>
                 </ScrollViewer>
@@ -647,7 +654,7 @@
                     <Label Content="{loc:Loc Key=BackupSchedules}" FontSize="22" FontWeight="SemiBold" Padding="0"/>
                     <Label x:Name="label_BackupScheduleTimeZone" VerticalAlignment="Center" Margin="16,0,0,0"/>
                 </StackPanel>
-                <DataGrid x:Name="BackupScheduleGrid" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" SelectionChanged="BackupScheduleGrid_SelectionChanged">
+                <DataGrid x:Name="BackupScheduleGrid" AutomationProperties.Name="{loc:Loc Key=BackupSchedules}" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" SelectionChanged="BackupScheduleGrid_SelectionChanged">
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="{loc:Loc Key=ColumnServerName}" Binding="{Binding ServerName}" Width="2*"/>
                         <DataGridTextColumn Header="{loc:Loc Key=ScheduleGame}" Binding="{Binding Game}" Width="*"/>
@@ -676,19 +683,19 @@
                     </Grid.RowDefinitions>
                     <Label Grid.Row="0" Grid.Column="0" Content="{loc:Loc Key=SelectedServer}"/>
                     <TextBlock x:Name="label_BackupScheduleServer" Grid.Row="0" Grid.Column="1" VerticalAlignment="Center"/>
-                    <Label Grid.Row="0" Grid.Column="2" Content="{loc:Loc Key=ScheduleEnabled}"/>
+                    <Label Grid.Row="0" Grid.Column="2" Content="{loc:Loc Key=ScheduleEnabled}" Target="{Binding ElementName=switch_BackupScheduleEnabled}"/>
                     <mah:ToggleSwitch x:Name="switch_BackupScheduleEnabled" Grid.Row="0" Grid.Column="3" VerticalAlignment="Center"/>
                     <Button x:Name="button_SaveBackupSchedule" Grid.Row="0" Grid.Column="4" Content="{loc:Loc Key=ScheduleSave}" Margin="8,0,0,0" Padding="12,4" Click="Button_SaveBackupSchedule_Click"/>
-                    <Label Grid.Row="1" Grid.Column="0" Content="{loc:Loc Key=ScheduleFrequency}"/>
+                    <Label Grid.Row="1" Grid.Column="0" Content="{loc:Loc Key=ScheduleFrequency}" Target="{Binding ElementName=comboBox_BackupScheduleFrequency}"/>
                     <ComboBox x:Name="comboBox_BackupScheduleFrequency" Grid.Row="1" Grid.Column="1" SelectedValuePath="Tag" SelectionChanged="BackupScheduleFrequency_SelectionChanged" VerticalContentAlignment="Center">
                         <ComboBoxItem Content="{loc:Loc Key=ScheduleDaily}" Tag="Daily"/>
                         <ComboBoxItem Content="{loc:Loc Key=ScheduleWeekly}" Tag="Weekly"/>
                         <ComboBoxItem Content="{loc:Loc Key=ScheduleCustom}" Tag="Custom"/>
                     </ComboBox>
-                    <Label x:Name="label_BackupScheduleTime" Grid.Row="1" Grid.Column="2" Content="{loc:Loc Key=ScheduleTime}" VerticalAlignment="Center"/>
+                    <Label x:Name="label_BackupScheduleTime" Grid.Row="1" Grid.Column="2" Content="{loc:Loc Key=ScheduleTime}" Target="{Binding ElementName=textBox_BackupScheduleTime}" VerticalAlignment="Center"/>
                     <TextBox x:Name="textBox_BackupScheduleTime" Grid.Row="1" Grid.Column="3" MaxLength="5" VerticalContentAlignment="Center"/>
                     <Button x:Name="button_RunBackupNow" Grid.Row="1" Grid.Column="4" Content="{loc:Loc Key=ScheduleRunNow}" Margin="8,0,0,0" Padding="12,4" Click="Button_RunBackupNow_Click"/>
-                    <Label x:Name="label_BackupScheduleDay" Grid.Row="2" Grid.Column="0" Content="{loc:Loc Key=ScheduleDayOfWeek}" VerticalAlignment="Center" Visibility="Collapsed"/>
+                    <Label x:Name="label_BackupScheduleDay" Grid.Row="2" Grid.Column="0" Content="{loc:Loc Key=ScheduleDayOfWeek}" Target="{Binding ElementName=comboBox_BackupScheduleDay}" VerticalAlignment="Center" Visibility="Collapsed"/>
                     <ComboBox x:Name="comboBox_BackupScheduleDay" Grid.Row="2" Grid.Column="1" SelectedValuePath="Tag" VerticalContentAlignment="Center" Visibility="Collapsed">
                         <ComboBoxItem Content="{loc:Loc Key=ScheduleSunday}" Tag="0"/>
                         <ComboBoxItem Content="{loc:Loc Key=ScheduleMonday}" Tag="1"/>
@@ -874,7 +881,7 @@
             <Grid DockPanel.Dock="Top" Margin="8,2">
                 <WrapPanel VerticalAlignment="Center">
                     <TextBlock Text="{loc:Loc Key=ServerGroupsLabel}" VerticalAlignment="Center" Margin="3,0,6,0"/>
-                    <ComboBox x:Name="comboBox_ServerGroupFilter" Width="160" Height="26" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="ServerGroups_Filter_SelectionChanged" Loaded="ServerGroups_Controls_Loaded"/>
+                    <ComboBox x:Name="comboBox_ServerGroupFilter" AutomationProperties.Name="{loc:Loc Key=ServerGroupsLabel}" Width="160" Height="26" DisplayMemberPath="Name" SelectedValuePath="Id" SelectionChanged="ServerGroups_Filter_SelectionChanged" Loaded="ServerGroups_Controls_Loaded"/>
                     <Button x:Name="button_ServerGroupManage" Content="{loc:Loc Key=ServerGroupManage}" Click="ServerGroups_Manage_Click" Margin="8,1" Padding="8,2" IsEnabled="False"/>
                 </WrapPanel>
             </Grid>
@@ -887,6 +894,7 @@
                 </Grid.RowDefinitions>
 
                 <DataGrid x:Name="ServerGrid"
+                          AutomationProperties.Name="{loc:Loc Key=ServersMenu}"
                           SelectionMode="Single"
                           SelectionUnit="FullRow"
                           RowHeaderWidth="0"
@@ -968,16 +976,16 @@
                         <DataGridTemplateColumn Header="{loc:Loc Key=ColumnMod}" IsReadOnly="True" Width="53" MinWidth="53" MaxWidth="53">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <Image Source="{Binding Icon}" Width="18" ToolTip="{Binding Game}"/>
+                                    <Image Source="{Binding Icon}" Width="18" ToolTip="{Binding Game}" AutomationProperties.Name="{Binding Game}"/>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
                         <DataGridTextColumn Header="{loc:Loc Key=ColumnStatus}" IsReadOnly="True" Binding="{Binding Path=Status}" Width="80" MinWidth="80" MaxWidth="80"/>
-                        <DataGridTemplateColumn Header="{loc:Loc Key=ServerHealth}" IsReadOnly="True" SortMemberPath="HealthStatus" Width="56" MinWidth="56" MaxWidth="56">
+                        <DataGridTemplateColumn Header="{loc:Loc Key=ServerHealth}" IsReadOnly="True" SortMemberPath="HealthStatus" Width="Auto" MinWidth="88" MaxWidth="150">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
                                     <Grid Background="Transparent" ToolTip="{Binding HealthDetails}">
-                                        <TextBlock Text="{Binding HealthStatusIcon}" Foreground="{Binding HealthStatusIconBrush}" FontFamily="Segoe UI Symbol" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                        <TextBlock Text="{Binding HealthStatusLabel}" Foreground="{Binding HealthStatusIconBrush}" FontWeight="SemiBold" VerticalAlignment="Center" AutomationProperties.Name="{Binding HealthStatusDisplay}" AutomationProperties.HelpText="{Binding HealthDetails}"/>
                                     </Grid>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
@@ -990,7 +998,7 @@
                                     <Grid Background="Transparent" ToolTip="{Binding Path=MainPortToolTip}">
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Path=Port}"/>
-                                            <TextBlock Text="{Binding Path=MainPortStatusDisplay}" Foreground="{Binding Path=MainPortStatusBrush}" Margin="4,0,0,0"/>
+                                            <TextBlock Text="{Binding Path=MainPortStatusDisplay}" Foreground="{Binding Path=MainPortStatusBrush}" Margin="4,0,0,0" AutomationProperties.Name="{Binding Path=MainPortToolTip}"/>
                                         </StackPanel>
                                     </Grid>
                                 </DataTemplate>
@@ -1016,9 +1024,9 @@
                     </Grid.ColumnDefinitions>
 
                     <Grid>
-                        <Button x:Name="button_Status" Content="" HorizontalAlignment="Left" Margin="399,10,0,0" Width="50" Height="11" Background="Orange" Foreground="White" VerticalAlignment="Top" IsHitTestVisible="False" />
+                        <Button x:Name="button_Status" Content="" HorizontalAlignment="Left" Margin="399,10,0,0" Width="50" Height="11" Background="Orange" Foreground="White" VerticalAlignment="Top" IsHitTestVisible="False" Focusable="False" IsTabStop="False" />
 
-                        <Label x:Name="label_ProcessPriority" Content="{loc:Loc Key=ProcessPriority}" HorizontalAlignment="Left" Margin="5,10,0,0" VerticalAlignment="Top" Height="26"/>
+                        <Label x:Name="label_ProcessPriority" Content="{loc:Loc Key=ProcessPriority}" Target="{Binding ElementName=slider_ProcessPriority}" HorizontalAlignment="Left" Margin="5,10,0,0" VerticalAlignment="Top" Height="26"/>
                         <Slider x:Name="slider_ProcessPriority" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="101,10,0,0" Width="86" Height="25" Style="{StaticResource MahApps.Styles.Slider}" Minimum="0" Maximum="5" IsSnapToTickEnabled="True" TickPlacement="BottomRight" ValueChanged="Slider_ProcessPriority_ValueChanged"/>
                         <TextBox x:Name="textBox_ProcessPriority" Height="11" Margin="192,10,0,0" TextWrapping="NoWrap" Text="" VerticalAlignment="Top" IsReadOnly="true" HorizontalAlignment="Left" Width="95" FontFamily="Consolas"/>
 
@@ -1026,38 +1034,38 @@
                         <TextBox x:Name="textBox_SetAffinity" Height="11" Margin="389,10,0,0" TextWrapping="NoWrap" Text="" VerticalAlignment="Top" IsReadOnly="true" HorizontalAlignment="Left" Width="66" FontFamily="Consolas"/>
                         <Button x:Name="button_EditConfig" Content="{loc:Loc Key=EditConfigButton}" HorizontalAlignment="Left" Margin="382,10,0,0" VerticalAlignment="Top" Width="85" Height="26" Click="Button_EditConfig_Click"/>
 
-                        <Label x:Name="label_restartcrontab" Content="{loc:Loc Key=RestartCrontab}" HorizontalAlignment="Left" Margin="5,40,0,0" VerticalAlignment="Top" Height="26"/>
+                        <Label x:Name="label_restartcrontab" Content="{loc:Loc Key=RestartCrontab}" Target="{Binding ElementName=switch_restartcrontab}" HorizontalAlignment="Left" Margin="5,40,0,0" VerticalAlignment="Top" Height="26"/>
                         <mah:ToggleSwitch x:Name="switch_restartcrontab" Margin="99,38,0,0" VerticalAlignment="Top" HorizontalAlignment="Left" Toggled="Button_RestartCrontab_Click" Width="44" Height="30"/>
                         <Button x:Name="button_restartcrontabedit" Cursor="Hand" Content="{loc:Loc Key=ButtonEdit}" HorizontalAlignment="Left" Margin="150,40,0,0" VerticalAlignment="Top" Width="37" Height="26" Click="Button_CrontabEdit_Click"/>
                         <TextBox x:Name="textBox_restartcrontab" Height="23" Margin="192,40,0,0" TextWrapping="Wrap" Text="" VerticalAlignment="Top" IsReadOnly="true" HorizontalAlignment="Left" Width="95"/>
                         <TextBox x:Name="textBox_nextcrontab" Height="11" Margin="292,40,0,0" TextWrapping="Wrap" Text="" VerticalAlignment="Top" IsReadOnly="true" HorizontalAlignment="Left" Width="175" FontFamily="Consolas"/>
 
-                        <Label Content="{loc:Loc Key=AutoStart}" HorizontalAlignment="Left" VerticalAlignment="Top" Height="26" Margin="5,127,0,0"/>
+                        <Label Content="{loc:Loc Key=AutoStart}" Target="{Binding ElementName=switch_autostart}" HorizontalAlignment="Left" VerticalAlignment="Top" Height="26" Margin="5,127,0,0"/>
                         <mah:ToggleSwitch x:Name="switch_autostart" Margin="100,125,0,0" VerticalAlignment="Top" HorizontalAlignment="Left" Toggled="Button_AutoStart_Click" Width="44" Height="30"/>
 
-                        <Label x:Name="label_embedconsole" Content="{loc:Loc Key=EmbedConsole}" HorizontalAlignment="Left" Margin="5,99,0,0" VerticalAlignment="Top"/>
+                        <Label x:Name="label_embedconsole" Content="{loc:Loc Key=EmbedConsole}" Target="{Binding ElementName=switch_embedconsole}" HorizontalAlignment="Left" Margin="5,99,0,0" VerticalAlignment="Top"/>
                         <mah:ToggleSwitch x:Name="switch_embedconsole" Margin="100,97,0,0" VerticalAlignment="Top" HorizontalAlignment="Left" Toggled="Button_EmbedConsole_Click" Width="44" Height="30"/>
 
-                        <Label Content="{loc:Loc Key=AutoRestart}" HorizontalAlignment="Left" Margin="177,127,0,0" VerticalAlignment="Top"/>
+                        <Label Content="{loc:Loc Key=AutoRestart}" Target="{Binding ElementName=switch_autorestart}" HorizontalAlignment="Left" Margin="177,127,0,0" VerticalAlignment="Top"/>
                         <mah:ToggleSwitch x:Name="switch_autorestart" Margin="258,125,0,0" VerticalAlignment="Top" HorizontalAlignment="Left" Toggled="Button_AutoRestart_Click" Width="44" Height="30"/>
 
-                        <Label Content="{loc:Loc Key=AutoUpdate}" HorizontalAlignment="Left" Margin="338,127,0,0" VerticalAlignment="Top"/>
+                        <Label Content="{loc:Loc Key=AutoUpdate}" Target="{Binding ElementName=switch_autoupdate}" HorizontalAlignment="Left" Margin="338,127,0,0" VerticalAlignment="Top"/>
                         <mah:ToggleSwitch x:Name="switch_autoupdate" Margin="422,125,0,0" VerticalAlignment="Top" HorizontalAlignment="Left" Toggled="Button_AutoUpdate_Click" Width="44" Height="30"/>
 
-                        <Label Content="{loc:Loc Key=UpdateOnStart}" HorizontalAlignment="Left" Margin="159,99,0,0" VerticalAlignment="Top"/>
+                        <Label Content="{loc:Loc Key=UpdateOnStart}" Target="{Binding ElementName=switch_updateonstart}" HorizontalAlignment="Left" Margin="159,99,0,0" VerticalAlignment="Top"/>
                         <mah:ToggleSwitch x:Name="switch_updateonstart" Margin="258,97,0,0" VerticalAlignment="Top" HorizontalAlignment="Left" Toggled="Button_UpdateOnStart_Click" Width="44" Height="30"/>
 
-                        <Label Content="{loc:Loc Key=BackupOnStart}" HorizontalAlignment="Left" Margin="323,99,0,0" VerticalAlignment="Top"/>
+                        <Label Content="{loc:Loc Key=BackupOnStart}" Target="{Binding ElementName=switch_backuponstart}" HorizontalAlignment="Left" Margin="323,99,0,0" VerticalAlignment="Top"/>
                         <mah:ToggleSwitch x:Name="switch_backuponstart" Margin="422,97,0,0" VerticalAlignment="Top" HorizontalAlignment="Left" Toggled="Button_BackupOnStart_Click" Width="44" Height="30"/>
 
-                        <Label x:Name="label_discordalert" Content="{loc:Loc Key=DiscordAlert}" HorizontalAlignment="Left" Margin="5,70,0,0" VerticalAlignment="Top"/>
+                        <Label x:Name="label_discordalert" Content="{loc:Loc Key=DiscordAlert}" Target="{Binding ElementName=switch_discordalert}" HorizontalAlignment="Left" Margin="5,70,0,0" VerticalAlignment="Top"/>
                         <mah:ToggleSwitch x:Name="switch_discordalert" Margin="99,68,0,0" VerticalAlignment="Top" HorizontalAlignment="Left" Toggled="Button_DiscordAlert_Click" Width="44" Height="30"/>
                         <Button x:Name="button_discordedit" Cursor="Hand" Content="{loc:Loc Key=ButtonEdit}" HorizontalAlignment="Left" Margin="150,70,0,0" VerticalAlignment="Top" Width="37" Height="26" Click="Button_DiscordEdit_Click"/>
                         <Button x:Name="button_discordset" Cursor="Hand" Content="{loc:Loc Key=SetMessage}" HorizontalAlignment="Left" Margin="192,70,0,0" VerticalAlignment="Top" Width="95" Height="26" Click="Button_DiscordSetMessage_Click"/>
                         <Button x:Name="button_discordtest" Cursor="Hand" Content="{loc:Loc Key=TestAlert}" HorizontalAlignment="Left" Margin="382,70,0,0" VerticalAlignment="Top" Width="85" Height="26" Click="Button_DiscordWebhookTest_Click" IsEnabled="False"/>
                         <Button x:Name="button_discordsettings" Content="{loc:Loc Key=SettingsButton}" HorizontalAlignment="Left" Margin="292,70,0,0" VerticalAlignment="Top" Width="85" Height="26" Click="Button_DiscordAlertSettings_Click"/>
                         <TextBlock x:Name="label_ServerHealthDetails" Margin="10,151,10,0" Height="18" VerticalAlignment="Top" TextTrimming="CharacterEllipsis" ToolTip=""/>
-                        <Label x:Name="label_wgsmlog" Content="{loc:Loc Key=Log}" HorizontalAlignment="Left" Margin="24,174,0,0" VerticalAlignment="Top"/>
+                        <Label x:Name="label_wgsmlog" Content="{loc:Loc Key=Log}" Target="{Binding ElementName=textBox_wgsmlog}" HorizontalAlignment="Left" Margin="24,174,0,0" VerticalAlignment="Top"/>
                         <Button x:Name="button_clearwgsmlog" Cursor="Hand" Content="{loc:Loc Key=Clear}" Margin="10,0,0,10" Height="18" Click="Button_ClearWGSMLog_Click" HorizontalAlignment="Left" Width="45" VerticalAlignment="Bottom"/>
                         <TextBox x:Name="textBox_wgsmlog" Margin="10,177,10,10" FontFamily="Consolas" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto" IsReadOnly="True"/>
                     </Grid>
@@ -1070,10 +1078,10 @@
 
                     <Grid Grid.Column="2" MinWidth="100">
                         <Rectangle Height="30" VerticalAlignment="Top" Fill="Black"/>
-                        <Button x:Name="Button_AutoScroll" Style="{DynamicResource MahApps.Styles.Button.Square}" Cursor="Hand" VerticalAlignment="Top" HorizontalAlignment="Left" Width="120" Content="{loc:Loc Key=AutoScrollButton}" mah:ControlsHelper.CornerRadius="0" Background="Black" Foreground="White" Height="30" mah:ControlsHelper.ContentCharacterCasing="Upper" BorderThickness="0" Click="Button_AutoScroll_Click" />
+                        <Button x:Name="Button_AutoScroll" AutomationProperties.Name="{loc:Loc Key=AutoScroll}" Style="{DynamicResource MahApps.Styles.Button.Square}" Cursor="Hand" VerticalAlignment="Top" HorizontalAlignment="Left" Width="120" Content="{loc:Loc Key=AutoScrollButton}" mah:ControlsHelper.CornerRadius="0" Background="Black" Foreground="White" Height="30" mah:ControlsHelper.ContentCharacterCasing="Upper" BorderThickness="0" Click="Button_AutoScroll_Click" />
                         <Button x:Name="button_clearServerConsole" Style="{DynamicResource MahApps.Styles.Button.Square}" Cursor="Hand" Content="{loc:Loc Key=Clear}" Height="30" Click="Button_ClearServerConsole_Click" HorizontalAlignment="Right" Width="61" mah:ControlsHelper.CornerRadius="0" VerticalAlignment="Top" Background="Black" Foreground="White" mah:ControlsHelper.ContentCharacterCasing="Upper" BorderThickness="0" />
-                        <TextBox x:Name="console" FontFamily="Consolas" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility ="Disabled" Background="Black" IsReadOnly="True" Margin="0,30,0,26" BorderBrush="Black" Foreground="White" BorderThickness="0" SelectionBrush="White" TextWrapping="Wrap"/>
-                        <TextBox x:Name="textbox_servercommand" TextWrapping="Wrap" Text="" Margin="0,0,61,0" Height="23" VerticalAlignment="Bottom" KeyDown="Textbox_ServerCommand_KeyDown" IsEnabled="False" Background="Black" BorderBrush="White" Foreground="White" CaretBrush="White" PreviewKeyDown="Textbox_ServerCommand_PreviewKeyDown"/>
+                        <TextBox x:Name="console" AutomationProperties.Name="{loc:Loc Key=ServerConsoleOutput}" FontFamily="Consolas" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility ="Disabled" Background="Black" IsReadOnly="True" Margin="0,30,0,26" BorderBrush="Black" Foreground="White" BorderThickness="0" SelectionBrush="White" TextWrapping="Wrap"/>
+                        <TextBox x:Name="textbox_servercommand" AutomationProperties.Name="{loc:Loc Key=ServerConsoleCommand}" TextWrapping="Wrap" Text="" Margin="0,0,61,0" Height="23" VerticalAlignment="Bottom" KeyDown="Textbox_ServerCommand_KeyDown" IsEnabled="False" Background="Black" BorderBrush="White" Foreground="White" CaretBrush="White" PreviewKeyDown="Textbox_ServerCommand_PreviewKeyDown"/>
                         <Button x:Name="button_servercommand" Cursor="Hand" Content="{loc:Loc Key=Send}" Click="Button_ServerCommand_Click" IsEnabled="False" Height="26" VerticalAlignment="Bottom" HorizontalAlignment="Right" Width="61" mah:ControlsHelper.CornerRadius="0" />
                     </Grid>
                 </Grid>
@@ -1120,22 +1128,22 @@
                 <!--  Items  -->
                 <mah:HamburgerMenu.ItemsSource>
                     <mah:HamburgerMenuItemCollection>
-                        <mah:HamburgerMenuImageItem Label="{loc:Loc Key=NavHome}">
+                        <mah:HamburgerMenuImageItem Label="{loc:Loc Key=NavHome}" AutomationProperties.Name="{loc:Loc Key=NavHome}">
                             <mah:HamburgerMenuImageItem.Thumbnail>
                                 <BitmapImage UriSource="pack://application:,,,/CdogsWindowsGSM;component/Images/HMenu/Home.ico" />
                             </mah:HamburgerMenuImageItem.Thumbnail>
                         </mah:HamburgerMenuImageItem>
-                        <mah:HamburgerMenuImageItem Label="{loc:Loc Key=NavDashboard}">
+                        <mah:HamburgerMenuImageItem Label="{loc:Loc Key=NavDashboard}" AutomationProperties.Name="{loc:Loc Key=NavDashboard}">
                             <mah:HamburgerMenuImageItem.Thumbnail>
                                 <BitmapImage UriSource="pack://application:,,,/CdogsWindowsGSM;component/Images/HMenu/Dashboard.ico" />
                             </mah:HamburgerMenuImageItem.Thumbnail>
                         </mah:HamburgerMenuImageItem>
-                        <mah:HamburgerMenuImageItem Label="{loc:Loc Key=NavSchedules}">
+                        <mah:HamburgerMenuImageItem Label="{loc:Loc Key=NavSchedules}" AutomationProperties.Name="{loc:Loc Key=NavSchedules}">
                             <mah:HamburgerMenuImageItem.Thumbnail>
                                 <BitmapImage UriSource="pack://application:,,,/CdogsWindowsGSM;component/Images/Backup.ico" />
                             </mah:HamburgerMenuImageItem.Thumbnail>
                         </mah:HamburgerMenuImageItem>
-                        <mah:HamburgerMenuImageItem Label="{loc:Loc Key=NavDiscordBot}">
+                        <mah:HamburgerMenuImageItem Label="{loc:Loc Key=NavDiscordBot}" AutomationProperties.Name="{loc:Loc Key=NavDiscordBot}">
                             <mah:HamburgerMenuImageItem.Thumbnail>
                                 <BitmapImage UriSource="pack://application:,,,/CdogsWindowsGSM;component/Images/HMenu/Discord.ico" />
                             </mah:HamburgerMenuImageItem.Thumbnail>
@@ -1145,12 +1153,12 @@
 
                 <mah:HamburgerMenu.OptionsItemsSource>
                     <mah:HamburgerMenuItemCollection>
-                        <mah:HamburgerMenuImageItem Label="{loc:Loc Key=NavPlugins}">
+                        <mah:HamburgerMenuImageItem Label="{loc:Loc Key=NavPlugins}" AutomationProperties.Name="{loc:Loc Key=NavPlugins}">
                             <mah:HamburgerMenuImageItem.Thumbnail>
                                 <BitmapImage UriSource="pack://application:,,,/CdogsWindowsGSM;component/Images/HMenu/ViewPlugins.ico" />
                             </mah:HamburgerMenuImageItem.Thumbnail>
                         </mah:HamburgerMenuImageItem>
-                        <mah:HamburgerMenuImageItem Label="{loc:Loc Key=NavSettings}">
+                        <mah:HamburgerMenuImageItem Label="{loc:Loc Key=NavSettings}" AutomationProperties.Name="{loc:Loc Key=NavSettings}">
                             <mah:HamburgerMenuImageItem.Thumbnail>
                                 <BitmapImage UriSource="pack://application:,,,/CdogsWindowsGSM;component/Images/HMenu/Settings.ico" />
                             </mah:HamburgerMenuImageItem.Thumbnail>
