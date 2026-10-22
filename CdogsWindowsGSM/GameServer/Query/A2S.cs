@@ -139,7 +139,6 @@ namespace WindowsGSM.GameServer.Query
                             keys["Map"] = ReadString(br);
                             keys["Folder"] = ReadString(br);
                             keys["Game"] = ReadString(br);
-                            keys["ID"] = br.ReadUInt16().ToString();
                             keys["Players"] = br.ReadByte().ToString();
                             keys["MaxPlayers"] = br.ReadByte().ToString();
                             keys["Protocol"] = br.ReadByte().ToString();
@@ -150,13 +149,14 @@ namespace WindowsGSM.GameServer.Query
                             keys["Visibility"] = br.ReadBoolean() ? "Private" : "Public";
                             keys["Mod"] = br.ReadBoolean().ToString();
 
-                            if (bool.Parse(keys["Mod"]))
+                            // GoldSrc mods may omit this optional metadata block.
+                            if (bool.Parse(keys["Mod"]) && br.BaseStream.Length - br.BaseStream.Position > 2)
                             {
                                 keys["Link"] = ReadString(br);
                                 keys["DownloadLink"] = ReadString(br);
                                 br.ReadByte();
-                                keys["Version"] = br.ReadInt64().ToString();
-                                keys["Size"] = br.ReadInt64().ToString();
+                                keys["Version"] = br.ReadUInt32().ToString();
+                                keys["Size"] = br.ReadUInt32().ToString();
                                 keys["Type"] = br.ReadByte().ToString();
                                 keys["DLL"] = br.ReadByte().ToString();
                             }
