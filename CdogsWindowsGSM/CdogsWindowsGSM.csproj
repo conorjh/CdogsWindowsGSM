@@ -7,10 +7,10 @@
 	<EnableWindowsTargeting>true</EnableWindowsTargeting>
 	<RootNamespace>WindowsGSM</RootNamespace>
 	<AssemblyName>CdogsWindowsGSM</AssemblyName>
-	<Version>2.0.0-preview.2</Version>
+	<Version>2.0.0-preview.3</Version>
 	<AssemblyVersion>2.0.0.0</AssemblyVersion>
 	<FileVersion>2.0.0.0</FileVersion>
-	<InformationalVersion>2.0.0-preview.2</InformationalVersion>
+	<InformationalVersion>2.0.0-preview.3</InformationalVersion>
 	<IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
 	<StartupObject>WindowsGSM.Program</StartupObject>
 	<ApplicationManifest>app.manifest</ApplicationManifest>
