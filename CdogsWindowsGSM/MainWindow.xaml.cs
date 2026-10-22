@@ -325,7 +325,7 @@ namespace WindowsGSM
                 ServerGrid.SelectedItem = ServerGrid.Items[0];
             }
 
-            foreach (var server in ServerGrid.Items.Cast<ServerTable>().ToList())
+            foreach (var server in ServerGroups_GetAllServerRows())
             {
                 int pid = ServerCache.GetPID(server.ID);
                 if (pid != -1)
@@ -671,6 +671,7 @@ namespace WindowsGSM
 
         public void LoadServerTable()
         {
+            ServerGroups_BeginServerReload();
             string[] livePlayerData = new string[MAX_SERVER + 1];
             foreach (ServerTable item in ServerGrid.Items)
             {
@@ -769,6 +770,7 @@ namespace WindowsGSM
 
             grid_action.Visibility = (ServerGrid.Items.Count != 0) ? Visibility.Visible : Visibility.Hidden;
             label_select.Visibility = grid_action.Visibility == Visibility.Hidden ? Visibility.Visible : Visibility.Hidden;
+            ServerGroups_EndServerReload();
         }
 
         private int? GetDetectedQueryPort(ServerMetadata metadata)
@@ -866,9 +868,8 @@ namespace WindowsGSM
             ServerHealthSummary summary = GetServerHealthSummary(GetServerMetadata(server.ID));
             SetServerHealthDisplay(server, summary);
 
-            for (int i = 0; i < ServerGrid.Items.Count; i++)
+            foreach (ServerTable row in ServerGroups_GetAllServerRows())
             {
-                ServerTable row = ServerGrid.Items[i] as ServerTable;
                 if (row != null && row.ID == server.ID)
                 {
                     SetServerHealthDisplay(row, summary);
@@ -922,9 +923,8 @@ namespace WindowsGSM
         private void RefreshServerMainPortDisplay(ServerTable server, int? detectedPort)
         {
             server.DetectedMainPort = detectedPort;
-            for (int i = 0; i < ServerGrid.Items.Count; i++)
+            foreach (ServerTable row in ServerGroups_GetAllServerRows())
             {
-                ServerTable row = ServerGrid.Items[i] as ServerTable;
                 if (row != null && row.ID == server.ID)
                 {
                     row.DetectedMainPort = detectedPort;
@@ -936,9 +936,8 @@ namespace WindowsGSM
         private void RefreshServerQueryPortDisplay(ServerTable server, int? detectedPort)
         {
             server.DetectedQueryPort = detectedPort;
-            for (int i = 0; i < ServerGrid.Items.Count; i++)
+            foreach (ServerTable row in ServerGroups_GetAllServerRows())
             {
-                ServerTable row = ServerGrid.Items[i] as ServerTable;
                 if (row != null && row.ID == server.ID)
                 {
                     row.DetectedQueryPort = detectedPort;
@@ -982,7 +981,7 @@ namespace WindowsGSM
 
         private async void AutoStartServer()
         {
-            foreach (ServerTable server in ServerGrid.Items.Cast<ServerTable>().ToList())
+            foreach (ServerTable server in ServerGroups_GetAllServerRows())
             {
                 int serverId = int.Parse(server.ID);
 
@@ -1066,18 +1065,21 @@ namespace WindowsGSM
                 dashboard_disk_usage.Content = $"{string.Format("{0:0.00}", dashboard_disk_bar.Value)}%";
                 dashboard_disk_ratio.Content = SystemMetrics.GetDiskRatioString(dashboard_disk_bar.Value, system.DiskTotalSize);
 
-                dashboard_servers_bar.Value = ServerGrid.Items.Count * 100.0 / MAX_SERVER;
+                List<ServerTable> allServers = ServerGroups_GetAllServerRows();
+                dashboard_servers_bar.Value = allServers.Count * 100.0 / MAX_SERVER;
                 dashboard_servers_bar.Value = (dashboard_servers_bar.Value > 100.0) ? 100.0 : dashboard_servers_bar.Value;
                 dashboard_servers_usage.Content = $"{string.Format("{0:0.00}", dashboard_servers_bar.Value)}%";
-                dashboard_servers_ratio.Content = $"{ServerGrid.Items.Count}/{MAX_SERVER}";
+                dashboard_servers_ratio.Content = $"{allServers.Count}/{MAX_SERVER}";
 
-                int startedCount = GetStartedServerCount();
-                dashboard_started_bar.Value = ServerGrid.Items.Count == 0 ? 0 : startedCount * 100.0 / ServerGrid.Items.Count;
+                int startedCount = allServers.Count(server => server.StatusCode == ServerStatus.Started);
+                dashboard_started_bar.Value = allServers.Count == 0 ? 0 : startedCount * 100.0 / allServers.Count;
                 dashboard_started_bar.Value = (dashboard_started_bar.Value > 100.0) ? 100.0 : dashboard_started_bar.Value;
                 dashboard_started_usage.Content = $"{string.Format("{0:0.00}", dashboard_started_bar.Value)}%";
-                dashboard_started_ratio.Content = $"{startedCount}/{ServerGrid.Items.Count}";
+                dashboard_started_ratio.Content = $"{startedCount}/{allServers.Count}";
 
-                int activePlayers = GetActivePlayers();
+                int activePlayers = allServers
+                    .Where(server => server.Maxplayers != null && server.Maxplayers.Contains('/'))
+                    .Sum(server => int.TryParse(server.Maxplayers.Split('/')[0], out int count) ? count : 0);
                 _peakActivePlayers = Math.Max(_peakActivePlayers, activePlayers);
                 dashboard_players_count.Content = $"{activePlayers} / {_peakActivePlayers}";
 
@@ -1089,20 +1091,22 @@ namespace WindowsGSM
 
         public int GetStartedServerCount()
         {
-            return ServerGrid.Items.Cast<ServerTable>().Count(s => s.StatusCode == ServerStatus.Started);
+            return ServerGroups_GetAllServerRows().Count(server => server.StatusCode == ServerStatus.Started);
         }
 
         public int GetActivePlayers()
         {
-            return ServerGrid.Items.Cast<ServerTable>().Where(s => s.Maxplayers != null && s.Maxplayers.Contains('/')).Sum(s => int.TryParse(s.Maxplayers.Split('/')[0], out int count) ? count : 0);
+            return ServerGroups_GetAllServerRows()
+                .Where(server => server.Maxplayers != null && server.Maxplayers.Contains('/'))
+                .Sum(server => int.TryParse(server.Maxplayers.Split('/')[0], out int count) ? count : 0);
         }
 
         private void Refresh_DashBoard_LiveChart()
         {
             // List<(ServerType, PlayerCount)> Example: ("Ricochet Dedicated Server", 0)
-            List<(string, int)> typePlayers = ServerGrid.Items.Cast<ServerTable>()
+            List<(string, int)> typePlayers = ServerGroups_GetAllServerRows()
                 .Where(s => s.StatusCode == ServerStatus.Started && s.Maxplayers != null && s.Maxplayers.Contains("/"))
-                .Select(s => (type: s.Game, players: int.Parse(s.Maxplayers.Split('/')[0])))
+                .Select(s => (type: s.Game, players: int.TryParse(s.Maxplayers.Split('/')[0], out int players) ? players : 0))
                 .GroupBy(s => s.type)
                 .Select(s => (type: s.Key, players: s.Sum(p => p.players)))
                 .ToList();
@@ -1303,7 +1307,7 @@ namespace WindowsGSM
 
         private void Install_Click(object sender, RoutedEventArgs e)
         {
-            if (ServerGrid.Items.Count >= MAX_SERVER)
+            if (ServerGroups_GetAllServerRows().Count >= MAX_SERVER)
             {
                 System.Media.SystemSounds.Beep.Play();
                 return;
@@ -1573,7 +1577,7 @@ namespace WindowsGSM
 
         private void Import_Click(object sender, RoutedEventArgs e)
         {
-            if (ServerGrid.Items.Count >= MAX_SERVER)
+            if (ServerGroups_GetAllServerRows().Count >= MAX_SERVER)
             {
                 System.Media.SystemSounds.Beep.Play();
                 return;
@@ -1881,7 +1885,7 @@ namespace WindowsGSM
 
         private async void Actions_StartAllServers_Click(object sender, RoutedEventArgs e)
         {
-            foreach (var server in ServerGrid.Items.Cast<ServerTable>().ToList())
+            foreach (var server in ServerGroups_GetAllServerRows())
             {
                 if (GetServerMetadata(server.ID).ServerStatus == ServerStatus.Stopped)
                 {
@@ -1892,7 +1896,7 @@ namespace WindowsGSM
 
         private async void Actions_StartServersWithAutoStartEnabled_Click(object sender, RoutedEventArgs e)
         {
-            foreach (var server in ServerGrid.Items.Cast<ServerTable>().ToList())
+            foreach (var server in ServerGroups_GetAllServerRows())
             {
                 if (GetServerMetadata(server.ID).ServerStatus == ServerStatus.Stopped && GetServerMetadata(server.ID).AutoStart)
                 {
@@ -1903,7 +1907,7 @@ namespace WindowsGSM
 
         private async void Actions_StopAllServers_Click(object sender, RoutedEventArgs e)
         {
-            foreach (var server in ServerGrid.Items.Cast<ServerTable>().ToList())
+            foreach (var server in ServerGroups_GetAllServerRows())
             {
                 if (GetServerMetadata(server.ID).ServerStatus == ServerStatus.Started)
                 {
@@ -1914,7 +1918,7 @@ namespace WindowsGSM
 
         private async void Actions_RestartAllServers_Click(object sender, RoutedEventArgs e)
         {
-            foreach (var server in ServerGrid.Items.Cast<ServerTable>().ToList())
+            foreach (var server in ServerGroups_GetAllServerRows())
             {
                 if (GetServerMetadata(server.ID).ServerStatus == ServerStatus.Started)
                 {
@@ -1925,7 +1929,7 @@ namespace WindowsGSM
 
         private async void Actions_UpdateAllServers_Click(object sender, RoutedEventArgs e)
         {
-            foreach (var server in ServerGrid.Items.Cast<ServerTable>().ToList())
+            foreach (var server in ServerGroups_GetAllServerRows())
             {
                 if (GetServerMetadata(server.ID).ServerStatus == ServerStatus.Stopped)
                 {
@@ -2120,7 +2124,7 @@ namespace WindowsGSM
         private void RefreshBackupSchedules(string selectedServerId = null)
         {
             var rows = new List<BackupScheduleRow>();
-            foreach (ServerTable server in ServerGrid.Items.Cast<ServerTable>())
+            foreach (ServerTable server in ServerGroups_GetAllServerRows())
             {
                 string backupStorage = GetBackupScheduleStorage(server.ID);
                 if (!TryLoadBackupSchedule(server.ID, out BackupScheduleConfig config, out string error))
@@ -2297,7 +2301,7 @@ namespace WindowsGSM
 
         private ServerTable FindServerTable(string serverId)
         {
-            return ServerGrid.Items.Cast<ServerTable>().FirstOrDefault(server => server.ID == serverId);
+            return ServerGroups_GetAllServerRows().FirstOrDefault(server => server.ID == serverId);
         }
 
         private static bool TryGetNextBackupOccurrence(CrontabSchedule schedule, DateTime after, out DateTime occurrence)
@@ -2765,27 +2769,43 @@ namespace WindowsGSM
             Log(server.ID, "Action: Update" + notes);
             SetServerStatus(server, "Updating");
 
-            var (p, remoteVersion, gameServer) = await Server_BeginUpdate(server, silenceCheck: validate, forceUpdate: true, validate: validate);
-
-            if (p == null && string.IsNullOrEmpty(gameServer.Error)) // Update success (non-steamcmd server)
+            bool updateSucceeded = false;
+            try
             {
-                Log(server.ID, $"Server: Updated ({remoteVersion})");
+                var (p, remoteVersion, gameServer) = await Server_BeginUpdate(server, silenceCheck: validate, forceUpdate: true, validate: validate);
+
+                if (p == null && string.IsNullOrEmpty(gameServer.Error))
+                {
+                    Log(server.ID, $"Server: Updated ({remoteVersion})");
+                    updateSucceeded = true;
+                }
+                else if (p != null)
+                {
+                    await Task.Run(() => p.WaitForExit());
+                    if (p.ExitCode == 0)
+                    {
+                        Log(server.ID, $"Server: Updated ({remoteVersion})");
+                        updateSucceeded = true;
+                    }
+                    else
+                    {
+                        Log(server.ID, "Server: Fail to update");
+                        Log(server.ID, $"[ERROR] Update process exited with code {p.ExitCode}.");
+                    }
+                }
+                else
+                {
+                    Log(server.ID, "Server: Fail to update");
+                    Log(server.ID, "[ERROR] " + gameServer.Error);
+                }
             }
-            else if (p != null) // p stores process of steamcmd
+            finally
             {
-                await Task.Run(() => { p.WaitForExit(); });
-                Log(server.ID, $"Server: Updated ({remoteVersion})");
-            }
-            else
-            {
-                Log(server.ID, "Server: Fail to update");
-                Log(server.ID, "[ERROR] " + gameServer.Error);
+                _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Stopped;
+                SetServerStatus(server, "Stopped");
             }
 
-            _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Stopped;
-            SetServerStatus(server, "Stopped");
-
-            return true;
+            return updateSucceeded;
         }
 
         private async Task<bool> GameServer_Backup(ServerTable server, string notes = "")
@@ -3321,7 +3341,7 @@ namespace WindowsGSM
 
             try
             {
-                foreach (ServerTable server in ServerGrid.Items.Cast<ServerTable>().ToList())
+                foreach (ServerTable server in ServerGroups_GetAllServerRows())
                 {
                     if (!TryLoadBackupSchedule(server.ID, out BackupScheduleConfig config, out _)) { continue; }
 
@@ -3567,9 +3587,8 @@ namespace WindowsGSM
                     metadata.LastQueryFailureMessage = string.Empty;
                     server.Maxplayers = players;
 
-                    for (int i = 0; i < ServerGrid.Items.Count; i++)
+                    foreach (ServerTable row in ServerGroups_GetAllServerRows())
                     {
-                        ServerTable row = ServerGrid.Items[i] as ServerTable;
                         if (row != null && server.ID == row.ID)
                         {
                             row.Maxplayers = players;
@@ -3694,6 +3713,12 @@ namespace WindowsGSM
             }
 
             RefreshServerHealth(server);
+
+            int allRowsIndex = _allServerRows.FindIndex(row => row.ID == server.ID);
+            if (allRowsIndex >= 0)
+            {
+                _allServerRows[allRowsIndex] = server;
+            }
 
             for (int i = 0; i < ServerGrid.Items.Count; i++)
             {
@@ -4990,16 +5015,15 @@ namespace WindowsGSM
 
         public int GetServerCount()
         {
-            return ServerGrid.Items.Count;
+            return ServerGroups_GetAllServerRows().Count;
         }
 
         public List<(string, string, string)> GetServerList()
         {
             var list = new List<(string, string, string)>();
 
-            for (int i = 0; i < ServerGrid.Items.Count; i++)
+            foreach (ServerTable server in ServerGroups_GetAllServerRows())
             {
-                var server = (ServerTable)ServerGrid.Items[i];
                 list.Add((server.ID, server.Status, server.Name));
             }
 
@@ -5008,9 +5032,8 @@ namespace WindowsGSM
 
         public bool IsServerExist(string serverId)
         {
-            for (int i = 0; i < ServerGrid.Items.Count; i++)
+            foreach (ServerTable server in ServerGroups_GetAllServerRows())
             {
-                var server = (ServerTable)ServerGrid.Items[i];
                 if (server.ID == serverId) { return true; }
             }
 
@@ -5030,9 +5053,8 @@ namespace WindowsGSM
 
         private ServerTable GetServerTableById(string serverId)
         {
-            for (int i = 0; i < ServerGrid.Items.Count; i++)
+            foreach (ServerTable server in ServerGroups_GetAllServerRows())
             {
-                var server = (ServerTable)ServerGrid.Items[i];
                 if (server.ID == serverId) { return server; }
             }
 

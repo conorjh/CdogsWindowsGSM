@@ -92,7 +92,7 @@ namespace WindowsGSM.DiscordBot
 					await Application.Current.Dispatcher.Invoke(async () =>
 					{
 						MainWindow WindowsGSM = (MainWindow)Application.Current.MainWindow;
-						int serverCount = WindowsGSM.ServerGrid.Items.Count;
+						int serverCount = WindowsGSM.GetServerCount();
 						await _client.SetGameAsync($"{serverCount} game server{(serverCount > 1 ? "s" : string.Empty)}");
 					});
 				}

@@ -35,6 +35,23 @@ namespace WindowsGSM.Functions
             LoadConfig();
         }
 
+        public static string GetConfiguredBackupLocation(string serverId)
+        {
+            string configPath = ServerPath.GetServersConfigs(serverId, "BackupConfig.cfg");
+            if (!File.Exists(configPath)) { return null; }
+
+            foreach (string line in File.ReadLines(configPath))
+            {
+                string[] keyvalue = line.Split(new[] { '=' }, 2);
+                if (keyvalue.Length == 2 && keyvalue[0] == SettingName.BackupLocation)
+                {
+                    return keyvalue[1].Trim('"');
+                }
+            }
+
+            return null;
+        }
+
         public void Open()
         {
             Process.Start(ServerPath.GetServersConfigs(_serverId, "BackupConfig.cfg"));

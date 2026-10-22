@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
@@ -316,18 +317,19 @@ namespace WindowsGSM.Functions
         {
             MainWindow WindowsGSM = (MainWindow)System.Windows.Application.Current.MainWindow;
 
-            int[] portlist = new int[WindowsGSM.ServerGrid.Items.Count];
+            List<ServerTable> servers = WindowsGSM.ServerGroups_GetAllServerRows();
+            int[] portlist = new int[servers.Count];
 
-            for (int i = 0; i < WindowsGSM.ServerGrid.Items.Count; i++)
+            for (int i = 0; i < servers.Count; i++)
             {
-                ServerTable row = WindowsGSM.ServerGrid.Items[i] as ServerTable;
-                portlist[i] = int.Parse(string.IsNullOrWhiteSpace(row.Port) ? "0" : row.Port);
+                ServerTable row = servers[i];
+                portlist[i] = int.TryParse(row.Port, out int parsedPort) ? parsedPort : 0;
             }
 
             Array.Sort(portlist);
 
             int port = int.Parse(defaultport);
-            for (int i = 0; i < WindowsGSM.ServerGrid.Items.Count; i++)
+            for (int i = 0; i < servers.Count; i++)
             {
                 if (port == portlist[i] || port == 27020) //SourceTV port 27020
                 {
