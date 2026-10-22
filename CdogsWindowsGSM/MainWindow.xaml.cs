@@ -467,6 +467,14 @@ namespace WindowsGSM
             var pm = new PluginManagement();
             PluginsList = await pm.LoadPlugins(shouldAwait);
 
+            foreach (PluginMetadata plugin in PluginsList)
+            {
+                foreach (string diagnostic in plugin.CacheDiagnostics)
+                {
+                    Log("Plugins", $"{plugin.FileName} cache: {diagnostic}");
+                }
+            }
+
             int loadedCount = 0;
             PluginsList.ForEach(delegate (PluginMetadata plugin)
             {
