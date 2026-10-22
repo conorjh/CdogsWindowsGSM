@@ -90,7 +90,6 @@ namespace WindowsGSM.GameServer
                         Regex regex = new Regex(@" --attach (\d{1,})"); // Match " --attach 7144"
                         string dedicatedProcessId = regex.Match(commandLine).Groups[1].Value; // Get first group -> "7144"
                         Process dedicatedProcess = await Task.Run(() => Process.GetProcessById(int.Parse(dedicatedProcessId)));
-                        dedicatedProcess.StartInfo.CreateNoWindow = true; // Just set as metadata
                         return dedicatedProcess;
                     }
                     catch

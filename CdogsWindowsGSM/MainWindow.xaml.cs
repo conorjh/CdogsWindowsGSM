@@ -63,6 +63,7 @@ namespace WindowsGSM
         {
             public ServerStatus ServerStatus = ServerStatus.Stopped;
             public Process Process;
+            public bool ProcessStartInfoAvailable;
             public int? DetectedMainPort;
             public int? DetectedMainPortProcessId;
             public int? DetectedQueryPort;
@@ -344,8 +345,10 @@ namespace WindowsGSM
                     if (!string.IsNullOrWhiteSpace(pName) && p.ProcessName == pName)
                     {
                         _serverMetadata[int.Parse(server.ID)].Process = p;
+                        _serverMetadata[int.Parse(server.ID)].ProcessStartInfoAvailable = false;
                         _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Started;
                         SetServerStatus(server, "Started");
+                        Log(server.ID, "[NOTICE] Reattached to an already-running process. Console controls are unavailable until the server is restarted from WindowsGSM.");
 
                         /*// Get Console process - untested
                         Process console = GetConsoleProcess(pid);
@@ -1234,13 +1237,15 @@ namespace WindowsGSM
                     button_Start.IsEnabled = false;
                     button_Stop.IsEnabled = true;
                     button_Restart.IsEnabled = true;
-                    Process p = GetServerMetadata(row.ID).Process;
-                    button_Console.IsEnabled = (p == null || p.HasExited) ? false : !(p.StartInfo.CreateNoWindow || p.StartInfo.RedirectStandardOutput);
+                    ServerMetadata metadata = GetServerMetadata(row.ID);
+                    Process p = metadata.Process;
+                    bool hasProcessStartInfo = metadata.ProcessStartInfoAvailable && p != null && !p.HasExited;
+                    button_Console.IsEnabled = hasProcessStartInfo && !(p.StartInfo.CreateNoWindow || p.StartInfo.RedirectStandardOutput);
                     button_Update.IsEnabled = false;
                     button_Backup.IsEnabled = false;
 
-                    textbox_servercommand.IsEnabled = true;
-                    button_servercommand.IsEnabled = true;
+                    textbox_servercommand.IsEnabled = hasProcessStartInfo;
+                    button_servercommand.IsEnabled = hasProcessStartInfo;
                 }
                 else
                 {
@@ -1881,13 +1886,14 @@ namespace WindowsGSM
             var server = (ServerTable)ServerGrid.SelectedItem;
             if (server == null) { return; }
 
-            Process p = GetServerMetadata(server.ID).Process;
-            if (p == null) { return; }
+            ServerMetadata metadata = GetServerMetadata(server.ID);
+            Process p = metadata.Process;
+            if (p == null || p.HasExited || !metadata.ProcessStartInfoAvailable) { return; }
 
             //If console is useless, return
             if (p.StartInfo.RedirectStandardOutput) { return; }
 
-            IntPtr hWnd = GetServerMetadata(server.ID).MainWindow;
+            IntPtr hWnd = metadata.MainWindow;
             ShowWindow(hWnd, ShowWindow(hWnd, WindowShowStyle.Hide) ? WindowShowStyle.Hide : WindowShowStyle.ShowNormal);
         }
 
@@ -2489,40 +2495,48 @@ namespace WindowsGSM
             }
 
             _serverMetadata[int.Parse(server.ID)].Process = p;
+            metadata.ProcessStartInfoAvailable = HasProcessStartInfo(p);
+            if (!metadata.ProcessStartInfoAvailable)
+            {
+                Log(server.ID, "[NOTICE] The server process was attached by PID. Console controls are unavailable until the server is restarted from WindowsGSM.");
+            }
             Process startedProcess = p;
             p.Exited += (sender, e) => OnGameServerExited(server, startedProcess);
 
-            await Task.Run(() =>
+            if (metadata.ProcessStartInfoAvailable)
             {
-                try
+                await Task.Run(() =>
                 {
-                    if (!p.StartInfo.CreateNoWindow)
+                    try
                     {
-                        while (!p.HasExited && !ShowWindow(p.MainWindowHandle, WindowShowStyle.Minimize))
+                        if (!p.StartInfo.CreateNoWindow)
                         {
-                            //Debug.WriteLine("Try Setting ShowMinNoActivate Console Window");
+                            while (!p.HasExited && !ShowWindow(p.MainWindowHandle, WindowShowStyle.Minimize))
+                            {
+                                //Debug.WriteLine("Try Setting ShowMinNoActivate Console Window");
+                            }
+
+                            Debug.WriteLine("Set ShowMinNoActivate Console Window");
+
+                            //Save MainWindow
+                            _serverMetadata[int.Parse(server.ID)].MainWindow = p.MainWindowHandle;
                         }
 
-                        Debug.WriteLine("Set ShowMinNoActivate Console Window");
+                        //Fix for Factorio - The WaitForInputIdle never returns my guess is because Factorio is built
+                        //  without a message loop seems to work fine with this commented out
+                        //p.WaitForInputIdle();
 
-                        //Save MainWindow
-                        _serverMetadata[int.Parse(server.ID)].MainWindow = p.MainWindowHandle;
+                        if (!p.StartInfo.CreateNoWindow)
+                        {
+                            ShowWindow(p.MainWindowHandle, WindowShowStyle.Hide);
+                        }
                     }
-
-                    //Fix for Factorio - The WaitForInputIdle never returns my guess is because Factorio is built
-                    //  without a message loop seems to work fine with this commented out
-                    //p.WaitForInputIdle();
-
-                    if (!p.StartInfo.CreateNoWindow)
+                    catch
                     {
-                        ShowWindow(p.MainWindowHandle, WindowShowStyle.Hide);
+                        Debug.WriteLine("No Window require to hide");
                     }
-                }
-                catch
-                {
-                    Debug.WriteLine("No Window require to hide");
-                }
-            });
+                });
+            }
 
             //An error may occur on ShowWindow if not adding this
             if (p == null || p.HasExited)
@@ -2582,13 +2596,36 @@ namespace WindowsGSM
             return gameServer;
         }
 
+        private static bool HasProcessStartInfo(Process process)
+        {
+            try
+            {
+                _ = process.StartInfo;
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+        }
+
         private async Task<bool> Server_BeginStop(ServerTable server, Process p)
         {
-            _serverMetadata[int.Parse(server.ID)].Process = null;
+            ServerMetadata metadata = GetServerMetadata(server.ID);
+            bool processStartInfoAvailable = metadata.ProcessStartInfoAvailable;
+            metadata.Process = null;
+            metadata.ProcessStartInfoAvailable = false;
             ClearDetectedPorts(server);
 
             dynamic gameServer = GameServer.Data.Class.Get(server.Game, pluginList: PluginsList);
-            await gameServer.Stop(p);
+            try
+            {
+                await gameServer.Stop(p);
+            }
+            catch (InvalidOperationException exception) when (!processStartInfoAvailable)
+            {
+                Log(server.ID, $"[NOTICE] The recovered process cannot use its original console settings for a graceful stop. WindowsGSM will use its normal stop timeout and termination fallback. {exception.Message}");
+            }
 
             for (int i = 0; i < 10; i++)
             {
@@ -3795,11 +3832,12 @@ namespace WindowsGSM
 
         private void SendCommand(ServerTable server, string command)
         {
-            Process p = GetServerMetadata(server.ID).Process;
-            if (p == null) { return; }
+            ServerMetadata metadata = GetServerMetadata(server.ID);
+            Process p = metadata.Process;
+            if (p == null || p.HasExited || !metadata.ProcessStartInfoAvailable) { return; }
 
             textbox_servercommand.Focusable = false;
-            _serverMetadata[int.Parse(server.ID)].ServerConsole.Input(p, command, GetServerMetadata(server.ID).MainWindow);
+            metadata.ServerConsole.Input(p, command, metadata.MainWindow);
             textbox_servercommand.Focusable = true;
         }
 
