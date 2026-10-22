@@ -140,6 +140,8 @@
   <data name="DashboardFleetNoBackupAttention"><value>No backup issues need attention.</value></data>
   <data name="DashboardFleetAttentionTooltip"><value>Click to open the relevant server or backup schedule.</value></data>
 	<data name="ServerGroupsLabel"><value>Filter:</value></data>
+	<data name="ServerGroupManage"><value>Groups...</value></data>
+	<data name="ServerGroupManageTitle"><value>Server groups</value></data>
 	<data name="ServerGroupTargetLabel"><value>Manage group:</value></data>
 	<data name="ServerGroupTargetSelect"><value>Select a group...</value></data>
   <data name="ServerGroupAll"><value>All servers</value></data>

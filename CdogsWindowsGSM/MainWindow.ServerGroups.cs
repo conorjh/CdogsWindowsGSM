@@ -79,6 +79,11 @@ namespace WindowsGSM
             ServerGroups_ApplySelectedFilter();
         }
 
+        private void ServerGroups_Manage_Click(object sender, RoutedEventArgs e)
+        {
+            ToggleMahappFlyout(MahAppFlyout_ServerGroups);
+        }
+
         private void ServerGroups_Target_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_serverGroupTargetSelectionSuppressed) { return; }
@@ -176,6 +181,7 @@ namespace WindowsGSM
             bool assigned = selectedGroup != null && selectedServer != null &&
                 selectedGroup.ServerIds.Contains(selectedServer.ID, StringComparer.OrdinalIgnoreCase);
 
+            button_ServerGroupManage.IsEnabled = !_serverGroupActionRunning;
             comboBox_ServerGroupFilter.IsEnabled = enabled;
             comboBox_ServerGroupTarget.IsEnabled = enabled;
             button_ServerGroupCreate.IsEnabled = enabled;

@@ -140,6 +140,8 @@
   <data name="DashboardFleetNoBackupAttention"><value>No hay problemas de copias que requieran atención.</value></data>
   <data name="DashboardFleetAttentionTooltip"><value>Haz clic para abrir el servidor o la programación correspondiente.</value></data>
 	<data name="ServerGroupsLabel"><value>Filtrar:</value></data>
+	<data name="ServerGroupManage"><value>Grupos...</value></data>
+	<data name="ServerGroupManageTitle"><value>Grupos de servidores</value></data>
 	<data name="ServerGroupTargetLabel"><value>Administrar grupo:</value></data>
 	<data name="ServerGroupTargetSelect"><value>Seleccionar grupo...</value></data>
   <data name="ServerGroupAll"><value>Todos los servidores</value></data>

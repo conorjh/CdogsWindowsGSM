@@ -140,7 +140,7 @@ Keep this first dashboard extension focused on current values and actionable sta
 | 2. Scheduled backups | Add per-server backup schedules and retention behavior using existing backup paths. | Backup acceptance checks pass, including failed/incomplete archive creation and running-server skip cases. | Implemented; app project build succeeds. Runtime acceptance checks remain. |
 | 3. Health summary | Add the common health result model and process/query checks, then add optional transition alerts if the result is useful without noise. | Supported and unsupported checks are clearly distinguished; lifecycle and no-spam checks pass. | Implemented; app project build succeeds. Runtime lifecycle checks remain. |
 | 4. Dashboard additions | Validate a temperature provider, then add temperatures, storage headroom, and health/schedule summaries. Add per-server resource figures only if process attribution is reliable. | Sensor absence/failure is handled safely; dashboard values match their source and do not block existing refreshes. | Implemented; app project build succeeds. Hardware-dependent runtime checks remain. |
-| 5. Server groups | Add group persistence, Server List filtering, and sequential group actions with progress/results. | Group and existing single/global actions pass the group acceptance checks. | Implemented; app project build succeeds. Runtime interaction checks remain. |
+| 5. Server groups | Add group persistence, Server List filtering, and sequential group actions with progress/results. | Group and existing single/global actions pass the group acceptance checks. | Implemented; group management is in an on-demand flyout to keep the Server List compact. Runtime interaction checks remain. |
 
 ## Explicitly deferred
 
