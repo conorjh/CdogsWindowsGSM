@@ -168,6 +168,7 @@ namespace WindowsGSM.Functions
         public string Game { get; private set; }
         public bool Enabled { get; private set; }
         public string CronExpression { get; private set; }
+        public string ScheduleDescription { get; private set; }
         public string NextRun { get; private set; }
         public string LastAttempt { get; private set; }
         public string LastResult { get; private set; }
@@ -181,6 +182,7 @@ namespace WindowsGSM.Functions
             string game,
             bool enabled,
             string cronExpression,
+            string scheduleDescription,
             string nextRun,
             string lastAttempt,
             string lastResult,
@@ -193,6 +195,7 @@ namespace WindowsGSM.Functions
             Game = game;
             Enabled = enabled;
             CronExpression = cronExpression;
+            ScheduleDescription = scheduleDescription;
             NextRun = nextRun;
             LastAttempt = lastAttempt;
             LastResult = lastResult;

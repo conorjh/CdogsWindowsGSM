@@ -652,7 +652,7 @@
                         <DataGridTextColumn Header="{loc:Loc Key=ColumnServerName}" Binding="{Binding ServerName}" Width="2*"/>
                         <DataGridTextColumn Header="{loc:Loc Key=ScheduleGame}" Binding="{Binding Game}" Width="*"/>
                         <DataGridCheckBoxColumn Header="{loc:Loc Key=ScheduleEnabled}" Binding="{Binding Enabled, Mode=OneWay}" Width="Auto"/>
-                        <DataGridTextColumn Header="{loc:Loc Key=ScheduleCron}" Binding="{Binding CronExpression}" Width="2*"/>
+                        <DataGridTextColumn Header="{loc:Loc Key=ScheduleSummary}" Binding="{Binding ScheduleDescription}" Width="2*"/>
                         <DataGridTextColumn Header="{loc:Loc Key=ScheduleNextRun}" Binding="{Binding NextRun}" Width="2*"/>
                         <DataGridTextColumn Header="{loc:Loc Key=ScheduleLastAttempt}" Binding="{Binding LastAttempt}" Width="2*"/>
                         <DataGridTextColumn Header="{loc:Loc Key=ScheduleLastResult}" Binding="{Binding LastResult}" Width="*"/>
@@ -672,18 +672,35 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <Label Grid.Row="0" Grid.Column="0" Content="{loc:Loc Key=SelectedServer}"/>
                     <TextBlock x:Name="label_BackupScheduleServer" Grid.Row="0" Grid.Column="1" VerticalAlignment="Center"/>
                     <Label Grid.Row="0" Grid.Column="2" Content="{loc:Loc Key=ScheduleEnabled}"/>
                     <mah:ToggleSwitch x:Name="switch_BackupScheduleEnabled" Grid.Row="0" Grid.Column="3" VerticalAlignment="Center"/>
                     <Button x:Name="button_SaveBackupSchedule" Grid.Row="0" Grid.Column="4" Content="{loc:Loc Key=ScheduleSave}" Margin="8,0,0,0" Padding="12,4" Click="Button_SaveBackupSchedule_Click"/>
-                    <Label Grid.Row="1" Grid.Column="0" Content="{loc:Loc Key=ScheduleCron}"/>
-                    <TextBox x:Name="textBox_BackupScheduleCron" Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="3" VerticalContentAlignment="Center"/>
+                    <Label Grid.Row="1" Grid.Column="0" Content="{loc:Loc Key=ScheduleFrequency}"/>
+                    <ComboBox x:Name="comboBox_BackupScheduleFrequency" Grid.Row="1" Grid.Column="1" SelectedValuePath="Tag" SelectionChanged="BackupScheduleFrequency_SelectionChanged" VerticalContentAlignment="Center">
+                        <ComboBoxItem Content="{loc:Loc Key=ScheduleDaily}" Tag="Daily"/>
+                        <ComboBoxItem Content="{loc:Loc Key=ScheduleWeekly}" Tag="Weekly"/>
+                        <ComboBoxItem Content="{loc:Loc Key=ScheduleCustom}" Tag="Custom"/>
+                    </ComboBox>
+                    <Label x:Name="label_BackupScheduleTime" Grid.Row="1" Grid.Column="2" Content="{loc:Loc Key=ScheduleTime}" VerticalAlignment="Center"/>
+                    <TextBox x:Name="textBox_BackupScheduleTime" Grid.Row="1" Grid.Column="3" MaxLength="5" VerticalContentAlignment="Center"/>
                     <Button x:Name="button_RunBackupNow" Grid.Row="1" Grid.Column="4" Content="{loc:Loc Key=ScheduleRunNow}" Margin="8,0,0,0" Padding="12,4" Click="Button_RunBackupNow_Click"/>
-                    <TextBlock x:Name="label_BackupScheduleStorage" Grid.Row="2" Grid.Column="0" Grid.ColumnSpan="5" TextWrapping="Wrap" Margin="0,6,0,0"/>
-                    <TextBlock x:Name="label_BackupScheduleHint" Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="2" TextWrapping="Wrap" Margin="0,6,10,0"/>
-                    <TextBlock x:Name="label_BackupScheduleStatus" Grid.Row="3" Grid.Column="2" Grid.ColumnSpan="3" TextWrapping="Wrap" Margin="10,6,0,0"/>
+                    <Label x:Name="label_BackupScheduleDay" Grid.Row="2" Grid.Column="0" Content="{loc:Loc Key=ScheduleDayOfWeek}" VerticalAlignment="Center" Visibility="Collapsed"/>
+                    <ComboBox x:Name="comboBox_BackupScheduleDay" Grid.Row="2" Grid.Column="1" SelectedValuePath="Tag" VerticalContentAlignment="Center" Visibility="Collapsed">
+                        <ComboBoxItem Content="{loc:Loc Key=ScheduleSunday}" Tag="0"/>
+                        <ComboBoxItem Content="{loc:Loc Key=ScheduleMonday}" Tag="1"/>
+                        <ComboBoxItem Content="{loc:Loc Key=ScheduleTuesday}" Tag="2"/>
+                        <ComboBoxItem Content="{loc:Loc Key=ScheduleWednesday}" Tag="3"/>
+                        <ComboBoxItem Content="{loc:Loc Key=ScheduleThursday}" Tag="4"/>
+                        <ComboBoxItem Content="{loc:Loc Key=ScheduleFriday}" Tag="5"/>
+                        <ComboBoxItem Content="{loc:Loc Key=ScheduleSaturday}" Tag="6"/>
+                    </ComboBox>
+                    <TextBlock x:Name="label_BackupScheduleStorage" Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="5" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                    <TextBlock x:Name="label_BackupScheduleHint" Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2" TextWrapping="Wrap" Margin="0,6,10,0"/>
+                    <TextBlock x:Name="label_BackupScheduleStatus" Grid.Row="4" Grid.Column="2" Grid.ColumnSpan="3" TextWrapping="Wrap" Margin="10,6,0,0"/>
                 </Grid>
             </Grid>
         </DockPanel>
@@ -883,32 +900,30 @@
                           HorizontalScrollBarVisibility="Disabled">
                     <DataGrid.Resources>
                         <ContextMenu x:Key="ServerRowContextMenu">
-                            <MenuItem Header="{loc:Loc Key=ActionsMenu}">
-                                <MenuItem Header="{loc:Loc Key=Start}" Click="Actions_Start_Click">
-                                    <MenuItem.Icon><Image Source="/CdogsWindowsGSM;component/Images/Start.ico" Width="23" Margin="3"/></MenuItem.Icon>
-                                </MenuItem>
-                                <MenuItem Header="{loc:Loc Key=Stop}" Click="Actions_Stop_Click">
-                                    <MenuItem.Icon><Image Source="/CdogsWindowsGSM;component/Images/Stop.ico" Width="23" Margin="3"/></MenuItem.Icon>
-                                </MenuItem>
-                                <MenuItem Header="{loc:Loc Key=Restart}" Click="Actions_Restart_Click">
-                                    <MenuItem.Icon><Image Source="/CdogsWindowsGSM;component/Images/Restart.ico" Width="23" Margin="3"/></MenuItem.Icon>
-                                </MenuItem>
-                                <MenuItem Header="{loc:Loc Key=ButtonKill}" Click="Actions_Kill_Click">
-                                    <MenuItem.Icon><Image Source="/CdogsWindowsGSM;component/Images/Stop.ico" Width="23" Margin="3"/></MenuItem.Icon>
-                                </MenuItem>
-                                <Separator/>
-                                <MenuItem Header="{loc:Loc Key=ToggleConsole}" Click="Actions_ToggleConsole_Click"/>
-                                <MenuItem Header="{loc:Loc Key=Update}">
-                                    <MenuItem.Icon><Image Source="/CdogsWindowsGSM;component/Images/Update.ico" Width="23" Margin="3"/></MenuItem.Icon>
-                                    <MenuItem Header="{loc:Loc Key=Update}" Click="Actions_Update_Click"/>
-                                    <MenuItem Header="{loc:Loc Key=UpdateValidate}" Click="Actions_UpdateValidate_Click"/>
-                                </MenuItem>
-                                <MenuItem Header="{loc:Loc Key=Backup}" Click="Actions_Backup_Click">
-                                    <MenuItem.Icon><Image Source="/CdogsWindowsGSM;component/Images/Backup.ico" Width="23" Margin="3"/></MenuItem.Icon>
-                                </MenuItem>
-                                <MenuItem Header="{loc:Loc Key=RestoreBackup}" Click="Actions_RestoreBackup_Click">
-                                    <MenuItem.Icon><Image Source="/CdogsWindowsGSM;component/Images/Restore.ico" Width="23" Margin="3"/></MenuItem.Icon>
-                                </MenuItem>
+                            <MenuItem Header="{loc:Loc Key=Start}" Click="Actions_Start_Click">
+                                <MenuItem.Icon><Image Source="/CdogsWindowsGSM;component/Images/Start.ico" Width="23" Margin="3"/></MenuItem.Icon>
+                            </MenuItem>
+                            <MenuItem Header="{loc:Loc Key=Stop}" Click="Actions_Stop_Click">
+                                <MenuItem.Icon><Image Source="/CdogsWindowsGSM;component/Images/Stop.ico" Width="23" Margin="3"/></MenuItem.Icon>
+                            </MenuItem>
+                            <MenuItem Header="{loc:Loc Key=Restart}" Click="Actions_Restart_Click">
+                                <MenuItem.Icon><Image Source="/CdogsWindowsGSM;component/Images/Restart.ico" Width="23" Margin="3"/></MenuItem.Icon>
+                            </MenuItem>
+                            <MenuItem Header="{loc:Loc Key=ButtonKill}" Click="Actions_Kill_Click">
+                                <MenuItem.Icon><Image Source="/CdogsWindowsGSM;component/Images/Stop.ico" Width="23" Margin="3"/></MenuItem.Icon>
+                            </MenuItem>
+                            <Separator/>
+                            <MenuItem Header="{loc:Loc Key=ToggleConsole}" Click="Actions_ToggleConsole_Click"/>
+                            <MenuItem Header="{loc:Loc Key=Update}">
+                                <MenuItem.Icon><Image Source="/CdogsWindowsGSM;component/Images/Update.ico" Width="23" Margin="3"/></MenuItem.Icon>
+                                <MenuItem Header="{loc:Loc Key=Update}" Click="Actions_Update_Click"/>
+                                <MenuItem Header="{loc:Loc Key=UpdateValidate}" Click="Actions_UpdateValidate_Click"/>
+                            </MenuItem>
+                            <MenuItem Header="{loc:Loc Key=Backup}" Click="Actions_Backup_Click">
+                                <MenuItem.Icon><Image Source="/CdogsWindowsGSM;component/Images/Backup.ico" Width="23" Margin="3"/></MenuItem.Icon>
+                            </MenuItem>
+                            <MenuItem Header="{loc:Loc Key=RestoreBackup}" Click="Actions_RestoreBackup_Click">
+                                <MenuItem.Icon><Image Source="/CdogsWindowsGSM;component/Images/Restore.ico" Width="23" Margin="3"/></MenuItem.Icon>
                             </MenuItem>
                             <MenuItem Header="{loc:Loc Key=ManageAddons}" Click="Actions_ManageAddons_Click"/>
                             <MenuItem Header="{loc:Loc Key=BrowseMenu}">
@@ -958,10 +973,12 @@
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
                         <DataGridTextColumn Header="{loc:Loc Key=ColumnStatus}" IsReadOnly="True" Binding="{Binding Path=Status}" Width="80" MinWidth="80" MaxWidth="80"/>
-                        <DataGridTemplateColumn Header="{loc:Loc Key=ServerHealth}" IsReadOnly="True" SortMemberPath="HealthStatus" Width="95" MinWidth="80">
+                        <DataGridTemplateColumn Header="{loc:Loc Key=ServerHealth}" IsReadOnly="True" SortMemberPath="HealthStatus" Width="56" MinWidth="56" MaxWidth="56">
                             <DataGridTemplateColumn.CellTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding HealthStatusText}" ToolTip="{Binding HealthDetails}" TextTrimming="CharacterEllipsis"/>
+                                    <Grid Background="Transparent" ToolTip="{Binding HealthDetails}">
+                                        <TextBlock Text="{Binding HealthStatusIcon}" Foreground="{Binding HealthStatusIconBrush}" FontFamily="Segoe UI Symbol" FontSize="16" FontWeight="Bold" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                                    </Grid>
                                 </DataTemplate>
                             </DataGridTemplateColumn.CellTemplate>
                         </DataGridTemplateColumn>
@@ -973,7 +990,7 @@
                                     <Grid Background="Transparent" ToolTip="{Binding Path=MainPortToolTip}">
                                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding Path=Port}"/>
-                                            <TextBlock Text="{Binding Path=MainPortMismatchDisplay}" Foreground="Firebrick" Margin="4,0,0,0"/>
+                                            <TextBlock Text="{Binding Path=MainPortStatusDisplay}" Foreground="{Binding Path=MainPortStatusBrush}" Margin="4,0,0,0"/>
                                         </StackPanel>
                                     </Grid>
                                 </DataTemplate>

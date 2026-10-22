@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Collections.Generic;
 using System.Linq;
+using System.Windows.Media;
 using WindowsGSM.Localization;
 
 namespace WindowsGSM.Functions
@@ -13,7 +14,6 @@ namespace WindowsGSM.Functions
         private int? _detectedMainPort;
         private string _maxplayers;
         private ServerHealthStatus _healthStatus = ServerHealthStatus.Unknown;
-        private string _healthStatusText = string.Empty;
         private string _healthCompactDetails = string.Empty;
         private string _healthDetails = string.Empty;
 
@@ -38,7 +38,8 @@ namespace WindowsGSM.Functions
                 _detectedMainPort = value;
                 OnPropertyChanged(nameof(DetectedMainPort));
                 OnPropertyChanged(nameof(PortSort));
-                OnPropertyChanged(nameof(MainPortMismatchDisplay));
+                OnPropertyChanged(nameof(MainPortStatusDisplay));
+                OnPropertyChanged(nameof(MainPortStatusBrush));
                 OnPropertyChanged(nameof(MainPortToolTip));
             }
         }
@@ -53,17 +54,8 @@ namespace WindowsGSM.Functions
 
                 _healthStatus = value;
                 OnPropertyChanged(nameof(HealthStatus));
-            }
-        }
-        public string HealthStatusText
-        {
-            get => _healthStatusText;
-            set
-            {
-                if (_healthStatusText == value) { return; }
-
-                _healthStatusText = value;
-                OnPropertyChanged(nameof(HealthStatusText));
+                OnPropertyChanged(nameof(HealthStatusIcon));
+                OnPropertyChanged(nameof(HealthStatusIconBrush));
             }
         }
         public string HealthCompactDetails
@@ -107,12 +99,16 @@ namespace WindowsGSM.Functions
         public int QueryPortSort => ParseSortValue(QueryPort);
         public int PlayerCapacitySort => GetPlayerCapacity(Maxplayers);
         public int PlayerCapacity => GetPlayerCapacity(Maxplayers);
-        public string MainPortMismatchDisplay =>
+        public string MainPortStatusDisplay =>
+            DetectedMainPort.HasValue && int.TryParse(Port, out int configuredPort)
+                ? DetectedMainPort.Value == configuredPort ? "\u2713" : $"\u2717 ({DetectedMainPort.Value})"
+                : string.Empty;
+        public Brush MainPortStatusBrush =>
             DetectedMainPort.HasValue &&
             int.TryParse(Port, out int configuredPort) &&
-            DetectedMainPort.Value != configuredPort
-                ? $"\u2717 ({DetectedMainPort.Value})"
-                : string.Empty;
+            DetectedMainPort.Value == configuredPort
+                ? Brushes.ForestGreen
+                : Brushes.Firebrick;
         public string MainPortToolTip
         {
             get
@@ -133,6 +129,32 @@ namespace WindowsGSM.Functions
                 }
 
                 return string.Format(CultureInfo.CurrentUICulture, LocalizationManager.Get("MainPortMismatch"), configuredPort, DetectedMainPort.Value);
+            }
+        }
+        public string HealthStatusIcon
+        {
+            get
+            {
+                switch (HealthStatus)
+                {
+                    case ServerHealthStatus.Healthy: return "\u2713";
+                    case ServerHealthStatus.Warning: return "\u26A0";
+                    case ServerHealthStatus.Unhealthy: return "\u2717";
+                    default: return "\u25CF";
+                }
+            }
+        }
+        public Brush HealthStatusIconBrush
+        {
+            get
+            {
+                switch (HealthStatus)
+                {
+                    case ServerHealthStatus.Healthy: return Brushes.ForestGreen;
+                    case ServerHealthStatus.Warning: return Brushes.DarkOrange;
+                    case ServerHealthStatus.Unhealthy: return Brushes.Firebrick;
+                    default: return Brushes.Gray;
+                }
             }
         }
         private static int ParseSortValue(string value)
@@ -320,7 +342,7 @@ namespace WindowsGSM.Functions
                 string explanation = string.IsNullOrWhiteSpace(context.LastQueryFailureMessage)
                     ? LocalizationManager.Get("HealthQueryRepeatedFailure")
                     : string.Format(LocalizationManager.Get("HealthQueryFailureReason"), context.LastQueryFailureMessage);
-                return new ServerHealthCheckResult("HealthQueryCheck", ServerHealthStatus.Unhealthy, explanation, context.LastQueryAttemptAt);
+                return new ServerHealthCheckResult("HealthQueryCheck", ServerHealthStatus.Warning, explanation, context.LastQueryAttemptAt);
             }
 
             if (context.CheckedAt - context.LastQueryAttemptAt.Value > QueryStaleAfter)

@@ -6,6 +6,7 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 using System.IO;
+using System.Globalization;
 using System.Net;
 using System.IO.Compression;
 using System.Diagnostics;
@@ -880,7 +881,6 @@ namespace WindowsGSM
         private static void SetServerHealthDisplay(ServerTable server, ServerHealthSummary summary)
         {
             server.HealthStatus = summary.OverallStatus;
-            server.HealthStatusText = LocalizationManager.Get("Health" + summary.OverallStatus);
             server.HealthCompactDetails = summary.CompactDetails;
             server.HealthDetails = summary.Details;
         }
@@ -1962,31 +1962,86 @@ namespace WindowsGSM
             if (row == null)
             {
                 label_BackupScheduleServer.Text = string.Empty;
-                textBox_BackupScheduleCron.Text = string.Empty;
+                textBox_BackupScheduleTime.Text = string.Empty;
+                comboBox_BackupScheduleFrequency.SelectedValue = null;
+                comboBox_BackupScheduleDay.SelectedValue = null;
                 switch_BackupScheduleEnabled.IsOn = false;
-                textBox_BackupScheduleCron.IsEnabled = false;
                 switch_BackupScheduleEnabled.IsEnabled = false;
                 button_SaveBackupSchedule.IsEnabled = false;
                 button_RunBackupNow.IsEnabled = false;
                 label_BackupScheduleStorage.Text = string.Empty;
-                label_BackupScheduleHint.Text = LocalizationManager.Get("ScheduleNoServerSelected");
                 label_BackupScheduleStatus.Text = string.Empty;
+                UpdateBackupScheduleEditor();
                 return;
             }
 
             label_BackupScheduleServer.Text = row.ServerName;
-            textBox_BackupScheduleCron.Text = row.CronExpression;
             switch_BackupScheduleEnabled.IsOn = row.Enabled;
             bool configurationAvailable = string.IsNullOrEmpty(row.ConfigurationError);
-            textBox_BackupScheduleCron.IsEnabled = configurationAvailable;
             switch_BackupScheduleEnabled.IsEnabled = configurationAvailable;
             button_SaveBackupSchedule.IsEnabled = configurationAvailable;
             button_RunBackupNow.IsEnabled = configurationAvailable;
             label_BackupScheduleStorage.Text = row.BackupStorage;
-            label_BackupScheduleHint.Text = configurationAvailable
-                ? LocalizationManager.Get("ScheduleCronHint")
-                : row.ConfigurationError;
             label_BackupScheduleStatus.Text = row.LastResultMessage;
+
+            if (TryGetSimpleBackupSchedule(row.CronExpression, out bool weekly, out int hour, out int minute, out int dayOfWeek))
+            {
+                textBox_BackupScheduleTime.Text = string.Format(CultureInfo.InvariantCulture, "{0:00}:{1:00}", hour, minute);
+                comboBox_BackupScheduleDay.SelectedValue = dayOfWeek.ToString(CultureInfo.InvariantCulture);
+                comboBox_BackupScheduleFrequency.SelectedValue = weekly ? "Weekly" : "Daily";
+            }
+            else
+            {
+                textBox_BackupScheduleTime.Text = string.Empty;
+                comboBox_BackupScheduleDay.SelectedValue = null;
+                comboBox_BackupScheduleFrequency.SelectedValue = "Custom";
+            }
+
+            UpdateBackupScheduleEditor();
+        }
+
+        private void BackupScheduleFrequency_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            UpdateBackupScheduleEditor();
+        }
+
+        private void UpdateBackupScheduleEditor()
+        {
+            if (comboBox_BackupScheduleFrequency == null || label_BackupScheduleTime == null || label_BackupScheduleDay == null)
+            {
+                return;
+            }
+
+            BackupScheduleRow row = BackupScheduleGrid.SelectedItem as BackupScheduleRow;
+            if (row == null)
+            {
+                label_BackupScheduleTime.Visibility = Visibility.Collapsed;
+                textBox_BackupScheduleTime.Visibility = Visibility.Collapsed;
+                label_BackupScheduleDay.Visibility = Visibility.Collapsed;
+                comboBox_BackupScheduleDay.Visibility = Visibility.Collapsed;
+                comboBox_BackupScheduleFrequency.IsEnabled = false;
+                textBox_BackupScheduleTime.IsEnabled = false;
+                comboBox_BackupScheduleDay.IsEnabled = false;
+                label_BackupScheduleHint.Text = LocalizationManager.Get("ScheduleNoServerSelected");
+                return;
+            }
+
+            bool configurationAvailable = string.IsNullOrEmpty(row.ConfigurationError);
+            string frequency = comboBox_BackupScheduleFrequency.SelectedValue as string;
+            bool weekly = frequency == "Weekly";
+            bool simpleSchedule = frequency == "Daily" || weekly;
+            label_BackupScheduleTime.Visibility = simpleSchedule ? Visibility.Visible : Visibility.Collapsed;
+            textBox_BackupScheduleTime.Visibility = simpleSchedule ? Visibility.Visible : Visibility.Collapsed;
+            label_BackupScheduleDay.Visibility = weekly ? Visibility.Visible : Visibility.Collapsed;
+            comboBox_BackupScheduleDay.Visibility = weekly ? Visibility.Visible : Visibility.Collapsed;
+            comboBox_BackupScheduleFrequency.IsEnabled = configurationAvailable;
+            textBox_BackupScheduleTime.IsEnabled = configurationAvailable && simpleSchedule;
+            comboBox_BackupScheduleDay.IsEnabled = configurationAvailable && weekly;
+            label_BackupScheduleHint.Text = !configurationAvailable
+                ? row.ConfigurationError
+                : frequency == "Custom"
+                    ? LocalizationManager.Get("ScheduleCustomHint")
+                    : LocalizationManager.Get("ScheduleSimpleHint");
         }
 
         private void Button_SaveBackupSchedule_Click(object sender, RoutedEventArgs e)
@@ -1994,9 +2049,40 @@ namespace WindowsGSM
             BackupScheduleRow row = BackupScheduleGrid.SelectedItem as BackupScheduleRow;
             if (row == null) { return; }
 
-            string expression = textBox_BackupScheduleCron.Text.Trim();
-            CrontabSchedule schedule = CrontabSchedule.TryParse(expression);
-            if (schedule == null || !TryGetNextBackupOccurrence(schedule, DateTime.Now, out DateTime _))
+            string frequency = comboBox_BackupScheduleFrequency.SelectedValue as string;
+            string expression;
+            if (frequency == "Custom")
+            {
+                expression = row.CronExpression;
+            }
+            else
+            {
+                if (!DateTime.TryParseExact(textBox_BackupScheduleTime.Text.Trim(), "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime scheduledTime))
+                {
+                    label_BackupScheduleStatus.Text = LocalizationManager.Get("ScheduleInvalidMessage");
+                    return;
+                }
+
+                if (frequency == "Daily")
+                {
+                    expression = string.Format(CultureInfo.InvariantCulture, "{0} {1} * * *", scheduledTime.Minute, scheduledTime.Hour);
+                }
+                else if (frequency == "Weekly" &&
+                    int.TryParse(comboBox_BackupScheduleDay.SelectedValue as string, NumberStyles.None, CultureInfo.InvariantCulture, out int dayOfWeek) &&
+                    dayOfWeek >= 0 && dayOfWeek <= 6)
+                {
+                    expression = string.Format(CultureInfo.InvariantCulture, "{0} {1} * * {2}", scheduledTime.Minute, scheduledTime.Hour, dayOfWeek);
+                }
+                else
+                {
+                    label_BackupScheduleStatus.Text = LocalizationManager.Get("ScheduleInvalidMessage");
+                    return;
+                }
+            }
+
+            CrontabSchedule schedule = string.IsNullOrWhiteSpace(expression) ? null : CrontabSchedule.TryParse(expression);
+            bool validSchedule = schedule != null && TryGetNextBackupOccurrence(schedule, DateTime.Now, out DateTime _);
+            if ((frequency != "Custom" || switch_BackupScheduleEnabled.IsOn) && !validSchedule)
             {
                 label_BackupScheduleStatus.Text = LocalizationManager.Get("ScheduleInvalidMessage");
                 return;
@@ -2115,6 +2201,7 @@ namespace WindowsGSM
                         false,
                         string.Empty,
                         LocalizationManager.Get("ScheduleConfigError"),
+                        LocalizationManager.Get("ScheduleConfigError"),
                         string.Empty,
                         LocalizationManager.Get("ScheduleConfigError"),
                         error,
@@ -2149,6 +2236,7 @@ namespace WindowsGSM
                     server.Game,
                     config.Enabled,
                     config.CronExpression,
+                    GetBackupScheduleDescription(config.CronExpression),
                     nextRun,
                     config.LastAttemptedAt?.ToString("g") ?? string.Empty,
                     result,
@@ -2160,6 +2248,63 @@ namespace WindowsGSM
             label_BackupScheduleTimeZone.Content = string.Format(LocalizationManager.Get("ScheduleLocalTimeZone"), TimeZoneInfo.Local.DisplayName);
             BackupScheduleGrid.ItemsSource = rows;
             BackupScheduleGrid.SelectedItem = rows.FirstOrDefault(row => row.ServerId == selectedServerId) ?? rows.FirstOrDefault();
+        }
+
+        private static string GetBackupScheduleDescription(string expression)
+        {
+            if (!TryGetSimpleBackupSchedule(expression, out bool weekly, out int hour, out int minute, out int dayOfWeek))
+            {
+                return LocalizationManager.Get("ScheduleCustom");
+            }
+
+            string time = string.Format(CultureInfo.InvariantCulture, "{0:00}:{1:00}", hour, minute);
+            return weekly
+                ? string.Format(CultureInfo.CurrentUICulture, LocalizationManager.Get("ScheduleWeeklyAt"), GetBackupScheduleDayName(dayOfWeek), time)
+                : string.Format(CultureInfo.CurrentUICulture, LocalizationManager.Get("ScheduleDailyAt"), time);
+        }
+
+        private static bool TryGetSimpleBackupSchedule(string expression, out bool weekly, out int hour, out int minute, out int dayOfWeek)
+        {
+            weekly = false;
+            hour = 0;
+            minute = 0;
+            dayOfWeek = 0;
+
+            if (string.IsNullOrWhiteSpace(expression)) { return false; }
+
+            string[] fields = expression.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            if (fields.Length != 5 ||
+                !int.TryParse(fields[0], NumberStyles.None, CultureInfo.InvariantCulture, out minute) || minute > 59 ||
+                !int.TryParse(fields[1], NumberStyles.None, CultureInfo.InvariantCulture, out hour) || hour > 23 ||
+                fields[2] != "*" || fields[3] != "*")
+            {
+                return false;
+            }
+
+            if (fields[4] == "*") { return true; }
+
+            if (!int.TryParse(fields[4], NumberStyles.None, CultureInfo.InvariantCulture, out dayOfWeek) || dayOfWeek > 6)
+            {
+                return false;
+            }
+
+            weekly = true;
+            return true;
+        }
+
+        private static string GetBackupScheduleDayName(int dayOfWeek)
+        {
+            switch (dayOfWeek)
+            {
+                case 0: return LocalizationManager.Get("ScheduleSunday");
+                case 1: return LocalizationManager.Get("ScheduleMonday");
+                case 2: return LocalizationManager.Get("ScheduleTuesday");
+                case 3: return LocalizationManager.Get("ScheduleWednesday");
+                case 4: return LocalizationManager.Get("ScheduleThursday");
+                case 5: return LocalizationManager.Get("ScheduleFriday");
+                case 6: return LocalizationManager.Get("ScheduleSaturday");
+                default: throw new ArgumentOutOfRangeException(nameof(dayOfWeek));
+            }
         }
 
         private string GetBackupScheduleStorage(string serverId)
