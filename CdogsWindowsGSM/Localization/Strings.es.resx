@@ -124,15 +124,6 @@
   <data name="DashboardTemperatureUnavailable"><value>No disponible: no se detectó ningún sensor compatible.</value></data>
   <data name="DashboardTemperatureError"><value>No disponible: {0}</value></data>
   <data name="DashboardTemperatureSampledAt"><value>Última muestra: {0}</value></data>
-  <data name="DashboardStorageHeadroom"><value>ESPACIO DISPONIBLE</value></data>
-  <data name="DashboardStorageLocationApp"><value>Aplicación</value></data>
-  <data name="DashboardStorageLocationServers"><value>Archivos del servidor</value></data>
-  <data name="DashboardStorageLocationBackups"><value>Copias de seguridad</value></data>
-  <data name="DashboardStorageVolumeLine"><value>{0} ({1}): {2:0.0} GB libres ({3:0.0}%).</value></data>
-  <data name="DashboardStorageUnavailable"><value>{0} ({1}): no disponible - {2}</value></data>
-  <data name="DashboardStorageLow"><value>POCO ESPACIO</value></data>
-  <data name="DashboardStorageNoVolumes"><value>No se pudo comprobar ningún volumen de almacenamiento.</value></data>
-	<data name="DashboardStorageNoReading"><value>No se obtuvo información sobre el espacio libre.</value></data>
   <data name="DashboardFleetCounts"><value>{0} en ejecución, {1} detenidos, {2} con advertencias de estado.</value></data>
   <data name="DashboardFleetNextBackup"><value>Próxima copia programada: {0} a las {1}.</value></data>
   <data name="DashboardFleetNoScheduledBackup"><value>No hay copias programadas activadas.</value></data>

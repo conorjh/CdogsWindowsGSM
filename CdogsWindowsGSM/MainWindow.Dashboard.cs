@@ -6,7 +6,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
-using System.Windows.Media;
 using NCrontab;
 using WindowsGSM.Functions;
 using WindowsGSM.Localization;
@@ -48,32 +47,6 @@ namespace WindowsGSM
         private DashboardExtendedSnapshot BuildDashboardExtendedSnapshot(IReadOnlyList<DashboardServerSnapshot> servers)
         {
             HardwareTemperatureSample temperature = _dashboardTemperatureSource.Sample();
-            var storageLocations = new List<StorageLocation>
-            {
-                new StorageLocation(LocalizationManager.Get("DashboardStorageLocationApp"), WGSM_PATH)
-            };
-
-            string serverFilesLabel = LocalizationManager.Get("DashboardStorageLocationServers");
-            string backupsLabel = LocalizationManager.Get("DashboardStorageLocationBackups");
-            foreach (DashboardServerSnapshot server in servers)
-            {
-                storageLocations.Add(new StorageLocation(serverFilesLabel, ServerPath.GetServersServerFiles(server.ID)));
-                try
-                {
-                    string backupPath = BackupConfig.GetConfiguredBackupLocation(server.ID);
-                    if (string.IsNullOrWhiteSpace(backupPath))
-                    {
-                        backupPath = Path.Combine(WGSM_PATH, ServerPath.FolderName.Backups, server.ID);
-                    }
-                    storageLocations.Add(new StorageLocation(backupsLabel, backupPath));
-                }
-                catch (Exception exception) when (IsExpectedBackupFileException(exception))
-                {
-                    storageLocations.Add(new StorageLocation(backupsLabel, string.Empty, exception.Message));
-                }
-            }
-
-            List<StorageHeadroom> storage = SystemMetrics.GetStorageHeadroom(storageLocations);
             int runningCount = servers.Count(server => server.StatusCode == ServerStatus.Started);
             int stoppedCount = servers.Count(server => server.StatusCode == ServerStatus.Stopped);
             int healthWarningCount = servers.Count(server =>
@@ -147,7 +120,6 @@ namespace WindowsGSM
 
             return new DashboardExtendedSnapshot(
                 temperature,
-                storage,
                 runningCount,
                 stoppedCount,
                 healthWarningCount,
@@ -171,9 +143,15 @@ namespace WindowsGSM
             dashboard_cpu_temperature.Text = snapshot.Temperature.Cpu == null
                 ? unavailableTemperature
                 : FormatDashboardTemperature(snapshot.Temperature.Cpu);
-            dashboard_gpu_temperature.Text = snapshot.Temperature.Gpus.Count == 0
-                ? unavailableTemperature
-                : string.Join(Environment.NewLine, snapshot.Temperature.Gpus.Select(FormatDashboardTemperature));
+            bool hasGpuTemperature = snapshot.Temperature.Gpus.Count > 0;
+            dashboard_gpu_temperature_panel.Visibility = hasGpuTemperature ? Visibility.Visible : Visibility.Collapsed;
+            dashboard_temperature_grid.ColumnDefinitions[1].Width = hasGpuTemperature ? new GridLength(10) : new GridLength(0);
+            dashboard_temperature_grid.ColumnDefinitions[2].Width = hasGpuTemperature
+                ? new GridLength(1, GridUnitType.Star)
+                : new GridLength(0);
+            dashboard_gpu_temperature.Text = hasGpuTemperature
+                ? string.Join(Environment.NewLine, snapshot.Temperature.Gpus.Select(FormatDashboardTemperature))
+                : string.Empty;
             dashboard_temperature_sample_time.Text = snapshot.Temperature.SampledAt.HasValue
                 ? string.Format(
                     LocalizationManager.Get("DashboardTemperatureSampledAt"),
@@ -185,32 +163,6 @@ namespace WindowsGSM
                 Log("System", $"[NOTICE] Hardware temperature readings are unavailable: {temperatureError}");
             }
             _lastDashboardTemperatureError = temperatureError;
-
-            bool lowStorage = snapshot.Storage.Any(volume => volume.IsLow);
-            bool storageUnavailable = snapshot.Storage.Any(volume => !string.IsNullOrWhiteSpace(volume.Error));
-            var storageLines = snapshot.Storage.Select(volume =>
-            {
-                string volumeName = string.IsNullOrWhiteSpace(volume.Volume) ? "-" : volume.Volume.TrimEnd('\\');
-                if (!string.IsNullOrWhiteSpace(volume.Error) || !volume.FreeBytes.HasValue || !volume.FreePercent.HasValue)
-                {
-                    string error = volume.Error ?? LocalizationManager.Get("DashboardStorageNoReading");
-                    return string.Format(LocalizationManager.Get("DashboardStorageUnavailable"), volumeName, volume.Description, error);
-                }
-
-                double freeGigabytes = volume.FreeBytes.Value / (1024.0 * 1024.0 * 1024.0);
-                string line = string.Format(
-                    LocalizationManager.Get("DashboardStorageVolumeLine"),
-                    volumeName,
-                    volume.Description,
-                    freeGigabytes,
-                    volume.FreePercent.Value);
-                return volume.IsLow ? $"{LocalizationManager.Get("DashboardStorageLow")}: {line}" : line;
-            }).ToList();
-
-            dashboard_storage_headroom.Text = storageLines.Count == 0
-                ? LocalizationManager.Get("DashboardStorageNoVolumes")
-                : string.Join(Environment.NewLine, storageLines);
-            dashboard_storage_headroom.Foreground = lowStorage || storageUnavailable ? Brushes.DarkOrange : Brushes.Gray;
 
             var fleetLines = new List<string>
             {
@@ -337,7 +289,6 @@ namespace WindowsGSM
         private sealed class DashboardExtendedSnapshot
         {
             public HardwareTemperatureSample Temperature { get; private set; }
-            public List<StorageHeadroom> Storage { get; private set; }
             public int RunningCount { get; private set; }
             public int StoppedCount { get; private set; }
             public int HealthWarningCount { get; private set; }
@@ -352,7 +303,6 @@ namespace WindowsGSM
 
             public DashboardExtendedSnapshot(
                 HardwareTemperatureSample temperature,
-                List<StorageHeadroom> storage,
                 int runningCount,
                 int stoppedCount,
                 int healthWarningCount,
@@ -366,7 +316,6 @@ namespace WindowsGSM
                 bool actionOpensSchedules)
             {
                 Temperature = temperature;
-                Storage = storage;
                 RunningCount = runningCount;
                 StoppedCount = stoppedCount;
                 HealthWarningCount = healthWarningCount;

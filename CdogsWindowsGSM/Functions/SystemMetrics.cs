@@ -1,9 +1,7 @@
 ﻿using System;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using System.Security;
 using System.Management;
 
 namespace WindowsGSM.Functions
@@ -90,92 +88,6 @@ namespace WindowsGSM.Functions
             return (DiskTotalSize == 0) ? 0 : (1 - freeSpace / DiskTotalSize) * 100;
         }
 
-        public static List<StorageHeadroom> GetStorageHeadroom(IEnumerable<StorageLocation> locations)
-        {
-            var labelsByVolume = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-            var unavailableLocations = new List<StorageHeadroom>();
-
-            foreach (StorageLocation location in locations ?? Enumerable.Empty<StorageLocation>())
-            {
-                if (location == null) { continue; }
-
-                if (!string.IsNullOrWhiteSpace(location.Error))
-                {
-                    unavailableLocations.Add(new StorageHeadroom(location.Description, location.Path, null, null, null, location.Error));
-                    continue;
-                }
-
-                if (string.IsNullOrWhiteSpace(location.Path))
-                {
-                    unavailableLocations.Add(new StorageHeadroom(location.Description, string.Empty, null, null, null, "The storage path is unavailable."));
-                    continue;
-                }
-
-                string volumeRoot;
-                try
-                {
-                    volumeRoot = Path.GetPathRoot(Path.GetFullPath(location.Path));
-                }
-                catch (Exception exception) when (IsExpectedStorageException(exception))
-                {
-                    unavailableLocations.Add(new StorageHeadroom(location.Description, location.Path, null, null, null, exception.Message));
-                    continue;
-                }
-
-                if (string.IsNullOrWhiteSpace(volumeRoot))
-                {
-                    unavailableLocations.Add(new StorageHeadroom(location.Description, location.Path, null, null, null, "The path does not identify a storage volume."));
-                    continue;
-                }
-
-                if (!labelsByVolume.TryGetValue(volumeRoot, out List<string> labels))
-                {
-                    labels = new List<string>();
-                    labelsByVolume.Add(volumeRoot, labels);
-                }
-
-                if (!labels.Contains(location.Description, StringComparer.OrdinalIgnoreCase))
-                {
-                    labels.Add(location.Description);
-                }
-            }
-
-            var results = new List<StorageHeadroom>();
-            foreach (KeyValuePair<string, List<string>> volume in labelsByVolume)
-            {
-                try
-                {
-                    var drive = new DriveInfo(volume.Key);
-                    if (!drive.IsReady)
-                    {
-                        results.Add(new StorageHeadroom(string.Join(", ", volume.Value), volume.Key, null, null, null, "The drive is not ready."));
-                        continue;
-                    }
-
-                    long totalBytes = drive.TotalSize;
-                    long freeBytes = drive.AvailableFreeSpace;
-                    double freePercent = totalBytes > 0 ? freeBytes * 100.0 / totalBytes : 0;
-                    results.Add(new StorageHeadroom(string.Join(", ", volume.Value), drive.Name, freeBytes, totalBytes, freePercent, null));
-                }
-                catch (Exception exception) when (IsExpectedStorageException(exception))
-                {
-                    results.Add(new StorageHeadroom(string.Join(", ", volume.Value), volume.Key, null, null, null, exception.Message));
-                }
-            }
-
-            results.AddRange(unavailableLocations);
-            return results.OrderBy(result => result.Volume, StringComparer.OrdinalIgnoreCase).ToList();
-        }
-
-        private static bool IsExpectedStorageException(Exception exception)
-        {
-            return exception is ArgumentException ||
-                exception is IOException ||
-                exception is NotSupportedException ||
-                exception is SecurityException ||
-                exception is UnauthorizedAccessException;
-        }
-
         public static string GetMemoryRatioString(double percent, double totalMemory)
         {
             int count = 0;
@@ -236,41 +148,4 @@ namespace WindowsGSM.Functions
         }
     }
 
-    public sealed class StorageLocation
-    {
-        public string Description { get; private set; }
-        public string Path { get; private set; }
-        public string Error { get; private set; }
-
-        public StorageLocation(string description, string path, string error = null)
-        {
-            Description = description ?? string.Empty;
-            Path = path ?? string.Empty;
-            Error = error;
-        }
-    }
-
-    public sealed class StorageHeadroom
-    {
-        private const long LowSpaceThresholdBytes = 10L * 1024 * 1024 * 1024;
-
-        public string Description { get; private set; }
-        public string Volume { get; private set; }
-        public long? FreeBytes { get; private set; }
-        public long? TotalBytes { get; private set; }
-        public double? FreePercent { get; private set; }
-        public string Error { get; private set; }
-        public bool IsLow => FreeBytes.HasValue && FreePercent.HasValue &&
-            (FreeBytes.Value < LowSpaceThresholdBytes || FreePercent.Value < 10.0);
-
-        public StorageHeadroom(string description, string volume, long? freeBytes, long? totalBytes, double? freePercent, string error)
-        {
-            Description = description;
-            Volume = volume;
-            FreeBytes = freeBytes;
-            TotalBytes = totalBytes;
-            FreePercent = freePercent;
-            Error = error;
-        }
-    }
 }

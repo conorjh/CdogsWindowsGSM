@@ -124,15 +124,6 @@
   <data name="DashboardTemperatureUnavailable"><value>Unavailable: no supported sensor was detected.</value></data>
   <data name="DashboardTemperatureError"><value>Unavailable: {0}</value></data>
   <data name="DashboardTemperatureSampledAt"><value>Last sample: {0}</value></data>
-  <data name="DashboardStorageHeadroom"><value>STORAGE HEADROOM</value></data>
-  <data name="DashboardStorageLocationApp"><value>Application</value></data>
-  <data name="DashboardStorageLocationServers"><value>Server files</value></data>
-  <data name="DashboardStorageLocationBackups"><value>Backups</value></data>
-  <data name="DashboardStorageVolumeLine"><value>{0} ({1}): {2:0.0} GB free ({3:0.0}%).</value></data>
-  <data name="DashboardStorageUnavailable"><value>{0} ({1}): unavailable - {2}</value></data>
-  <data name="DashboardStorageLow"><value>LOW SPACE</value></data>
-  <data name="DashboardStorageNoVolumes"><value>No storage volumes could be checked.</value></data>
-	<data name="DashboardStorageNoReading"><value>No free-space reading was returned.</value></data>
   <data name="DashboardFleetCounts"><value>{0} running, {1} stopped, {2} with health warnings.</value></data>
   <data name="DashboardFleetNextBackup"><value>Next scheduled backup: {0} at {1}.</value></data>
   <data name="DashboardFleetNoScheduledBackup"><value>No enabled scheduled backups.</value></data>
