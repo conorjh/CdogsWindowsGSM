@@ -72,7 +72,7 @@ Keep the first version deliberately small. Use a common result shape—check nam
 Start with:
 
 1. **Process check:** report whether the server process is running or has exited, using the process state already tracked by the app.
-2. **Query check:** for server types with an existing supported query method, report whether a recent query succeeded. Unsupported or unconfigured query types show **Unknown** rather than unhealthy.
+2. **Query check:** resolve the endpoint according to the game engine; there is no universal separate query-port option. Source and GoldSrc A2S queries use the server's UDP game port, while other supported game types use their configured query endpoint. Unsupported or unconfigured query types show **Unknown** rather than unhealthy. A query endpoint that has never returned a valid response remains **Unknown** with its failure detail; after a successful baseline, one or two consecutive failures remain **Unknown**, while three failures or a stale check report **Warning**.
 
 Show one compact overall status in the server list, with per-check details available on selection or expansion. Keep checks bounded and rate-limited; do not add a second query loop where existing query results can be reused. A check failure must not itself trigger a restart. Discord notifications can be added for health-state transitions using existing alert settings, with deduplication so a persistent outage does not spam.
 
@@ -82,6 +82,8 @@ The optional provider boundary lets additional game types or plugins contribute 
 
 - Process start, stop, crash, and restart update the health result without showing stale state from a previous process.
 - Supported query success/failure is reflected; unsupported query types remain Unknown and do not generate false alarms.
+- Source and GoldSrc queries use the effective server port; their query-port setting must not point to a separate, unsupported endpoint.
+- An unverified query endpoint remains Unknown; after a successful query baseline, one or two failures remain Unknown and three failures or a stale check warn.
 - A transient timeout does not crash the UI, create a restart loop, or generate repeated identical alerts.
 - Health checks do not block the UI or interfere with normal query polling and server actions.
 

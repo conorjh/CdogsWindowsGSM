@@ -12,12 +12,25 @@ jobs:
         dotnet-version: 10.0.x
     - name: Restore
       run: dotnet restore CdogsWindowsGSM.sln
-    - name: Build
-      run: dotnet build CdogsWindowsGSM.sln --configuration Release --no-restore
-    - name: Publish single-file app
-      run: dotnet publish .\CdogsWindowsGSM\CdogsWindowsGSM.csproj --configuration Release --no-restore --self-contained true --output .\artifacts\app
-    - name: Publish updater
-      run: dotnet publish .\CdogsWindowsGSM.Updater\CdogsWindowsGSM.Updater.csproj --configuration Release --no-restore --output .\artifacts\updater
+    - name: Build solution and publish single-file executables
+      shell: pwsh
+      run: |
+        dotnet build CdogsWindowsGSM.sln --configuration Release --no-restore
+        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    - name: Verify single-file outputs
+      shell: pwsh
+      run: |
+        $expectedFiles = @(
+          @{ Directory = '.\artifacts\app'; Name = 'CdogsWindowsGSM.exe' },
+          @{ Directory = '.\artifacts\updater'; Name = 'CdogsWindowsGSM-Updater.exe' }
+        )
+        foreach ($expected in $expectedFiles) {
+          $files = @(Get-ChildItem -LiteralPath $expected.Directory -File)
+          if ($files.Count -ne 1 -or $files[0].Name -ne $expected.Name) {
+            $actualFiles = ($files | Select-Object -ExpandProperty Name) -join ', '
+            throw "Expected only $($expected.Name) in $($expected.Directory); found: $actualFiles"
+          }
+        }
     - name: Upload release assets
       uses: actions/upload-artifact@v4
       with:

@@ -43,6 +43,7 @@ namespace WindowsGSM.Functions
             public const string Cod1MeatBots = "cod1meatbots";
             public const string Cod1AlliesBots = "cod1alliesbots";
             public const string Cod1AxisBots = "cod1axisbots";
+            public const string SharedInstallationId = "sharedinstallationid";
         }
 
         public string ServerID;
@@ -78,6 +79,7 @@ namespace WindowsGSM.Functions
         public bool Cod1MeatBots;
         public string Cod1AlliesBots = "0";
         public string Cod1AxisBots = "0";
+        public string SharedInstallationId = string.Empty;
 
         public ServerConfig(string serverid)
         {
@@ -153,6 +155,7 @@ namespace WindowsGSM.Functions
                             case SettingName.Cod1MeatBots: Cod1MeatBots = keyvalue[1] == "1"; break;
                             case SettingName.Cod1AlliesBots: Cod1AlliesBots = keyvalue[1]; break;
                             case SettingName.Cod1AxisBots: Cod1AxisBots = keyvalue[1]; break;
+                            case SettingName.SharedInstallationId: SharedInstallationId = keyvalue[1]; break;
                         }
                     }
                 }
@@ -244,6 +247,7 @@ namespace WindowsGSM.Functions
                     textwriter.WriteLine($"{SettingName.Cod1MeatBots}=\"{(Cod1MeatBots ? "1" : "0")}\"");
                     textwriter.WriteLine($"{SettingName.Cod1AlliesBots}=\"{Cod1AlliesBots}\"");
                     textwriter.WriteLine($"{SettingName.Cod1AxisBots}=\"{Cod1AxisBots}\"");
+                    textwriter.WriteLine($"{SettingName.SharedInstallationId}=\"{SharedInstallationId}\"");
                     textwriter.WriteLine(string.Empty);
                     textwriter.WriteLine($"{SettingName.CPUPriority}=\"{CPUPriority}\"");
                     textwriter.WriteLine($"{SettingName.CPUAffinity}=\"{CPUAffinity}\"");

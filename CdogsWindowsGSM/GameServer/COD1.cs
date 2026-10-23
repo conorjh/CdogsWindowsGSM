@@ -1,4 +1,5 @@
 using System;
+using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
@@ -9,7 +10,7 @@ using WindowsGSM.Functions;
 
 namespace WindowsGSM.GameServer
 {
-    class COD1
+    class COD1 : Engine.ISharedInstallationProvider
     {
         private const string AppId = "2620";
         private const string ModDirectoryName = "CoD1MeatBots_RC2";
@@ -24,6 +25,8 @@ namespace WindowsGSM.GameServer
         public string Error;
         public string Notice;
         public string StartPath => "CoDMP.exe";
+        public string SharedInstallationAppId => AppId;
+        public string SharedInstallationExecutableName => StartPath;
         public const string FullName = "Call of Duty 1 Dedicated Server";
         public bool AllowsEmbedConsole => false;
         public bool loginAnonymous => false;
@@ -47,9 +50,24 @@ namespace WindowsGSM.GameServer
             WriteDefaultConfigIfMissing(Path.Combine(mainDirectory, "server.cfg"));
 
             string modDirectory = ServerPath.GetServersServerFiles(_serverData.ServerID, ModDirectoryName);
-            if (Directory.Exists(modDirectory))
+            if (_serverData.Cod1MeatBots || Directory.Exists(modDirectory))
             {
+                Directory.CreateDirectory(modDirectory);
                 WriteDefaultConfigIfMissing(Path.Combine(modDirectory, "server.cfg"));
+            }
+        }
+
+        public Task<bool> InstallConfigOnly()
+        {
+            try
+            {
+                CreateServerCFG();
+                return Task.FromResult(true);
+            }
+            catch (Exception exception) when (exception is ArgumentException || exception is IOException || exception is UnauthorizedAccessException)
+            {
+                Error = $"Failed to create the Call of Duty 1 server configuration: {exception.Message}";
+                return Task.FromResult(false);
             }
         }
 
@@ -69,68 +87,89 @@ namespace WindowsGSM.GameServer
 
         public Task<Process> Start()
         {
-            if (!IsInstallValid()) { return Task.FromResult<Process>(null); }
-
-            bool meatBots = _serverData.Cod1MeatBots;
-            if (meatBots && !ServerConfig.ValidateCod1Settings(
-                    _serverData.Cod1AlliesBots,
-                    _serverData.Cod1AxisBots,
-                    _serverData.ServerMaxPlayer,
-                    out Error))
-            {
-                return Task.FromResult<Process>(null);
-            }
-
-            CreateServerCFG();
-            string executablePath = ServerPath.GetServersServerFiles(_serverData.ServerID, StartPath);
-            var arguments = new StringBuilder("+set dedicated 2 ");
-            if (meatBots)
-            {
-                arguments.Append($"+set fs_game {ModDirectoryName} +exec server.cfg +exec wgs_cod1_meatbots.cfg ");
-            }
-            else
-            {
-                arguments.Append("+exec server.cfg ");
-            }
-
-            arguments.Append($"+set net_port {_serverData.ServerPort} ");
-            if (!string.IsNullOrWhiteSpace(_serverData.ServerIP))
-            {
-                arguments.Append($"+set net_ip {_serverData.ServerIP} ");
-            }
-            arguments.Append($"+set sv_maxclients {_serverData.ServerMaxPlayer} ");
-            arguments.Append($"+set sv_hostname \"{EscapeConfigValue(_serverData.ServerName)}\" ");
-            if (!string.IsNullOrWhiteSpace(_serverData.ServerParam))
-            {
-                arguments.Append(_serverData.ServerParam.Trim()).Append(' ');
-            }
-            arguments.Append("+map_rotate");
-
-            var process = new Process
-            {
-                StartInfo =
-                {
-                    FileName = executablePath,
-                    WorkingDirectory = ServerPath.GetServersServerFiles(_serverData.ServerID),
-                    Arguments = arguments.ToString(),
-                    WindowStyle = ProcessWindowStyle.Hidden,
-                    CreateNoWindow = true,
-                    UseShellExecute = false,
-                    RedirectStandardInput = true
-                },
-                EnableRaisingEvents = true
-            };
-
+            Error = string.Empty;
+            FileStream sharedLease = null;
+            Process process = null;
             try
             {
+                sharedLease = SharedInstallationStore.AcquireReadLeaseForServer(_serverData);
+                if (!IsInstallValid())
+                {
+                    sharedLease?.Dispose();
+                    return Task.FromResult<Process>(null);
+                }
+
+                bool meatBots = _serverData.Cod1MeatBots;
+                if (meatBots && !ServerConfig.ValidateCod1Settings(
+                        _serverData.Cod1AlliesBots,
+                        _serverData.Cod1AxisBots,
+                        _serverData.ServerMaxPlayer,
+                        out Error))
+                {
+                    sharedLease?.Dispose();
+                    return Task.FromResult<Process>(null);
+                }
+
+                CreateServerCFG();
+                string binaryRoot = GetBinaryRoot();
+                string instanceRoot = ServerPath.GetServersServerFiles(_serverData.ServerID);
+                string executablePath = Path.Combine(binaryRoot, StartPath);
+                var arguments = new StringBuilder("+set dedicated 2 ");
+                if (UsesSharedInstallation)
+                {
+                    arguments.Append($"+set fs_basepath \"{binaryRoot}\" +set fs_homepath \"{instanceRoot}\" ");
+                }
+                if (meatBots)
+                {
+                    arguments.Append($"+set fs_game {ModDirectoryName} +exec server.cfg +exec wgs_cod1_meatbots.cfg ");
+                }
+                else
+                {
+                    arguments.Append("+exec server.cfg ");
+                }
+
+                arguments.Append($"+set net_port {_serverData.ServerPort} ");
+                if (!string.IsNullOrWhiteSpace(_serverData.ServerIP))
+                {
+                    arguments.Append($"+set net_ip {_serverData.ServerIP} ");
+                }
+                arguments.Append($"+set sv_maxclients {_serverData.ServerMaxPlayer} ");
+                arguments.Append($"+set sv_hostname \"{EscapeConfigValue(_serverData.ServerName)}\" ");
+                if (!string.IsNullOrWhiteSpace(_serverData.ServerParam))
+                {
+                    arguments.Append(_serverData.ServerParam.Trim()).Append(' ');
+                }
+                arguments.Append("+map_rotate");
+
+                process = new Process
+                {
+                    StartInfo =
+                    {
+                        FileName = executablePath,
+                        WorkingDirectory = instanceRoot,
+                        Arguments = arguments.ToString(),
+                        WindowStyle = ProcessWindowStyle.Hidden,
+                        CreateNoWindow = true,
+                        UseShellExecute = false,
+                        RedirectStandardInput = true
+                    },
+                    EnableRaisingEvents = true
+                };
+
                 if (meatBots) { WriteMeatBotsConfig(); }
                 process.Start();
+                if (sharedLease != null)
+                {
+                    SharedInstallationStore.ReleaseLeaseWhenProcessExits(process, sharedLease);
+                    sharedLease = null;
+                }
                 return Task.FromResult(process);
             }
-            catch (Exception exception)
+            catch (Exception exception) when (exception is ArgumentException || exception is IOException || exception is InvalidDataException || exception is UnauthorizedAccessException || exception is InvalidOperationException || exception is Win32Exception)
             {
                 Error = exception.Message;
-                process.Dispose();
+                sharedLease?.Dispose();
+                process?.Dispose();
                 return Task.FromResult<Process>(null);
             }
         }
@@ -158,6 +197,22 @@ namespace WindowsGSM.GameServer
             Process process = await steamCmd.Install(_serverData.ServerID, string.Empty, AppId, true, loginAnonymous: false);
             Error = steamCmd.Error;
             return process;
+        }
+
+        public async Task<Process> InstallSharedBinaries()
+        {
+            try
+            {
+                var steamCmd = new Installer.SteamCMD();
+                Process process = await steamCmd.InstallToPath(GetBinaryRoot(), string.Empty, AppId, true, loginAnonymous: false);
+                Error = steamCmd.Error;
+                return process;
+            }
+            catch (Exception exception) when (exception is ArgumentException || exception is IOException || exception is InvalidDataException || exception is UnauthorizedAccessException || exception is InvalidOperationException || exception is Win32Exception)
+            {
+                Error = exception.Message;
+                return null;
+            }
         }
 
         public async Task<Process> InstallFallback()
@@ -220,7 +275,7 @@ namespace WindowsGSM.GameServer
                     return null;
                 }
 
-                string serverFilesPath = ServerPath.GetServersServerFiles(_serverData.ServerID);
+                string serverFilesPath = GetBinaryRoot();
                 if (Directory.Exists(serverFilesPath))
                 {
                     Directory.Move(serverFilesPath, backupPath);
@@ -249,7 +304,7 @@ namespace WindowsGSM.GameServer
             catch (Exception exception)
             {
                 Error = exception.Message;
-                string serverFilesPath = ServerPath.GetServersServerFiles(_serverData.ServerID);
+                string serverFilesPath = GetBinaryRoot();
                 if (previousMoved && Directory.Exists(serverFilesPath))
                 {
                     Directory.Delete(serverFilesPath, true);
@@ -270,7 +325,7 @@ namespace WindowsGSM.GameServer
         public async Task<bool> InstallMeatBots()
         {
             if (!IsBaseInstallValid()) { return false; }
-            if (IsMeatBotsValid(ServerPath.GetServersServerFiles(_serverData.ServerID))) { return true; }
+            if (IsMeatBotsInstalled()) { return true; }
 
             string cachePath = ServerPath.GetServersCache(_serverData.ServerID);
             Directory.CreateDirectory(cachePath);
@@ -313,14 +368,14 @@ namespace WindowsGSM.GameServer
                     return false;
                 }
 
-                string targetPath = ServerPath.GetServersServerFiles(_serverData.ServerID, ModDirectoryName);
+                string targetPath = Path.Combine(GetBinaryRoot(), ModDirectoryName);
                 if (Directory.Exists(targetPath))
                 {
                     Directory.Move(targetPath, backupPath);
                     previousMoved = true;
                 }
                 Directory.Move(modDirectories[0], targetPath);
-                if (!IsMeatBotsValid(ServerPath.GetServersServerFiles(_serverData.ServerID)))
+                if (!IsMeatBotsValid(GetBinaryRoot()))
                 {
                     Directory.Delete(targetPath, true);
                     if (previousMoved) { Directory.Move(backupPath, targetPath); previousMoved = false; }
@@ -333,7 +388,7 @@ namespace WindowsGSM.GameServer
             catch (Exception exception)
             {
                 Error = $"MeatBots installation failed: {exception.Message}. The base game installation was preserved.";
-                string targetPath = ServerPath.GetServersServerFiles(_serverData.ServerID, ModDirectoryName);
+                string targetPath = Path.Combine(GetBinaryRoot(), ModDirectoryName);
                 if (previousMoved && Directory.Exists(targetPath)) { Directory.Delete(targetPath, true); }
                 if (previousMoved && Directory.Exists(backupPath) && !Directory.Exists(targetPath)) { Directory.Move(backupPath, targetPath); }
                 return false;
@@ -391,25 +446,51 @@ namespace WindowsGSM.GameServer
             config.AppendLine($"set sv_wwwBaseURL \"{EscapeConfigValue(FastDlBaseUrl.TrimEnd('/'))}\"");
             File.WriteAllText(configPath, config.ToString());
             string modPath = ServerPath.GetServersServerFiles(_serverData.ServerID, ModDirectoryName);
+            Directory.CreateDirectory(modPath);
             File.Copy(configPath, Path.Combine(modPath, "wgs_cod1_meatbots.cfg"), true);
+        }
+
+        public bool IsMeatBotsInstalled()
+        {
+            return IsMeatBotsValid(GetBinaryRoot());
         }
 
         public async Task<Process> Update(bool validate = false, string custom = null)
         {
-            var (process, error) = await Installer.SteamCMD.UpdateEx(_serverData.ServerID, AppId, validate, loginAnonymous: false, custom: custom, embedConsole: false);
-            Error = error;
-            return process;
+            FileStream sharedLease = null;
+            try
+            {
+                sharedLease = SharedInstallationStore.AcquireExclusiveLeaseForServer(_serverData);
+                var (process, error) = await Installer.SteamCMD.UpdateExAtPath(GetBinaryRoot(), _serverData.ServerID, AppId, validate, loginAnonymous: false, custom: custom, embedConsole: false);
+                Error = error;
+                if (process != null && sharedLease != null)
+                {
+                    SharedInstallationStore.ReleaseLeaseWhenProcessExits(process, sharedLease);
+                    sharedLease = null;
+                }
+
+                return process;
+            }
+            catch (Exception exception) when (exception is ArgumentException || exception is IOException || exception is UnauthorizedAccessException || exception is InvalidOperationException || exception is Win32Exception)
+            {
+                Error = exception.Message;
+                return null;
+            }
+            finally
+            {
+                sharedLease?.Dispose();
+            }
         }
 
         public bool IsBaseInstallValid()
         {
-            return IsBaseFilesValid(ServerPath.GetServersServerFiles(_serverData.ServerID), out Error);
+            return IsBaseFilesValid(GetBinaryRoot(), out Error);
         }
 
         public bool IsInstallValid()
         {
             if (!IsBaseInstallValid()) { return false; }
-            if (_serverData.Cod1MeatBots && !IsMeatBotsValid(ServerPath.GetServersServerFiles(_serverData.ServerID)))
+            if (_serverData.Cod1MeatBots && !IsMeatBotsInstalled())
             {
                 Error = "CoD1MeatBots_RC2 server files are missing.";
                 return false;
@@ -463,9 +544,9 @@ namespace WindowsGSM.GameServer
         public string GetLocalBuild()
         {
             var steamCmd = new Installer.SteamCMD();
-            string build = steamCmd.GetLocalBuild(_serverData.ServerID, AppId);
+            string build = steamCmd.GetLocalBuildAtPath(GetBinaryRoot(), AppId);
             if (!string.IsNullOrWhiteSpace(build)) { return build; }
-            if (IsBaseInstallValid()) { return GetGameVersion(ServerPath.GetServersServerFiles(_serverData.ServerID, StartPath)); }
+            if (IsBaseInstallValid()) { return GetGameVersion(Path.Combine(GetBinaryRoot(), StartPath)); }
             Error = steamCmd.Error;
             return string.Empty;
         }
@@ -476,6 +557,13 @@ namespace WindowsGSM.GameServer
             string build = await steamCmd.GetRemoteBuild(AppId);
             Error = steamCmd.Error;
             return build;
+        }
+
+        private bool UsesSharedInstallation => !string.IsNullOrWhiteSpace(_serverData.SharedInstallationId);
+
+        private string GetBinaryRoot()
+        {
+            return SharedInstallationStore.GetServerBinaryRoot(_serverData);
         }
 
         private static string ResolveArchiveLayout(string stagingPath, string layout)

@@ -1,6 +1,9 @@
 .vs
 CdogsWindowsGSM/bin/
 CdogsWindowsGSM/obj/
+CdogsWindowsGSM.Updater/bin/
+CdogsWindowsGSM.Updater/obj/
 WindowsGSM-Plugin-Development/bin/
 WindowsGSM-Plugin-Development/obj/
+/artifacts/
 CdogsWindowsGSM.sln.DotSettings.user

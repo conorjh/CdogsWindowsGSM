@@ -16,6 +16,10 @@ A community-maintained Windows desktop application for installing, importing, an
 - **GoldSrc IP binding:** passes the configured Server IP using `+ip` so HLDS uses the selected local address on multi-NIC hosts. Avoid conflicting `+ip` entries in Server Parameters.
 - **Server-list actions:** update all stopped servers sequentially, alongside the existing start/stop/restart all actions; hover over a game icon to see the full game name.
 - **In-app updates:** checks for releases from this fork.
+- **Fleet management:** scheduled backups, server health, server groups, and a live system dashboard.
+- **Accessible interface:** keyboard and screen-reader support, with status details available to assistive technology.
+
+See [Changes from WindowsGSM](ChangesFromBase.md) for a detailed comparison with the upstream project.
 
 |               | 🎮 Game Server  | Supported | Query |
 | ------------- | --------------- | --------- | ----- |
@@ -24,8 +28,8 @@ A community-maintained Windows desktop application for installing, importing, an
 | ![logo](CdogsWindowsGSM/Images/Games/avorion.png?raw=true)| Avorion Dedicated Server                          |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/bt.png?raw=true)     | Barotrauma Dedicated Server                       |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/bw.png?raw=true)     | BlackWake Dedicated Server                        |✅|      |
-| ![logo](CdogsWindowsGSM/Images/Games/cod1.png?raw=true)   | Call of Duty 1 Dedicated Server                   |✅|      |
-| ![logo](CdogsWindowsGSM/Images/Games/cod4.png?raw=true)   | Call of Duty 4: Modern Warfare Dedicated Server (CoD4x) |✅|      |
+| <img src="CdogsWindowsGSM/Images/Games/cod1.png?raw=true" width="16" height="16" alt="Call of Duty 1 logo"/>   | Call of Duty 1 Dedicated Server                   |✅|      |
+| <img src="CdogsWindowsGSM/Images/Games/cod4.png?raw=true" width="16" height="16" alt="Call of Duty 4 logo"/>   | Call of Duty 4: Modern Warfare Dedicated Server (CoD4x) |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/ce.png?raw=true)     | Conan Exiles Dedicated Server                     |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/cs.png?raw=true)     | Counter-Strike: 1.6 Dedicated Server              |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/cscz.png?raw=true)   | Counter-Strike: Condition Zero Dedicated Server   |✅| A2S  |
@@ -50,22 +54,22 @@ A community-maintained Windows desktop application for installing, importing, an
 | ![logo](CdogsWindowsGSM/Images/Games/mc.png?raw=true)     | Minecraft: Java Edition Server                    |✅| UT3  |
 | ![logo](CdogsWindowsGSM/Images/Games/mc.png?raw=true)     | Minecraft: Paper Server                           |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/mcpe.png?raw=true)   | Minecraft: Pocket Edition Server ([PocketMine-MP](https://github.com/pmmp/PocketMine-MP)) |✅| UT3  |
-| ![logo](CdogsWindowsGSM/Images/Games/mindustry.png?raw=true) | Mindustry Dedicated Server                     |✅|      |
+| <img src="CdogsWindowsGSM/Images/Games/mindustry.png?raw=true" width="16" height="16" alt="Mindustry logo"/> | Mindustry Dedicated Server                     |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/mordhau.png?raw=true)| Mordhau Dedicated Server                          |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/nmrih.png?raw=true)  | No More Room in Hell Dedicated Server             |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/onset.png?raw=true)  | Onset Dedicated Server                            |✅|      |
-| ![logo](CdogsWindowsGSM/Images/Games/openra.png?raw=true) | OpenRA Dedicated Server                           |✅|      |
-| ![logo](CdogsWindowsGSM/Images/Games/openttd.png?raw=true) | OpenTTD Dedicated Server                         |✅|      |
+| <img src="CdogsWindowsGSM/Images/Games/openra.png?raw=true" width="16" height="16" alt="OpenRA logo"/> | OpenRA Dedicated Server                           |✅|      |
+| <img src="CdogsWindowsGSM/Images/Games/openttd.png?raw=true" width="16" height="16" alt="OpenTTD logo"/> | OpenTTD Dedicated Server                         |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/olow.png?raw=true)   | Outlaws of the Old West Dedicated Server          |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/ps.png?raw=true)     | Post Scriptum Dedicated Server                    |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/rcc.png?raw=true)    | Ricochet Dedicated Server                         |✅| A2S  |
-| ![logo](CdogsWindowsGSM/Images/Games/rct2.png?raw=true)  | RCT2 Dedicated Server                             |✅|      |
-| ![logo](CdogsWindowsGSM/Images/Games/redm.png?raw=true)  | Red Dead Redemption 2 Server                      |✅|      |
+| <img src="CdogsWindowsGSM/Images/Games/rct2.png?raw=true" width="16" height="16" alt="RollerCoaster Tycoon 2 logo"/>  | RCT2 Dedicated Server                             |✅|      |
+| <img src="CdogsWindowsGSM/Images/Games/redm.png?raw=true" width="16" height="16" alt="RedM logo"/>  | Red Dead Redemption 2 Server                      |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/rok.png?raw=true)   | Reign Of Kings Dedicated Server                   |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/ror2.png?raw=true)  | Risk of Rain 2 Dedicated Server                   |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/rust.png?raw=true)   | Rust Dedicated Server                             |✅| A2S  |
-| ![logo](CdogsWindowsGSM/Images/Games/scum.png?raw=true)  | SCUM dedicated server                             |✅| A2S  |
-| ![logo](CdogsWindowsGSM/Images/Games/soldat.png?raw=true) | Soldat Dedicated Server                           |✅|      |
+| <img src="CdogsWindowsGSM/Images/Games/scum.png?raw=true" width="16" height="16" alt="SCUM logo"/>  | SCUM dedicated server                             |✅| A2S  |
+| <img src="CdogsWindowsGSM/Images/Games/soldat.png?raw=true" width="16" height="16" alt="Soldat logo"/> | Soldat Dedicated Server                           |✅|      |
 | ![logo](CdogsWindowsGSM/Images/Games/se.png?raw=true)     | Space Engineers Dedicated Server                  |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/sq.png?raw=true)     | Squad Dedicated Server                            |✅| A2S  |
 | ![logo](CdogsWindowsGSM/Images/Games/sw.png?raw=true)     | Stormworks Dedicated Server                       |✅|      |
@@ -79,13 +83,13 @@ A community-maintained Windows desktop application for installing, importing, an
 | ------------- | --------------- | --------- | ----- |
 | <img src="https://github.com/DevVault/WindowsGSM.ARMA2/blob/master/ARMA2.cs/ARMA2.png?raw=true" width="16" height="16"/>   | Arma2   |✅| A2S     |
 | <img src="https://github.com/DevVault/WindowsGSM.ARMA2/blob/master/ARMA2OA.cs/ARMA2OA.png?raw=true" width="16" height="16"/>   | Arma2: OA   |✅| A2S     |
-| ![logo](https://github.com/1stian/imgrepo/blob/master/WindowsGSMrepo/arma3.png?raw=true)   | Arma3   |✅|      |
-| ![logo](https://github.com/1stian/imgrepo/blob/master/WindowsGSMrepo/astroneer.png?raw=true)   | ASTRONEER   |✅|      |
-| ![logo](https://github.com/1stian/imgrepo/blob/master/WindowsGSMrepo/deadmatter.png?raw=true)   | Dead Matter   |✅| UT3     |
+| <img src="https://github.com/1stian/imgrepo/blob/master/WindowsGSMrepo/arma3.png?raw=true" width="16" height="16" alt="Arma 3 logo"/>   | Arma3   |✅|      |
+| <img src="https://github.com/1stian/imgrepo/blob/master/WindowsGSMrepo/astroneer.png?raw=true" width="16" height="16" alt="Astroneer logo"/>   | ASTRONEER   |✅|      |
+| <img src="https://github.com/1stian/imgrepo/blob/master/WindowsGSMrepo/deadmatter.png?raw=true" width="16" height="16" alt="Dead Matter logo"/>   | Dead Matter   |✅| UT3     |
 | <img src="https://github.com/DevVault/WindowsGSM.HLDM/blob/master/HLDM.cs/HLDM.png?raw=true" width="16" height="16"/>   | Half-Life: Deathmatch   |✅| A2S     |
 | <img src="https://github.com/DevVault/WindowsGSM.L4D/blob/master/L4D.cs/L4D.png?raw=true" width="16" height="16"/>   | Left 4 Dead   |✅| A2S     |
-| ![logo](https://github.com/1stian/imgrepo/blob/master/WindowsGSMrepo/waterfall.png?raw=true)   | PaperMC: Waterfall   |✅| A2S     |
-| ![logo](https://github.com/1stian/imgrepo/blob/master/WindowsGSMrepo/spigot.png?raw=true)   | Spigot   |✅| A2S     |
+| <img src="https://github.com/1stian/imgrepo/blob/master/WindowsGSMrepo/waterfall.png?raw=true" width="16" height="16" alt="Waterfall logo"/>   | PaperMC: Waterfall   |✅| A2S     |
+| <img src="https://github.com/1stian/imgrepo/blob/master/WindowsGSMrepo/spigot.png?raw=true" width="16" height="16" alt="Spigot logo"/>   | Spigot   |✅| A2S     |
 
 ## Features
   * **Easy Install** - No installation knowledge is required, download any game server by one-click install.
@@ -97,7 +101,7 @@ A community-maintained Windows desktop application for installing, importing, an
   * **Auto Update** - Checks for updates every 30 minutes, making sure your game servers are up to date!
   * **Restart Crontab** - Schedule your game servers to restart at any time, very useful for servers that require restarts to run smoothly.
   * **Start on Login** - Automatically start the application and selected servers when you sign in.
-  * **Query Port Discovery** - Detects the runtime query port for supported A2S, UT3, and FiveM servers, shows whether it matches the configured port, and falls back to the configured value when it cannot be verified.
+  * **Runtime Port Verification** - Detects the running server's process-owned client/main port where supported. Source and GoldSrc A2S health checks use the game/server UDP port; other supported query checks use their configured endpoint.
   * **CPU Priority and Affinity** - Set and save the cpu priority and affinity!
   * **Mod Manager** - Manage custom server mods from the application.
   * **Remote Control** - Remote control your game servers with Discord!
@@ -105,11 +109,7 @@ A community-maintained Windows desktop application for installing, importing, an
 
 ### Languages
 
-WindowsGSM includes English, Spanish, French, German, Italian, Portuguese, Dutch, Polish, Romanian, Russian, Ukrainian, Simplified Chinese, Japanese, Korean, and Turkish UI text. Choose **Use Windows language** or a language in **Settings > Language**. The preference is saved for the current Windows user and takes effect the next time WindowsGSM starts. Unsupported Windows UI languages fall back to English.
-
-Translations cover the main window, settings, common server-management dialogs, status labels, and Minecraft EULA prompts. Game names, game-specific installer output, third-party plugin text, server logs, and game-server console output are provided by their respective sources and are not translated.
-
-Translations are embedded in the application executable so the existing updater keeps them in sync. To add a language, add a `<culture>.<key>` entry to `Localization/Strings.resx` for every neutral resource key, register the culture prefix in `LocalizationManager`, and add a language option and display name. Keep format placeholders consistent with `Strings.resx`.
+WindowsGSM now offers a multilingual interface in English, Spanish, French, German, Italian, Portuguese, Dutch, Polish, Romanian, Russian, Ukrainian, Simplified Chinese, Japanese, Korean, and Turkish. Choose a language or **Use Windows language** in **Settings > Language**; restart WindowsGSM to apply the change.
 
 ### Plugins
 Allow support more game servers by installing plugins!
@@ -124,7 +124,7 @@ Allow support more game servers by installing plugins!
 
 ## Releases and updates
 
-The current release is [CdogsWindowsGSM 1.24.1](https://github.com/conorjh/CdogsWindowsGSM/releases/tag/v1.24.1). Download both `CdogsWindowsGSM.exe` and `CdogsWindowsGSM-Updater.exe` from its release assets. In-app updates use releases published in this repository.
+The latest published release is [CdogsWindowsGSM 1.24.1](https://github.com/conorjh/CdogsWindowsGSM/releases/tag/v1.24.1). Download both `CdogsWindowsGSM.exe` and `CdogsWindowsGSM-Updater.exe` from its release assets. In-app updates use releases published in this repository.
 
 ## Upstream resources
 - **Original source:** [WindowsGSM/WindowsGSM](https://github.com/WindowsGSM/WindowsGSM)

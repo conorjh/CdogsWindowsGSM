@@ -12,6 +12,7 @@ namespace WindowsGSM.Functions
     class ServerTable : INotifyPropertyChanged
     {
         private int? _detectedMainPort;
+        private string _queryPort;
         private string _maxplayers;
         private ServerHealthStatus _healthStatus = ServerHealthStatus.Unknown;
         private string _healthCompactDetails = string.Empty;
@@ -43,7 +44,18 @@ namespace WindowsGSM.Functions
                 OnPropertyChanged(nameof(MainPortToolTip));
             }
         }
-        public string QueryPort { get; set; }
+        public string QueryPort
+        {
+            get => _queryPort;
+            set
+            {
+                if (_queryPort == value) { return; }
+
+                _queryPort = value;
+                OnPropertyChanged(nameof(QueryPort));
+                OnPropertyChanged(nameof(QueryPortSort));
+            }
+        }
         public string Defaultmap { get; set; }
         public ServerHealthStatus HealthStatus
         {
@@ -344,6 +356,25 @@ namespace WindowsGSM.Functions
                 return new ServerHealthCheckResult("HealthQueryCheck", ServerHealthStatus.Unknown, explanation, null);
             }
 
+            if (!context.LastQuerySucceededAt.HasValue)
+            {
+                string explanation;
+                if (context.ConsecutiveQueryFailures > 0)
+                {
+                    explanation = string.IsNullOrWhiteSpace(context.LastQueryFailureMessage)
+                        ? LocalizationManager.Get("HealthQueryFailed")
+                        : string.Format(LocalizationManager.Get("HealthQueryFailureReason"), context.LastQueryFailureMessage);
+                }
+                else
+                {
+                    explanation = context.QueryInProgress
+                        ? LocalizationManager.Get("HealthQueryInProgress")
+                        : LocalizationManager.Get("HealthQueryWaiting");
+                }
+
+                return new ServerHealthCheckResult("HealthQueryCheck", ServerHealthStatus.Unknown, explanation, context.LastQueryAttemptAt);
+            }
+
             if (context.ConsecutiveQueryFailures >= 3)
             {
                 string explanation = string.IsNullOrWhiteSpace(context.LastQueryFailureMessage)
@@ -365,7 +396,15 @@ namespace WindowsGSM.Functions
             string failure = string.IsNullOrWhiteSpace(context.LastQueryFailureMessage)
                 ? LocalizationManager.Get("HealthQueryFailed")
                 : string.Format(LocalizationManager.Get("HealthQueryFailureReason"), context.LastQueryFailureMessage);
-            return new ServerHealthCheckResult("HealthQueryCheck", ServerHealthStatus.Warning, failure, context.LastQueryAttemptAt);
+            if (context.ConsecutiveQueryFailures > 0)
+            {
+                return new ServerHealthCheckResult("HealthQueryCheck", ServerHealthStatus.Unknown, failure, context.LastQueryAttemptAt);
+            }
+
+            string waiting = context.QueryInProgress
+                ? LocalizationManager.Get("HealthQueryInProgress")
+                : LocalizationManager.Get("HealthQueryWaiting");
+            return new ServerHealthCheckResult("HealthQueryCheck", ServerHealthStatus.Unknown, waiting, context.LastQueryAttemptAt);
         }
     }
 

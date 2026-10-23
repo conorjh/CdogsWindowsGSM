@@ -1,6 +1,6 @@
 # Accessibility Implementation Plan
 
-Status: In progress; the first keyboard and UI Automation slice is implemented on `feature/accessibility-retrofit`.
+Status: Phases 2–4 implementation and Phase 5 build/version checks are complete on `dev`; preview version is `2.0.0-preview.7`, while manual acceptance checks remain pending.
 Investigated: 22 October 2026.
 Scope: Accessibility of the WindowsGSM Windows desktop application and its WindowsGSM-owned UI.
 
@@ -36,16 +36,29 @@ The observations above describe the pre-implementation source baseline; they are
 
 ## Implementation status
 
-The first implementation slice now:
+The implementation now:
 
 - Makes the dynamically created CPU-affinity checkboxes tab-focusable, gives them localized names, and associates their labels.
 - Exposes server-game, health, and main-port information through UI Automation; displays health states as localized words instead of only a colored symbol.
 - Associates labels with the main server settings, install/import (including the conditional Steam Guard code field), edit-config, restore, backup-schedule, and Discord Bot controls through UI Automation while preserving `Label.Target` keyboard behavior.
 - Gives navigation items, the server-group filter, server/schedule grids, progress indicators, server console controls, auto-scroll state, and group-action results accessible names and keyboard access where needed.
-- Preserves keyboard focus in the server command field after Enter submits a command and excludes the non-interactive server-status badge from tab order.
-- Adds a visible current-player-by-game text summary and accessible name/help text for the Dashboard chart.
+- Orders selected-server toggles and related actions in visual row order, preserves keyboard focus in the server command field after Enter submits a command, and excludes the non-interactive server-status badge from tab order.
+- Moves focus into a flyout when it opens and returns it to the invoking control after the last flyout closes, without overriding focus the user moved during the opening animation.
+- Provides current player-by-game counts as UI Automation help text for the Dashboard chart without a duplicate visible list.
+- Gives selected-server process priority, CPU affinity, restart schedule, and next-run values localized UI Automation names; names the plugin-loading progress indicator.
+- Exposes import-path validation and install/import and server-group status changes as live UI Automation regions, without announcing individual log lines or per-server group results.
+- Presents server-grid health and main-port verification as localized text, with full health and configured/detected port details available without relying on color or hover.
+- Shows selected-server health details in the panel, replacing the overlapping fixed-position affinity readout with row-based layout and wrapping text for longer values.
+- Exposes install/import validation and outcomes, backup-schedule results, and map-rotation availability through text and polite UI Automation live-region updates.
+- Improves text contrast in the affected screens by using theme-aware foregrounds for navigation and secondary text, dark text on the bright server-action buttons, and the system-default selection color for console text.
+- Announces selected-server status and health changes through polite live regions only on actual state transitions, not on repeated refreshes.
+- Keeps the localized player-by-game Dashboard summary in the chart's UI Automation help text; periodic samples are not announced.
+- Keeps log reading predictable: log views follow new output only while already at the tail, allowing users who scroll up to continue reading; the server console retains its existing user-controlled auto-scroll setting.
+- Bumps the application and updater package/informational versions together to `2.0.0-preview.7`, retaining the fixed assembly and file versions.
 
-The application project build succeeds with these changes. Manual keyboard-only, Narrator/NVDA, Accessibility Insights, high-contrast, scaling, and full workflow checks remain before treating the phases below as complete.
+Both the `CdogsWindowsGSM.csproj` and `CdogsWindowsGSM.Updater.csproj` builds succeed with these changes. No tests were found for the application project, and the solution has no test project. Manual keyboard-only, Narrator/NVDA, Accessibility Insights, high-contrast, scaling, and full-workflow checks remain pending before treating the phases below as accepted. In particular, runtime contrast and clipping must still be checked with the supported themes, Windows high-contrast mode, larger text/DPI, and longer translations.
+
+Use the [Accessibility Tester Checklist](ACCESSIBILITY-TEST-CHECKLIST.md) to execute and record the remaining manual acceptance checks.
 
 ## Implementation principles
 

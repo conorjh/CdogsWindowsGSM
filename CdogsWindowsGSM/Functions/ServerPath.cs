@@ -1,4 +1,6 @@
 ﻿using System.IO;
+using System;
+using WindowsGSM.Localization;
 
 namespace WindowsGSM.Functions
 {
@@ -146,6 +148,41 @@ namespace WindowsGSM.Functions
         public static string GetServersServerFiles(string serverId, string path1 = "", string path2 = "", string path3 = "")
         {
             return Path.Combine(GetServers(serverId), FolderName.Serverfiles, path1, path2, path3);
+        }
+
+        public static string GetSharedInstallationsRoot()
+        {
+            return Get("installations");
+        }
+
+        public static string GetSharedInstallationRoot(string installationId)
+        {
+            if (!Guid.TryParseExact(installationId, "N", out Guid parsedId))
+            {
+                throw new ArgumentException(LocalizationManager.Get("SharedInstallationInvalidId"), nameof(installationId));
+            }
+
+            return Path.Combine(GetSharedInstallationsRoot(), parsedId.ToString("N"));
+        }
+
+        public static string GetSharedInstallationServerFiles(string installationId, string path1 = "", string path2 = "", string path3 = "")
+        {
+            return Path.Combine(GetSharedInstallationRoot(installationId), FolderName.Serverfiles, path1, path2, path3);
+        }
+
+        public static string GetSharedInstallationLockFile(string installationId)
+        {
+            return Path.Combine(GetSharedInstallationRoot(installationId), ".windowsgsm.lock");
+        }
+
+        public static string GetSharedInstallationsRegistry()
+        {
+            return Get(FolderName.Configs, "SharedInstallations.json");
+        }
+
+        public static string GetSharedInstallationsRegistryLock()
+        {
+            return Get(FolderName.Configs, "SharedInstallations.lock");
         }
     }
 }

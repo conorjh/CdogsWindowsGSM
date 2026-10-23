@@ -1,14 +1,14 @@
 # Runtime Server Port Discovery Plan
 
-Status: runtime client/main-port discovery is implemented. Query-port discovery is intentionally out of scope; server queries continue using the configured query port.
+Status: runtime client/main-port discovery is implemented. Arbitrary query-port discovery is intentionally out of scope. Source and GoldSrc A2S health checks use their effective game/server UDP port; other supported query checks use their configured query endpoint.
 Investigated: 21 October 2026.
 Scope: runtime discovery of the client/main port from TCP/UDP endpoints owned by each server process tree.
 
 ## Scope decision
 
-Only the configured client/main port may be checked against live process endpoints. Prefer the configured client port when the server process owns it; otherwise exclude the configured query port when it differs from the configured client port, and report a client port only when one unambiguous candidate remains. Unknown or ambiguous results leave the configured value unchanged.
+Only the configured client/main port may be checked against live process endpoints. Prefer the configured client port when the server process owns it; otherwise exclude the configured query port when it differs from the configured client port, and report a client port only when one unambiguous candidate remains. Unknown or ambiguous results leave the configured value unchanged. For Source and GoldSrc, A2S health queries use that effective server port because the stock engines do not provide a separate query-only listener.
 
-The configured query port remains a normal server setting used by query polling. WindowsGSM does not probe protocols to discover or replace it, and no query-port mismatch indicator is shown.
+The configured query port remains a normal server setting for query methods that use a separate endpoint. WindowsGSM does not probe protocols to discover arbitrary query ports, make a game bind a new query listener, or show a query-port mismatch indicator.
 
 ## Superseded query-port proposal (historical; not implemented)
 
@@ -92,7 +92,7 @@ The existing audit, `docs\BUILTIN-GAME-SERVER-AUDIT.md`, has the full built-in i
 
 - Verify candidate resolution for configured client ports, process-child endpoints, TCP/UDP listeners, unrelated process owners, configured query-port exclusion, and ambiguous candidates.
 - Verify the client-port observation is process-scoped, survives a grid refresh, does not modify `WindowsGSM.cfg`, and clears after stop, crash, and restart.
-- Confirm the Query Port column displays only the configured value and query polling continues to use that value without probing or rewriting it.
+- Confirm configured port settings are not rewritten by runtime discovery; Source/GoldSrc A2S uses the effective game/server port, and other supported query methods use their configured query endpoint.
 - Manually test representative servers that bind multiple sockets and servers that fall back to another client port after a conflict; ambiguous results must keep the configured display.
 
 No test project or test source files were found in the solution scan. Add a focused Windows-targeted test project/harness if these checks are automated; do not treat a successful build alone as proof of live client-port detection.

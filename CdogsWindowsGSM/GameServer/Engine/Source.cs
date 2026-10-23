@@ -2,6 +2,7 @@
 using System.Threading.Tasks;
 using System.Diagnostics;
 using System.IO;
+using System.ComponentModel;
 using System.Text;
 using System.Collections.Generic;
 using System.Linq;
@@ -22,7 +23,7 @@ using System.Linq;
 
 namespace WindowsGSM.GameServer.Engine
 {
-    public class Source
+    public class Source : ISharedInstallationProvider
     {
         public Functions.ServerConfig serverData;
 
@@ -42,10 +43,12 @@ namespace WindowsGSM.GameServer.Engine
 
         public virtual string Game { get { return string.Empty; } }
         public virtual string AppId { get { return string.Empty; } }
+        public string SharedInstallationAppId => AppId;
+        public string SharedInstallationExecutableName => StartPath;
 
         public Source(Functions.ServerConfig serverData) => this.serverData = serverData;
 
-        public string MapDirectory => Functions.ServerPath.GetServersServerFiles(serverData.ServerID, Game, "maps");
+        public string MapDirectory => Path.Combine(GetBinaryRoot(), Game, "maps");
 
         public string MapCyclePath => Functions.ServerPath.GetServersServerFiles(serverData.ServerID, Game, "mapcycle.txt");
 
@@ -81,80 +84,124 @@ namespace WindowsGSM.GameServer.Engine
             File.WriteAllLines(MapCyclePath, maps);
         }
 
-        public async Task<Process> Start()
+        public Task<Process> Start()
         {
-            string srcdsPath = Functions.ServerPath.GetServersServerFiles(serverData.ServerID, StartPath);
-            if (!File.Exists(srcdsPath))
+            Error = string.Empty;
+            Notice = string.Empty;
+            FileStream sharedLease = null;
+            try
             {
-                Error = $"{StartPath} not found ({srcdsPath})";
-                return null;
-            }
-
-            string configPath = Functions.ServerPath.GetServersServerFiles(serverData.ServerID, Game, "cfg/server.cfg");
-            if (!File.Exists(configPath))
-            {
-                Notice = $"server.cfg not found ({configPath})";
-            }
-
-            StringBuilder sb = new StringBuilder();
-            sb.Append($"-console");
-            sb.Append(string.IsNullOrWhiteSpace(Game) ? string.Empty : $" -game {Game}");
-            sb.Append(string.IsNullOrWhiteSpace(serverData.ServerIP) ? string.Empty : $" -ip {serverData.ServerIP}");
-            sb.Append(string.IsNullOrWhiteSpace(serverData.ServerPort) ? string.Empty : $" -port {serverData.ServerPort}");
-            sb.Append(string.IsNullOrWhiteSpace(serverData.ServerMaxPlayer) ? string.Empty : $" -maxplayers{(AppId == "740" ? "_override" : "")} {serverData.ServerMaxPlayer}");
-            sb.Append(string.IsNullOrWhiteSpace(serverData.ServerGSLT) ? string.Empty : $" +sv_setsteamaccount {serverData.ServerGSLT}");
-            sb.Append(string.IsNullOrWhiteSpace(serverData.ServerParam) ? string.Empty : $" {serverData.ServerParam}");
-            List<string> mapRotation = string.IsNullOrWhiteSpace(Game) ? new List<string>() : GetMapRotation();
-            if (mapRotation.Count > 0)
-            {
-                sb.Append(" +mapcyclefile mapcycle.txt");
-            }
-            string startMap = mapRotation.Count > 0 ? mapRotation[0] : serverData.ServerMap;
-            sb.Append(string.IsNullOrWhiteSpace(startMap) ? string.Empty : $" +map {startMap}");
-            string param = sb.ToString();
-
-            Process p;
-            if (!AllowsEmbedConsole)
-            {
-                p = new Process
+                sharedLease = Functions.SharedInstallationStore.AcquireReadLeaseForServer(serverData);
+                string binaryRoot = GetBinaryRoot();
+                string srcdsPath = Path.Combine(binaryRoot, StartPath);
+                if (!File.Exists(srcdsPath))
                 {
-                    StartInfo =
-                    {
-                        FileName = srcdsPath,
-                        Arguments = param,
-                        WindowStyle = ProcessWindowStyle.Minimized,
-                        UseShellExecute = false,
-                    },
-                    EnableRaisingEvents = true
-                };
-                p.Start();
-            }
-            else
-            {
-                p = new Process
-                {
-                    StartInfo =
-                    {
-                        FileName = srcdsPath,
-                        Arguments = param,
-                        WindowStyle = ProcessWindowStyle.Minimized,
-                        UseShellExecute = false,
-                        StandardOutputEncoding = Encoding.UTF8,
-                        StandardErrorEncoding = Encoding.UTF8,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true
-                    },
-                    EnableRaisingEvents = true
-                };
-                var serverConsole = new Functions.ServerConsole(serverData.ServerID);
-                p.OutputDataReceived += serverConsole.AddOutput;
-                p.ErrorDataReceived += serverConsole.AddOutput;
-                p.Start();
-                p.BeginOutputReadLine();
-                p.BeginErrorReadLine();
-            }
+                    Error = $"{StartPath} not found ({srcdsPath})";
+                    sharedLease?.Dispose();
+                    return Task.FromResult<Process>(null);
+                }
 
-            return p;
+                string instanceRoot = Functions.ServerPath.GetServersServerFiles(serverData.ServerID);
+                string configPath = Functions.ServerPath.GetServersServerFiles(serverData.ServerID, Game, "cfg/server.cfg");
+                if (!File.Exists(configPath))
+                {
+                    Notice = $"server.cfg not found ({configPath})";
+                    if (UsesSharedInstallation)
+                    {
+                        Error = Notice;
+                        sharedLease?.Dispose();
+                        return Task.FromResult<Process>(null);
+                    }
+                }
+
+                StringBuilder sb = new StringBuilder();
+                sb.Append("-console");
+                if (!string.IsNullOrWhiteSpace(Game))
+                {
+                    string gameArgument = UsesSharedInstallation ? $"\"{Path.Combine(binaryRoot, Game)}\"" : Game;
+                    sb.Append($" -game {gameArgument}");
+                }
+                sb.Append(string.IsNullOrWhiteSpace(serverData.ServerIP) ? string.Empty : $" -ip {serverData.ServerIP}");
+                sb.Append(string.IsNullOrWhiteSpace(serverData.ServerPort) ? string.Empty : $" -port {serverData.ServerPort}");
+                sb.Append(string.IsNullOrWhiteSpace(serverData.ServerMaxPlayer) ? string.Empty : $" -maxplayers{(AppId == "740" ? "_override" : "")} {serverData.ServerMaxPlayer}");
+                sb.Append(string.IsNullOrWhiteSpace(serverData.ServerGSLT) ? string.Empty : $" +sv_setsteamaccount {serverData.ServerGSLT}");
+                sb.Append(string.IsNullOrWhiteSpace(serverData.ServerParam) ? string.Empty : $" {serverData.ServerParam}");
+                if (UsesSharedInstallation)
+                {
+                    sb.Append($" +servercfgfile \"{configPath}\"");
+                }
+                List<string> mapRotation = string.IsNullOrWhiteSpace(Game) ? new List<string>() : GetMapRotation();
+                if (UsesSharedInstallation || mapRotation.Count > 0)
+                {
+                    sb.Append(UsesSharedInstallation
+                        ? $" +mapcyclefile \"{MapCyclePath}\""
+                        : " +mapcyclefile mapcycle.txt");
+                }
+                string startMap = mapRotation.Count > 0 ? mapRotation[0] : serverData.ServerMap;
+                sb.Append(string.IsNullOrWhiteSpace(startMap) ? string.Empty : $" +map {startMap}");
+                string param = sb.ToString();
+
+                Process p;
+                if (!AllowsEmbedConsole)
+                {
+                    p = new Process
+                    {
+                        StartInfo =
+                        {
+                            WorkingDirectory = UsesSharedInstallation ? instanceRoot : Environment.CurrentDirectory,
+                            FileName = srcdsPath,
+                            Arguments = param,
+                            WindowStyle = ProcessWindowStyle.Minimized,
+                            UseShellExecute = false,
+                        },
+                        EnableRaisingEvents = true
+                    };
+                    p.Start();
+                    if (sharedLease != null)
+                    {
+                        Functions.SharedInstallationStore.ReleaseLeaseWhenProcessExits(p, sharedLease);
+                        sharedLease = null;
+                    }
+                }
+                else
+                {
+                    p = new Process
+                    {
+                        StartInfo =
+                        {
+                            WorkingDirectory = UsesSharedInstallation ? instanceRoot : Environment.CurrentDirectory,
+                            FileName = srcdsPath,
+                            Arguments = param,
+                            WindowStyle = ProcessWindowStyle.Minimized,
+                            UseShellExecute = false,
+                            StandardOutputEncoding = Encoding.UTF8,
+                            StandardErrorEncoding = Encoding.UTF8,
+                            RedirectStandardOutput = true,
+                            RedirectStandardError = true
+                        },
+                        EnableRaisingEvents = true
+                    };
+                    var serverConsole = new Functions.ServerConsole(serverData.ServerID);
+                    p.OutputDataReceived += serverConsole.AddOutput;
+                    p.ErrorDataReceived += serverConsole.AddOutput;
+                    p.Start();
+                    if (sharedLease != null)
+                    {
+                        Functions.SharedInstallationStore.ReleaseLeaseWhenProcessExits(p, sharedLease);
+                        sharedLease = null;
+                    }
+                    p.BeginOutputReadLine();
+                    p.BeginErrorReadLine();
+                }
+
+                return Task.FromResult(p);
+            }
+            catch (Exception exception) when (exception is ArgumentException || exception is IOException || exception is InvalidDataException || exception is UnauthorizedAccessException || exception is InvalidOperationException || exception is Win32Exception)
+            {
+                sharedLease?.Dispose();
+                Error = exception.Message;
+                return Task.FromResult<Process>(null);
+            }
         }
 
         public async Task Stop(Process p)
@@ -167,24 +214,56 @@ namespace WindowsGSM.GameServer.Engine
 
         public async void CreateServerCFG()
         {
-            //Download server.cfg
-            string configPath = Functions.ServerPath.GetServersServerFiles(serverData.ServerID, Game, "cfg/server.cfg");
-            if (await Functions.Github.DownloadGameServerConfig(configPath, serverData.ServerGame))
+            if (await InstallConfigOnly())
             {
+                string configFile = Functions.ServerPath.GetServersConfigs(serverData.ServerID, "WindowsGSM.cfg");
+                if (File.Exists(configFile))
+                {
+                    string configText = File.ReadAllText(configFile);
+                    configText = configText.Replace("{{clientport}}", GetClientPort());
+                    File.WriteAllText(configFile, configText);
+                }
+            }
+        }
+
+        public async Task<bool> InstallConfigOnly()
+        {
+            Error = string.Empty;
+            string configPath = Functions.ServerPath.GetServersServerFiles(serverData.ServerID, Game, "cfg/server.cfg");
+            try
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(configPath));
+                if (!await Functions.Github.DownloadGameServerConfig(configPath, serverData.ServerGame))
+                {
+                    Error = $"Could not download {serverData.ServerGame} server.cfg.";
+                    return false;
+                }
+                if (!File.Exists(MapCyclePath))
+                {
+                    File.WriteAllText(MapCyclePath, string.Empty);
+                }
+
                 string configText = File.ReadAllText(configPath);
                 configText = configText.Replace("{{hostname}}", serverData.ServerName);
                 configText = configText.Replace("{{rcon_password}}", serverData.GetRCONPassword());
                 File.WriteAllText(configPath, configText);
-            }
+                if (!string.IsNullOrWhiteSpace(serverData.ServerParam))
+                {
+                    serverData.ServerParam = serverData.ServerParam.Replace("{{clientport}}", GetClientPort());
+                }
 
-            //Edit WindowsGSM.cfg
-            string configFile = Functions.ServerPath.GetServersConfigs(serverData.ServerID, "WindowsGSM.cfg");
-            if (File.Exists(configFile))
-            {
-                string configText = File.ReadAllText(configFile);
-                configText = configText.Replace("{{clientport}}", (int.Parse(serverData.ServerPort) - 10).ToString());
-                File.WriteAllText(configFile, configText);
+                return true;
             }
+            catch (Exception exception) when (exception is ArgumentException || exception is IOException || exception is UnauthorizedAccessException || exception is System.Net.WebException)
+            {
+                Error = $"Failed to create {serverData.ServerGame} server.cfg: {exception.Message}";
+                return false;
+            }
+        }
+
+        private string GetClientPort()
+        {
+            return (int.Parse(serverData.ServerPort) - 10).ToString();
         }
 
         public async Task<Process> Install()
@@ -196,16 +275,52 @@ namespace WindowsGSM.GameServer.Engine
             return p;
         }
 
+        public async Task<Process> InstallSharedBinaries()
+        {
+            try
+            {
+                var steamCMD = new Installer.SteamCMD();
+                Process process = await steamCMD.InstallToPath(GetBinaryRoot(), string.Empty, AppId, true);
+                Error = steamCMD.Error;
+                return process;
+            }
+            catch (Exception exception) when (exception is ArgumentException || exception is IOException || exception is InvalidDataException || exception is UnauthorizedAccessException || exception is InvalidOperationException || exception is Win32Exception)
+            {
+                Error = exception.Message;
+                return null;
+            }
+        }
+
         public async Task<Process> Update(bool validate = false, string custom = null)
         {
-            var (p, error) = await Installer.SteamCMD.UpdateEx(serverData.ServerID, AppId, validate, custom: custom);
-            Error = error;
-            return p;
+            FileStream sharedLease = null;
+            try
+            {
+                sharedLease = Functions.SharedInstallationStore.AcquireExclusiveLeaseForServer(serverData);
+                var (process, error) = await Installer.SteamCMD.UpdateExAtPath(GetBinaryRoot(), serverData.ServerID, AppId, validate, custom: custom);
+                Error = error;
+                if (process != null && sharedLease != null)
+                {
+                    Functions.SharedInstallationStore.ReleaseLeaseWhenProcessExits(process, sharedLease);
+                    sharedLease = null;
+                }
+
+                return process;
+            }
+            catch (Exception exception) when (exception is ArgumentException || exception is IOException || exception is UnauthorizedAccessException || exception is InvalidOperationException || exception is Win32Exception)
+            {
+                Error = exception.Message;
+                return null;
+            }
+            finally
+            {
+                sharedLease?.Dispose();
+            }
         }
 
         public bool IsInstallValid()
         {
-            return File.Exists(Functions.ServerPath.GetServersServerFiles(serverData.ServerID, StartPath));
+            return File.Exists(Path.Combine(GetBinaryRoot(), StartPath));
         }
 
         public bool IsImportValid(string path)
@@ -217,13 +332,20 @@ namespace WindowsGSM.GameServer.Engine
         public string GetLocalBuild()
         {
             var steamCMD = new Installer.SteamCMD();
-            return steamCMD.GetLocalBuild(serverData.ServerID, AppId);
+            return steamCMD.GetLocalBuildAtPath(GetBinaryRoot(), AppId);
         }
 
         public async Task<string> GetRemoteBuild()
         {
             var steamCMD = new Installer.SteamCMD();
             return await steamCMD.GetRemoteBuild(AppId);
+        }
+
+        private bool UsesSharedInstallation => !string.IsNullOrWhiteSpace(serverData.SharedInstallationId);
+
+        private string GetBinaryRoot()
+        {
+            return Functions.SharedInstallationStore.GetServerBinaryRoot(serverData);
         }
     }
 }

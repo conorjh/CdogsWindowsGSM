@@ -3,6 +3,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Automation;
+using System.Windows.Automation.Peers;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
@@ -153,15 +154,20 @@ namespace WindowsGSM
         private readonly ObservableCollection<ISeries> _playerChartSeries = new ObservableCollection<ISeries>();
         private readonly Dictionary<string, (ColumnSeries<ObservableValue> Series, ObservableValue Value)> _playerChartValues =
             new Dictionary<string, (ColumnSeries<ObservableValue>, ObservableValue)>(StringComparer.Ordinal);
+        private readonly Flyout[] _flyouts;
+        private readonly Dictionary<Flyout, IInputElement> _flyoutFocusAtOpen = new Dictionary<Flyout, IInputElement>();
         private readonly Axis _playerChartXAxis = new Axis { Labels = Array.Empty<string>() };
         private readonly Axis _playerChartYAxis = new Axis { MinLimit = 0, MaxLimit = 10 };
 
         private int _peakActivePlayers;
+        private IInputElement _focusBeforeFlyout;
+        private bool _flyoutFocusCaptured;
         private readonly Random _mapRotationRandom = new Random();
         private readonly System.Windows.Threading.DispatcherTimer _backupScheduleTimer = new System.Windows.Threading.DispatcherTimer();
         private DateTime _backupScheduleStartedAt;
         private DateTime _backupScheduleLastTickAt;
         private bool _backupScheduleTickRunning;
+        private bool _editConfigQueryUsesServerPort;
         private readonly IServerHealthCheck[] _serverHealthChecks =
         {
             new ProcessServerHealthCheck(),
@@ -178,6 +184,20 @@ namespace WindowsGSM
             DiscordWebhook.SendErrorLog();
 
             InitializeComponent();
+            _flyouts = new[]
+            {
+                MahAppFlyout_ViewPlugins,
+                MahAppFlyout_Settings,
+                MahAppFlyout_DiscordAlert,
+                MahAppFlyout_RestoreBackup,
+                MahAppFlyout_SetAffinity,
+                MahAppFlyout_EditConfig,
+                MahAppFlyout_ManageAddons,
+                MahAppFlyout_InstallGameServer,
+                MahAppFlyout_ImportGameServer,
+                MahAppFlyout_ServerGroups
+            };
+            RegisterFlyoutFocusHandlers();
             _playerChartYAxis.Name = LocalizationManager.Get("Players");
             livechart_players.Series = _playerChartSeries;
             livechart_players.XAxes = new[] { _playerChartXAxis };
@@ -296,7 +316,8 @@ namespace WindowsGSM
                         goto CheckPrioity;
                     }
 
-                    textBox_SetAffinity.Text = Functions.CPU.Affinity.GetAffinityValidatedString(priority);
+                    string affinityDisplay = Functions.CPU.Affinity.GetAffinityValidatedString(priority);
+                    AutomationProperties.SetItemStatus(button_SetAffinity, affinityDisplay);
 
                     _serverMetadata[int.Parse(server.ID)].CPUAffinity = priority;
                     ServerConfig.SetSetting(server.ID, "cpuaffinity", priority);
@@ -351,6 +372,24 @@ namespace WindowsGSM
                     string pName = ServerCache.GetProcessName(server.ID);
                     if (!string.IsNullOrWhiteSpace(pName) && p.ProcessName == pName)
                     {
+                        ServerConfig recoveredConfig = new ServerConfig(server.ID);
+                        if (!string.IsNullOrWhiteSpace(recoveredConfig.SharedInstallationId))
+                        {
+                            FileStream sharedLease = null;
+                            try
+                            {
+                                SharedInstallationStore.EnsureReady(recoveredConfig.SharedInstallationId);
+                                sharedLease = SharedInstallationStore.AcquireReadLease(recoveredConfig.SharedInstallationId);
+                                SharedInstallationStore.ReleaseLeaseWhenProcessExits(p, sharedLease);
+                                sharedLease = null;
+                            }
+                            catch (Exception exception) when (exception is ArgumentException || exception is IOException || exception is InvalidDataException || exception is UnauthorizedAccessException || exception is InvalidOperationException || exception is System.ComponentModel.Win32Exception)
+                            {
+                                sharedLease?.Dispose();
+                                Log(server.ID, "[ERROR] Could not restore the shared installation lock: " + exception.Message);
+                            }
+                        }
+
                         ServerMetadata metadata = GetServerMetadata(server.ID);
                         metadata.Process = p;
                         metadata.ProcessStartInfoAvailable = false;
@@ -715,8 +754,11 @@ namespace WindowsGSM
 
                 var serverConfig = new ServerConfig(i.ToString());
 
-                //If Game server not exist return
-                if (GameServer.Data.Class.Get(serverConfig.ServerGame, pluginList: PluginsList) == null) { continue; }
+                object gameServer = GameServer.Data.Class.Get(serverConfig.ServerGame, pluginList: PluginsList);
+                if (gameServer == null) { continue; }
+
+                ServerMetadata metadata = GetServerMetadata(i);
+                int? detectedMainPort = GetDetectedMainPort(metadata);
 
                 ServerStatus statusCode = GetServerMetadata(i).ServerStatus;
                 if (!Enum.IsDefined(typeof(ServerStatus), statusCode))
@@ -766,10 +808,10 @@ namespace WindowsGSM
                         Name = serverConfig.ServerName,
                         IP = serverConfig.ServerIP,
                         Port = serverConfig.ServerPort,
-                        DetectedMainPort = GetDetectedMainPort(GetServerMetadata(i)),
-                        QueryPort = serverConfig.ServerQueryPort,
+                        DetectedMainPort = detectedMainPort,
+                        QueryPort = GetQueryPortDisplay(serverConfig, gameServer, detectedMainPort),
                         Defaultmap = serverConfig.ServerMap,
-                        Maxplayers = (GetServerMetadata(i).ServerStatus != ServerStatus.Started) ? serverConfig.ServerMaxPlayer : livePlayerData[i]
+                        Maxplayers = (metadata.ServerStatus != ServerStatus.Started) ? serverConfig.ServerMaxPlayer : livePlayerData[i]
                     };
 
                     RefreshServerHealth(server);
@@ -783,6 +825,7 @@ namespace WindowsGSM
                             ServerGrid.SelectedItem = server;
                         }
                     }
+
                 }
                 catch
                 {
@@ -809,6 +852,29 @@ namespace WindowsGSM
             {
                 return null;
             }
+        }
+
+        private static bool QueryUsesServerPort(object gameServer)
+        {
+            return gameServer is GameServer.Engine.Source || gameServer is GameServer.Engine.GoldSource;
+        }
+
+        private static string GetQueryPortDisplay(ServerConfig serverConfig, object gameServer, int? detectedMainPort)
+        {
+            return QueryUsesServerPort(gameServer)
+                ? detectedMainPort?.ToString() ?? serverConfig.ServerPort
+                : serverConfig.ServerQueryPort;
+        }
+
+        private int? GetHealthQueryPort(ServerTable server, object gameServer, ServerMetadata metadata)
+        {
+            string queryPort = QueryUsesServerPort(gameServer)
+                ? GetDetectedMainPort(metadata)?.ToString() ?? server.Port
+                : server.QueryPort;
+
+            return int.TryParse(queryPort, out int parsedPort) && IsValidPort(queryPort)
+                ? parsedPort
+                : (int?)null;
         }
 
         private ServerHealthSummary GetServerHealthSummary(ServerMetadata metadata)
@@ -872,6 +938,10 @@ namespace WindowsGSM
             if (server == null) { return; }
 
             ServerHealthSummary summary = GetServerHealthSummary(GetServerMetadata(server.ID));
+            ServerTable selectedServer = ServerGrid.SelectedItem as ServerTable;
+            bool selectedServerHealthChanged = selectedServer != null && selectedServer.ID == server.ID &&
+                selectedServer.HealthStatus != summary.OverallStatus;
+
             SetServerHealthDisplay(server, summary);
 
             foreach (ServerTable row in ServerGroups_GetAllServerRows())
@@ -883,13 +953,20 @@ namespace WindowsGSM
                 }
             }
 
-            ServerTable selectedServer = ServerGrid.SelectedItem as ServerTable;
             if (selectedServer != null && selectedServer.ID == server.ID)
             {
-                label_ServerHealthDetails.Text = summary.CompactDetails;
+                label_ServerStatus.Text = selectedServer.Status;
+                AutomationProperties.SetName(label_ServerStatus, selectedServer.Status);
+                label_ServerHealthDetails.Text = summary.Details;
                 label_ServerHealthDetails.ToolTip = summary.Details;
-                AutomationProperties.SetName(label_ServerHealthDetails, summary.CompactDetails);
+                AutomationProperties.SetName(label_ServerHealthDetails, string.Format(
+                    CultureInfo.CurrentUICulture,
+                    "{0}: {1}",
+                    LocalizationManager.Get("ServerHealth"),
+                    summary.CompactDetails));
                 AutomationProperties.SetHelpText(label_ServerHealthDetails, summary.Details);
+                AutomationProperties.SetLiveSetting(label_ServerHealthDetails, AutomationLiveSetting.Polite);
+                if (selectedServerHealthChanged) { RaiseLiveRegionChanged(label_ServerHealthDetails); }
             }
         }
 
@@ -927,11 +1004,17 @@ namespace WindowsGSM
         private void RefreshServerMainPortDisplay(ServerTable server, int? detectedPort)
         {
             server.DetectedMainPort = detectedPort;
+            if (QueryUsesServerPort(GameServer.Data.Class.Get(server.Game, pluginList: PluginsList)))
+            {
+                server.QueryPort = detectedPort?.ToString() ?? server.Port;
+            }
+
             foreach (ServerTable row in ServerGroups_GetAllServerRows())
             {
                 if (row != null && row.ID == server.ID)
                 {
                     row.DetectedMainPort = detectedPort;
+                    row.QueryPort = server.QueryPort;
                     return;
                 }
             }
@@ -1102,13 +1185,14 @@ namespace WindowsGSM
                 .Select(s => (type: s.Key, players: s.Sum(p => p.players)))
                 .ToList();
 
-            dashboard_player_chart_summary.Text = typePlayers.Count == 0
+            string chartHelpText = typePlayers.Count == 0
                 ? string.Format(CultureInfo.CurrentUICulture, "{0}: 0", LocalizationManager.Get("Players"))
                 : string.Join(Environment.NewLine, typePlayers.Select(item => string.Format(
                     CultureInfo.CurrentCulture,
                     "{0}: {1}",
                     item.Item1,
                     item.Item2)));
+            AutomationProperties.SetHelpText(livechart_players, chartHelpText);
 
             // Ajust the maxvalue of axis Y base on PlayerCount
             if (typePlayers.Count > 0)
@@ -1265,7 +1349,8 @@ namespace WindowsGSM
                     default: button_Kill.IsEnabled = false; break;
                 }
 
-                button_ManageAddons.IsEnabled = ServerAddon.IsGameSupportManageAddons(row.Game);
+                button_ManageAddons.IsEnabled = ServerAddon.IsGameSupportManageAddons(row.Game) &&
+                    string.IsNullOrWhiteSpace(new ServerConfig(row.ID).SharedInstallationId);
                 if (GetServerMetadata(row.ID).ServerStatus == ServerStatus.Deleting || GetServerMetadata(row.ID).ServerStatus == ServerStatus.Restoring)
                 {
                     button_ManageAddons.IsEnabled = false;
@@ -1274,18 +1359,23 @@ namespace WindowsGSM
                 slider_ProcessPriority.Value = Functions.CPU.Priority.GetPriorityInteger(GetServerMetadata(row.ID).CPUPriority);
                 textBox_ProcessPriority.Text = Functions.CPU.Priority.GetPriorityByInteger((int)slider_ProcessPriority.Value);
 
-                textBox_SetAffinity.Text = Functions.CPU.Affinity.GetAffinityValidatedString(GetServerMetadata(row.ID).CPUAffinity);
-                string affinity = new string(textBox_SetAffinity.Text.Reverse().ToArray());
+                string affinityDisplay = Functions.CPU.Affinity.GetAffinityValidatedString(GetServerMetadata(row.ID).CPUAffinity);
+                AutomationProperties.SetItemStatus(button_SetAffinity, affinityDisplay);
+                string affinity = new string(affinityDisplay.Reverse().ToArray());
                 for (int i = 0; i < _checkBoxes.Count; i++)
                 {
                     _checkBoxes[i].IsChecked = affinity[i] == '1';
                 }
 
-                button_Status.Content = row.Status.ToUpper();
-                button_Status.Background = (GetServerMetadata(row.ID).ServerStatus == ServerStatus.Started) ? System.Windows.Media.Brushes.LimeGreen : System.Windows.Media.Brushes.Orange;
-                label_ServerHealthDetails.Text = row.HealthCompactDetails;
+                label_ServerStatus.Text = row.Status;
+                AutomationProperties.SetName(label_ServerStatus, row.Status);
+                label_ServerHealthDetails.Text = row.HealthDetails;
                 label_ServerHealthDetails.ToolTip = row.HealthDetails;
-                AutomationProperties.SetName(label_ServerHealthDetails, row.HealthCompactDetails);
+                AutomationProperties.SetName(label_ServerHealthDetails, string.Format(
+                    CultureInfo.CurrentUICulture,
+                    "{0}: {1}",
+                    LocalizationManager.Get("ServerHealth"),
+                    row.HealthStatusDisplay));
                 AutomationProperties.SetHelpText(label_ServerHealthDetails, row.HealthDetails);
 
                 var gameServer = GameServer.Data.Class.Get(row.Game, pluginList: PluginsList);
@@ -1321,7 +1411,7 @@ namespace WindowsGSM
                 return;
             }
 
-            MahAppFlyout_InstallGameServer.IsOpen = true;
+            OpenFlyout(MahAppFlyout_InstallGameServer);
 
             if (!progressbar_InstallProgress.IsIndeterminate)
             {
@@ -1334,6 +1424,8 @@ namespace WindowsGSM
                 numericUpDown_Install_Cod1AlliesBots.Value = 0;
                 numericUpDown_Install_Cod1AxisBots.Value = 0;
                 passwordBox_Install_CfxLicenseKey.Password = string.Empty;
+                checkBox_Install_SharedInstallation.IsChecked = false;
+                checkBox_Install_SharedInstallation.IsEnabled = true;
 
                 ComboBox_InstallGameServer_SelectionChanged(sender, null);
 
@@ -1353,6 +1445,11 @@ namespace WindowsGSM
                 string.Equals(gameName, GameServer.RedM.FullName, StringComparison.Ordinal);
         }
 
+        private static bool IsRustGame(string gameName)
+        {
+            return string.Equals(gameName, GameServer.RUST.FullName, StringComparison.Ordinal);
+        }
+
         private async void Button_Install_Click(object sender, RoutedEventArgs e)
         {
             if (Installer != null)
@@ -1362,11 +1459,34 @@ namespace WindowsGSM
             }
 
             var selectedgame = (Images.Row)comboBox_InstallGameServer.SelectedItem;
-            if (string.IsNullOrWhiteSpace(textbox_InstallServerName.Text) || selectedgame == null) { return; }
+            if (string.IsNullOrWhiteSpace(textbox_InstallServerName.Text))
+            {
+                SetAccessibleLiveText(textblock_InstallProgress, LocalizationManager.Get("ServerNameRequired"));
+                textbox_InstallServerName.Focus();
+                return;
+            }
+            if (selectedgame == null)
+            {
+                SetAccessibleLiveText(textblock_InstallProgress, LocalizationManager.Get("GameServerRequired"));
+                comboBox_InstallGameServer.Focus();
+                return;
+            }
 
             var newServerConfig = new ServerConfig(null);
             string servername = textbox_InstallServerName.Text;
             string servergame = selectedgame.Name;
+            bool isRust = IsRustGame(servergame);
+            bool useSharedInstallation = checkBox_Install_SharedInstallation.IsChecked == true;
+            object gameServerObject = GameServer.Data.Class.Get(servergame, newServerConfig, PluginsList);
+            dynamic gameServer = gameServerObject;
+            GameServer.Engine.ISharedInstallationProvider sharedProvider = gameServerObject as GameServer.Engine.ISharedInstallationProvider;
+            bool isSupportedSharedProvider = sharedProvider != null && gameServerObject.GetType().Assembly == typeof(GameServer.RUST).Assembly;
+            if (useSharedInstallation && !isSupportedSharedProvider)
+            {
+                MessageBox.Show(LocalizationManager.Get("SharedInstallationUnsupported"), LocalizationManager.Get("ErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
             bool isCod1 = IsCod1Game(servergame);
             bool isCfx = IsCfxGame(servergame);
             if (isCod1)
@@ -1396,20 +1516,53 @@ namespace WindowsGSM
                 }
             }
 
-            Directory.CreateDirectory(installPath);
+            try
+            {
+                newServerConfig.CreateServerDirectory();
+            }
+            catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException)
+            {
+                System.Windows.Forms.MessageBox.Show(exception.Message, LocalizationManager.Get("ErrorTitle"), MessageBoxButtons.OK, MessageBoxIcon.Error);
+                return;
+            }
+
+            SharedInstallationResolution sharedInstallation = null;
+            if (useSharedInstallation)
+            {
+                try
+                {
+                    sharedInstallation = SharedInstallationStore.ResolveOrCreate(servergame, sharedProvider.SharedInstallationAppId, sharedProvider.SharedInstallationExecutableName);
+                    newServerConfig.SharedInstallationId = sharedInstallation.InstallationId;
+                }
+                catch (Exception exception) when (exception is ArgumentException || exception is IOException || exception is InvalidDataException || exception is UnauthorizedAccessException || exception is InvalidOperationException)
+                {
+                    MessageBox.Show(exception.Message, LocalizationManager.Get("ErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+            }
 
             //Installation start
             textbox_InstallServerName.IsEnabled = false;
             comboBox_InstallGameServer.IsEnabled = false;
+            checkBox_Install_SharedInstallation.IsEnabled = false;
             progressbar_InstallProgress.IsIndeterminate = true;
-            textblock_InstallProgress.Text = LocalizationManager.Get("InstallProgress");
+            SetAccessibleLiveText(textblock_InstallProgress, LocalizationManager.Get("InstallProgress"));
             button_Install.IsEnabled = false;
             textbox_InstallLog.Text = string.Empty;
 
-            newServerConfig.CreateServerDirectory();
-
-            dynamic gameServer = GameServer.Data.Class.Get(servergame, newServerConfig, PluginsList);
-            Installer = await gameServer.Install();
+            if (useSharedInstallation && !sharedInstallation.Created)
+            {
+                AppendLogText(textbox_InstallLog, LocalizationManager.Get("ReuseSharedInstallation") + Environment.NewLine);
+                Installer = null;
+            }
+            else if (useSharedInstallation)
+            {
+                Installer = await sharedProvider.InstallSharedBinaries();
+            }
+            else
+            {
+                Installer = await gameServer.Install();
+            }
 
             if (Installer != null)
             {
@@ -1427,8 +1580,7 @@ namespace WindowsGSM
 
                         System.Windows.Application.Current.Dispatcher.Invoke(() =>
                         {
-                            textbox_InstallLog.AppendText(nextLine + Environment.NewLine);
-                            textbox_InstallLog.ScrollToEnd();
+                            AppendLogText(textbox_InstallLog, nextLine + Environment.NewLine);
                         });
                     }
 
@@ -1437,13 +1589,16 @@ namespace WindowsGSM
             }
 
             string installFailure = Installer == null
-                ? (string.IsNullOrWhiteSpace(gameServer.Error) ? "Installer did not return a process." : gameServer.Error)
-                : $"Installer exited with code {Installer.ExitCode}.";
+                ? (useSharedInstallation && sharedInstallation != null && !sharedInstallation.Created
+                    ? string.Empty
+                    : (string.IsNullOrWhiteSpace(gameServer.Error) ? "Installer did not return a process." : gameServer.Error))
+                : (Installer.ExitCode == 0 ? string.Empty : $"Installer exited with code {Installer.ExitCode}.");
             bool baseInstallValid = isCod1 ? gameServer.IsBaseInstallValid() : gameServer.IsInstallValid();
-            if (isCod1 && (!baseInstallValid || Installer == null || Installer.ExitCode != 0))
+            if (isCod1 && (!useSharedInstallation || (sharedInstallation != null && sharedInstallation.Created)) &&
+                (!baseInstallValid || Installer == null || Installer.ExitCode != 0))
             {
                 string steamFailure = installFailure;
-                textblock_InstallProgress.Text = LocalizationManager.Get("InstallFallbackMessage");
+                SetAccessibleLiveText(textblock_InstallProgress, LocalizationManager.Get("InstallFallbackMessage"));
                 await gameServer.InstallFallback();
                 baseInstallValid = gameServer.IsBaseInstallValid();
                 if (!baseInstallValid)
@@ -1453,12 +1608,73 @@ namespace WindowsGSM
             }
 
             string componentFailure = string.Empty;
-            if (isCod1 && baseInstallValid && newServerConfig.Cod1MeatBots && !await gameServer.InstallMeatBots())
+            if (isCod1 && baseInstallValid && newServerConfig.Cod1MeatBots)
             {
-                componentFailure = gameServer.Error;
+                FileStream sharedAddonLease = null;
+                try
+                {
+                    if (useSharedInstallation && sharedInstallation != null && !sharedInstallation.Created && !gameServer.IsMeatBotsInstalled())
+                    {
+                        sharedAddonLease = SharedInstallationStore.AcquireExclusiveLease(sharedInstallation.InstallationId);
+                    }
+
+                    if (!await gameServer.InstallMeatBots())
+                    {
+                        componentFailure = gameServer.Error;
+                    }
+                }
+                catch (Exception exception) when (exception is ArgumentException || exception is IOException || exception is UnauthorizedAccessException || exception is InvalidOperationException)
+                {
+                    componentFailure = exception.Message;
+                }
+                finally
+                {
+                    sharedAddonLease?.Dispose();
+                }
             }
 
-            bool installValid = baseInstallValid && string.IsNullOrWhiteSpace(componentFailure) && gameServer.IsInstallValid();
+            bool sharedBinariesReady = !useSharedInstallation || !sharedInstallation.Created;
+            if (useSharedInstallation && sharedInstallation.Created)
+            {
+                if (baseInstallValid && ((Installer != null && Installer.ExitCode == 0) || isCod1))
+                {
+                    try
+                    {
+                        string buildId = gameServer.GetLocalBuild();
+                        SharedInstallationStore.MarkReady(sharedInstallation.InstallationId, buildId);
+                        sharedBinariesReady = true;
+                    }
+                    catch (Exception exception) when (exception is IOException || exception is InvalidDataException || exception is UnauthorizedAccessException || exception is InvalidOperationException)
+                    {
+                        installFailure = exception.Message;
+                        try
+                        {
+                            SharedInstallationStore.MarkFailed(sharedInstallation.InstallationId);
+                        }
+                        catch (Exception failureException) when (failureException is IOException || failureException is InvalidDataException || failureException is UnauthorizedAccessException || failureException is InvalidOperationException)
+                        {
+                            installFailure += Environment.NewLine + failureException.Message;
+                        }
+                    }
+                }
+                else
+                {
+                    try
+                    {
+                        SharedInstallationStore.MarkFailed(sharedInstallation.InstallationId);
+                    }
+                    catch (Exception exception) when (exception is IOException || exception is InvalidDataException || exception is UnauthorizedAccessException || exception is InvalidOperationException)
+                    {
+                        installFailure = string.IsNullOrWhiteSpace(installFailure)
+                            ? exception.Message
+                            : installFailure + Environment.NewLine + exception.Message;
+                    }
+                }
+            }
+
+            sharedInstallation?.Dispose();
+
+            bool installValid = sharedBinariesReady && baseInstallValid && string.IsNullOrWhiteSpace(componentFailure) && gameServer.IsInstallValid();
             if (installValid)
             {
                 newServerConfig.ServerIP = newServerConfig.GetIPAddress();
@@ -1476,6 +1692,26 @@ namespace WindowsGSM
                 {
                     newServerConfig.CfxLicenseKey = passwordBox_Install_CfxLicenseKey.Password.Trim();
                 }
+
+                if (isRust || useSharedInstallation)
+                {
+                    if (!await sharedProvider.InstallConfigOnly())
+                    {
+                        installValid = false;
+                        installFailure = gameServer.Error;
+                    }
+                }
+            }
+
+            if (!installValid && string.IsNullOrWhiteSpace(installFailure))
+            {
+                installFailure = string.IsNullOrWhiteSpace(gameServer.Error)
+                    ? LocalizationManager.Get("InstallValidationFailed")
+                    : gameServer.Error;
+            }
+
+            if (installValid)
+            {
                 newServerConfig.CreateWindowsGSMConfig();
 
                 // Create WindowsGSM.cfg and game server config
@@ -1495,7 +1731,7 @@ namespace WindowsGSM
                             Log(newServerConfig.ServerID, servergame + " config: " + cfxServer.Notice);
                         }
                     }
-                    else
+                    else if (!isRust && !useSharedInstallation)
                     {
                         gameServer.CreateServerCFG();
                     }
@@ -1508,6 +1744,7 @@ namespace WindowsGSM
                 LoadServerTable();
                 Log(newServerConfig.ServerID, "Install: Success");
 
+                SetAccessibleLiveText(textblock_InstallProgress, LocalizationManager.Get("AddonInstallSuccess"));
                 MahAppFlyout_InstallGameServer.IsOpen = false;
                 textbox_InstallServerName.IsEnabled = true;
                 comboBox_InstallGameServer.IsEnabled = true;
@@ -1524,13 +1761,14 @@ namespace WindowsGSM
             {
                 textbox_InstallServerName.IsEnabled = true;
                 comboBox_InstallGameServer.IsEnabled = true;
+                checkBox_Install_SharedInstallation.IsEnabled = true;
                 progressbar_InstallProgress.IsIndeterminate = false;
                 textblock_InstallProgress.Text = LocalizationManager.Get("Install");
                 button_Install.IsEnabled = true;
 
                 if (!string.IsNullOrWhiteSpace(componentFailure)) { installFailure += Environment.NewLine + "MeatBots installation: " + componentFailure; }
                 if (string.IsNullOrWhiteSpace(installFailure)) { installFailure = gameServer.Error; }
-                textblock_InstallProgress.Text = string.Format(LocalizationManager.Get("InstallFailed"), installFailure);
+                SetAccessibleLiveText(textblock_InstallProgress, string.Format(LocalizationManager.Get("InstallFailed"), installFailure));
             }
         }
 
@@ -1544,11 +1782,17 @@ namespace WindowsGSM
             button_InstallSendToken.Visibility = Visibility.Hidden;
             stackPanel_Install_CfxSettings.Visibility = selectedgame != null && IsCfxGame(selectedgame.Name) ? Visibility.Visible : Visibility.Collapsed;
             stackPanel_Install_Cod1Settings.Visibility = selectedgame != null && IsCod1Game(selectedgame.Name) ? Visibility.Visible : Visibility.Collapsed;
+            checkBox_Install_SharedInstallation.Visibility = Visibility.Collapsed;
+            checkBox_Install_SharedInstallation.IsChecked = false;
             if (selectedgame == null) { return; }
 
             try
             {
-                dynamic gameServer = GameServer.Data.Class.Get(selectedgame.Name, pluginList: PluginsList);
+                object gameServerObject = GameServer.Data.Class.Get(selectedgame.Name, pluginList: PluginsList);
+                dynamic gameServer = gameServerObject;
+                bool isSupportedSharedProvider = gameServerObject is GameServer.Engine.ISharedInstallationProvider &&
+                    gameServerObject.GetType().Assembly == typeof(GameServer.RUST).Assembly;
+                checkBox_Install_SharedInstallation.Visibility = isSupportedSharedProvider ? Visibility.Visible : Visibility.Collapsed;
                 if (!gameServer.loginAnonymous)
                 {
                     button_InstallSetAccount.IsEnabled = true;
@@ -1593,7 +1837,7 @@ namespace WindowsGSM
                 return;
             }
 
-            MahAppFlyout_ImportGameServer.IsOpen = true;
+            OpenFlyout(MahAppFlyout_ImportGameServer);
 
             if (!progressbar_ImportProgress.IsIndeterminate)
             {
@@ -1611,8 +1855,19 @@ namespace WindowsGSM
         private async void Button_Import_Click(object sender, RoutedEventArgs e)
         {
             var selectedgame = (Images.Row)comboBox_ImportGameServer.SelectedItem;
-            label_ServerDirWarn.Content = Directory.Exists(textbox_ServerDir.Text) ? string.Empty : LocalizationManager.Get("ServerDirectoryInvalid");
-            if (string.IsNullOrWhiteSpace(textbox_ImportServerName.Text) || selectedgame == null) { return; }
+            SetAccessibleLiveText(label_ServerDirWarn, Directory.Exists(textbox_ServerDir.Text) ? string.Empty : LocalizationManager.Get("ServerDirectoryInvalid"));
+            if (string.IsNullOrWhiteSpace(textbox_ImportServerName.Text))
+            {
+                SetAccessibleLiveText(textblock_ImportProgress, LocalizationManager.Get("ServerNameRequired"));
+                textbox_ImportServerName.Focus();
+                return;
+            }
+            if (selectedgame == null)
+            {
+                SetAccessibleLiveText(textblock_ImportProgress, LocalizationManager.Get("GameServerRequired"));
+                comboBox_ImportGameServer.Focus();
+                return;
+            }
 
             string servername = textbox_ImportServerName.Text;
             string servergame = selectedgame.Name;
@@ -1622,7 +1877,7 @@ namespace WindowsGSM
 
             if (!gameServer.IsImportValid(textbox_ServerDir.Text))
             {
-                label_ServerDirWarn.Content = gameServer.Error;
+                SetAccessibleLiveText(label_ServerDirWarn, gameServer.Error);
                 return;
             }
 
@@ -1646,7 +1901,7 @@ namespace WindowsGSM
             textbox_ServerDir.IsEnabled = false;
             button_Browse.IsEnabled = false;
             progressbar_ImportProgress.IsIndeterminate = true;
-            textblock_ImportProgress.Text = LocalizationManager.Get("ImportProgress");
+            SetAccessibleLiveText(textblock_ImportProgress, LocalizationManager.Get("ImportProgress"));
 
             string sourcePath = textbox_ServerDir.Text;
             string importLog = await Task.Run(() =>
@@ -1676,7 +1931,7 @@ namespace WindowsGSM
                 textbox_ServerDir.IsEnabled = true;
                 button_Browse.IsEnabled = true;
                 progressbar_ImportProgress.IsIndeterminate = false;
-                textblock_ImportProgress.Text = LocalizationManager.Get("ImportFailed");
+                SetAccessibleLiveText(textblock_ImportProgress, LocalizationManager.Get("ImportFailed"));
                 string message = string.Format(LocalizationManager.Get("ImportCopyFailure"), textbox_ServerDir.Text, importPath, importLog);
                 MessageBox.Show(message, LocalizationManager.Get("ErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
@@ -1689,6 +1944,7 @@ namespace WindowsGSM
             LoadServerTable();
             Log(newServerConfig.ServerID, "Import: Success");
 
+            SetAccessibleLiveText(textblock_ImportProgress, LocalizationManager.Get("ImportCompleted"));
             MahAppFlyout_ImportGameServer.IsOpen = false;
             textbox_ImportServerName.IsEnabled = true;
             comboBox_ImportGameServer.IsEnabled = true;
@@ -1716,10 +1972,17 @@ namespace WindowsGSM
 
             if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped) { return; }
 
-            MessageBoxResult result = MessageBox.Show(LocalizationManager.Get("DeleteServerConfirmation"), LocalizationManager.Get("ConfirmationTitle"), MessageBoxButton.YesNo, MessageBoxImage.Question);
+            string sharedInstallationId = new ServerConfig(server.ID).SharedInstallationId;
+            string confirmation = LocalizationManager.Get("DeleteServerConfirmation");
+            if (!string.IsNullOrWhiteSpace(sharedInstallationId))
+            {
+                confirmation += Environment.NewLine + LocalizationManager.Get("SharedInstallationDeleteConfirmation");
+            }
+
+            MessageBoxResult result = MessageBox.Show(confirmation, LocalizationManager.Get("ConfirmationTitle"), MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (result != MessageBoxResult.Yes) { return; }
 
-            await GameServer_Delete(server);
+            await GameServer_Delete(server, sharedInstallationId);
         }
 
         private async void Button_DiscordEdit_Click(object sender, RoutedEventArgs e)
@@ -2016,7 +2279,7 @@ namespace WindowsGSM
             button_SaveBackupSchedule.IsEnabled = configurationAvailable;
             button_RunBackupNow.IsEnabled = configurationAvailable;
             label_BackupScheduleStorage.Text = row.BackupStorage;
-            label_BackupScheduleStatus.Text = row.LastResultMessage;
+            SetAccessibleLiveText(label_BackupScheduleStatus, row.LastResultMessage);
 
             if (TryGetSimpleBackupSchedule(row.CronExpression, out bool weekly, out int hour, out int minute, out int dayOfWeek))
             {
@@ -2093,7 +2356,7 @@ namespace WindowsGSM
             {
                 if (!DateTime.TryParseExact(textBox_BackupScheduleTime.Text.Trim(), "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime scheduledTime))
                 {
-                    label_BackupScheduleStatus.Text = LocalizationManager.Get("ScheduleInvalidMessage");
+                    SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleInvalidMessage"));
                     return;
                 }
 
@@ -2109,7 +2372,7 @@ namespace WindowsGSM
                 }
                 else
                 {
-                    label_BackupScheduleStatus.Text = LocalizationManager.Get("ScheduleInvalidMessage");
+                    SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleInvalidMessage"));
                     return;
                 }
             }
@@ -2118,13 +2381,13 @@ namespace WindowsGSM
             bool validSchedule = schedule != null && TryGetNextBackupOccurrence(schedule, DateTime.Now, out DateTime _);
             if ((frequency != "Custom" || switch_BackupScheduleEnabled.IsOn) && !validSchedule)
             {
-                label_BackupScheduleStatus.Text = LocalizationManager.Get("ScheduleInvalidMessage");
+                SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleInvalidMessage"));
                 return;
             }
 
             if (!TryLoadBackupSchedule(row.ServerId, out BackupScheduleConfig config, out string error))
             {
-                label_BackupScheduleStatus.Text = string.Format(LocalizationManager.Get("ScheduleSaveFailed"), error);
+                SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(LocalizationManager.Get("ScheduleSaveFailed"), error));
                 return;
             }
 
@@ -2133,11 +2396,11 @@ namespace WindowsGSM
             config.LastEvaluatedAt = DateTime.Now;
             if (!TrySaveBackupSchedule(row.ServerId, config, out error))
             {
-                label_BackupScheduleStatus.Text = string.Format(LocalizationManager.Get("ScheduleSaveFailed"), error);
+                SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(LocalizationManager.Get("ScheduleSaveFailed"), error));
                 return;
             }
 
-            label_BackupScheduleStatus.Text = LocalizationManager.Get("ScheduleSaved");
+            SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleSaved"));
             RefreshBackupSchedules(row.ServerId);
         }
 
@@ -2149,13 +2412,13 @@ namespace WindowsGSM
             ServerTable server = FindServerTable(row.ServerId);
             if (server == null)
             {
-                label_BackupScheduleStatus.Text = LocalizationManager.Get("ScheduleNoServerSelected");
+                SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleNoServerSelected"));
                 return;
             }
 
             if (!TryLoadBackupSchedule(row.ServerId, out BackupScheduleConfig config, out string error))
             {
-                label_BackupScheduleStatus.Text = string.Format(LocalizationManager.Get("ScheduleSaveFailed"), error);
+                SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(LocalizationManager.Get("ScheduleSaveFailed"), error));
                 return;
             }
 
@@ -2166,7 +2429,7 @@ namespace WindowsGSM
                 config.LastResultMessage = BackupScheduleConfig.MessageServerBusy;
                 if (!TrySaveBackupSchedule(server.ID, config, out string saveError))
                 {
-                    label_BackupScheduleStatus.Text = string.Format(LocalizationManager.Get("ScheduleSaveFailed"), saveError);
+                    SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(LocalizationManager.Get("ScheduleSaveFailed"), saveError));
                     return;
                 }
 
@@ -2190,7 +2453,7 @@ namespace WindowsGSM
                 config.LastResultMessage = BackupScheduleConfig.MessageServerBusy;
                 if (!TrySaveBackupSchedule(server.ID, config, out string saveError))
                 {
-                    label_BackupScheduleStatus.Text = string.Format(LocalizationManager.Get("ScheduleSaveFailed"), saveError);
+                    SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(LocalizationManager.Get("ScheduleSaveFailed"), saveError));
                     return;
                 }
 
@@ -2204,7 +2467,7 @@ namespace WindowsGSM
             config.LastResultMessage = string.Empty;
             if (!TrySaveBackupSchedule(server.ID, config, out string error))
             {
-                label_BackupScheduleStatus.Text = string.Format(LocalizationManager.Get("ScheduleSaveFailed"), error);
+                SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(LocalizationManager.Get("ScheduleSaveFailed"), error));
                 return;
             }
 
@@ -2216,7 +2479,7 @@ namespace WindowsGSM
             RefreshBackupSchedules(server.ID);
             if (!saved)
             {
-                label_BackupScheduleStatus.Text = string.Format(LocalizationManager.Get("ScheduleSaveFailed"), resultSaveError);
+                SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(LocalizationManager.Get("ScheduleSaveFailed"), resultSaveError));
             }
         }
 
@@ -2502,7 +2765,7 @@ namespace WindowsGSM
             }
 
             label_RestoreBackupServerName.Content = server.Name;
-            MahAppFlyout_RestoreBackup.IsOpen = true;
+            OpenFlyout(MahAppFlyout_RestoreBackup);
         }
 
         private async void Button_RestoreBackup_Click(object sender, RoutedEventArgs e)
@@ -2606,7 +2869,8 @@ namespace WindowsGSM
         {
             ServerMetadata metadata = GetServerMetadata(server.ID);
             ClearDetectedMainPort(server);
-            dynamic gameServer = GameServer.Data.Class.Get(server.Game, new ServerConfig(server.ID), PluginsList);
+            ServerConfig serverConfig = new ServerConfig(server.ID);
+            dynamic gameServer = GameServer.Data.Class.Get(server.Game, serverConfig, PluginsList);
             if (gameServer == null) { return null; }
 
             //End All Running Process
@@ -2614,13 +2878,28 @@ namespace WindowsGSM
             await Task.Delay(500);
 
             //Add Start File to WindowsFirewall before start
-            string startPath = ServerPath.GetServersServerFiles(server.ID, gameServer.StartPath);
+            string startPath;
+            try
+            {
+                startPath = !string.IsNullOrWhiteSpace(serverConfig.SharedInstallationId)
+                    ? ServerPath.GetSharedInstallationServerFiles(serverConfig.SharedInstallationId, gameServer.StartPath)
+                    : ServerPath.GetServersServerFiles(server.ID, gameServer.StartPath);
+            }
+            catch (ArgumentException exception)
+            {
+                Log(server.ID, "[ERROR] " + exception.Message);
+                startPath = string.Empty;
+            }
+
             if (!string.IsNullOrWhiteSpace(gameServer.StartPath))
             {
-                WindowsFirewall firewall = new WindowsFirewall(Path.GetFileName(startPath), startPath);
-                if (!await firewall.IsRuleExist())
+                if (!string.IsNullOrWhiteSpace(startPath))
                 {
-                    await firewall.AddRule();
+                    WindowsFirewall firewall = new WindowsFirewall(Path.GetFileName(startPath), startPath);
+                    if (!await firewall.IsRuleExist())
+                    {
+                        await firewall.AddRule();
+                    }
                 }
             }
 
@@ -3168,7 +3447,7 @@ namespace WindowsGSM
             return true;
         }
 
-        private async Task<bool> GameServer_Delete(ServerTable server)
+        private async Task<bool> GameServer_Delete(ServerTable server, string sharedInstallationId)
         {
             if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped)
             {
@@ -3222,12 +3501,36 @@ namespace WindowsGSM
                 }
             }
 
+            string sharedInstallationDeleteError = string.Empty;
+            if (!string.IsNullOrWhiteSpace(sharedInstallationId))
+            {
+                try
+                {
+                    if (!SharedInstallationStore.DeleteIfUnreferenced(sharedInstallationId))
+                    {
+                        WindowsGSM.GameServer.Engine.GoldSource.DeleteSharedMapCycleFile(sharedInstallationId, server.ID);
+                    }
+                }
+                catch (Exception exception) when (exception is ArgumentException || exception is IOException || exception is InvalidDataException || exception is UnauthorizedAccessException || exception is InvalidOperationException)
+                {
+                    sharedInstallationDeleteError = exception.Message;
+                }
+            }
+
             Log(server.ID, "Server: Deleted server");
 
             _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Stopped;
             SetServerStatus(server, "Stopped");
 
             LoadServerTable();
+            if (!string.IsNullOrWhiteSpace(sharedInstallationDeleteError))
+            {
+                MessageBox.Show(
+                    string.Format(LocalizationManager.Get("SharedInstallationDeleteFailed"), sharedInstallationDeleteError),
+                    LocalizationManager.Get("ErrorTitle"),
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
 
             return true;
         }
@@ -3668,8 +3971,7 @@ namespace WindowsGSM
             if (metadata == null) { return; }
 
             ResetServerQueryHealth(metadata);
-            if (string.IsNullOrWhiteSpace(server.IP) || string.IsNullOrWhiteSpace(server.QueryPort) ||
-                !IsValidIPAddress(server.IP) || !IsValidPort(server.QueryPort))
+            if (string.IsNullOrWhiteSpace(server.IP) || !IsValidIPAddress(server.IP))
             {
                 metadata.QuerySupported = false;
                 RefreshServerHealth(server);
@@ -3701,11 +4003,19 @@ namespace WindowsGSM
                 return;
             }
 
+            int? resolvedQueryPort = GetHealthQueryPort(server, gameServer, metadata);
+            if (!resolvedQueryPort.HasValue)
+            {
+                metadata.QuerySupported = false;
+                RefreshServerHealth(server);
+                return;
+            }
+
             metadata.QuerySupported = true;
             RefreshServerHealth(server);
 
             dynamic query = queryMethod;
-            int queryPort = int.Parse(server.QueryPort);
+            int queryPort = resolvedQueryPort.Value;
 
             // Query server every 5 seconds
             while (IsCurrentServerProcess(server.ID, p))
@@ -3834,6 +4144,10 @@ namespace WindowsGSM
                 throw new ArgumentException("The server status is invalid.", nameof(status));
             }
 
+            ServerTable selectedServerBeforeUpdate = ServerGrid.SelectedItem as ServerTable;
+            ServerStatus previousStatusCode = selectedServerBeforeUpdate != null && selectedServerBeforeUpdate.ID == server.ID
+                ? selectedServerBeforeUpdate.StatusCode
+                : server.StatusCode;
             server.StatusCode = statusCode;
             server.Status = LocalizationManager.Get("Status" + statusCode);
             if (pid != null)
@@ -3873,6 +4187,14 @@ namespace WindowsGSM
             }
 
             DataGrid_RefreshElements();
+            ServerTable selectedServerAfterUpdate = ServerGrid.SelectedItem as ServerTable;
+            if (previousStatusCode != statusCode && selectedServerAfterUpdate != null && selectedServerAfterUpdate.ID == server.ID)
+            {
+                label_ServerStatus.Text = selectedServerAfterUpdate.Status;
+                AutomationProperties.SetName(label_ServerStatus, selectedServerAfterUpdate.Status);
+                AutomationProperties.SetLiveSetting(label_ServerStatus, AutomationLiveSetting.Polite);
+                RaiseLiveRegionChanged(label_ServerStatus);
+            }
         }
 
         public void Log(string serverId, string logText)
@@ -3885,9 +4207,7 @@ namespace WindowsGSM
             string logFile = Path.Combine(logPath, $"L{DateTime.Now.ToString("yyyyMMdd")}.log");
             File.AppendAllText(logFile, log);
 
-            textBox_wgsmlog.AppendText(log);
-            textBox_wgsmlog.Text = RemovedOldLog(textBox_wgsmlog.Text);
-            textBox_wgsmlog.ScrollToEnd();
+            AppendLogText(textBox_wgsmlog, log, true);
         }
 
         public void DiscordBotLog(string logText)
@@ -3899,9 +4219,25 @@ namespace WindowsGSM
             string logFile = Path.Combine(logPath, $"L{DateTime.Now.ToString("yyyyMMdd")}-DiscordBot.log");
             File.AppendAllText(logFile, log);
 
-            textBox_DiscordBotLog.AppendText(log);
-            textBox_DiscordBotLog.Text = RemovedOldLog(textBox_DiscordBotLog.Text);
-            textBox_DiscordBotLog.ScrollToEnd();
+            AppendLogText(textBox_DiscordBotLog, log, true);
+        }
+
+        private void AppendLogText(System.Windows.Controls.TextBox textBox, string text, bool trimOldLines = false)
+        {
+            int lastVisibleLine = textBox.GetLastVisibleLineIndex();
+            bool followTail = lastVisibleLine < 0 || lastVisibleLine >= textBox.LineCount - 1;
+            textBox.AppendText(text);
+
+            if (trimOldLines)
+            {
+                string trimmedText = RemovedOldLog(textBox.Text);
+                if (!string.Equals(textBox.Text, trimmedText, StringComparison.Ordinal))
+                {
+                    textBox.Text = trimmedText;
+                }
+            }
+
+            if (followTail) { textBox.ScrollToEnd(); }
         }
 
         private string RemovedOldLog(string logText)
@@ -4149,19 +4485,7 @@ namespace WindowsGSM
             var visited = new HashSet<DependencyObject>();
             AssociateAccessibleLabels(this, visited);
 
-            foreach (DependencyObject flyout in new DependencyObject[]
-            {
-                MahAppFlyout_ViewPlugins,
-                MahAppFlyout_Settings,
-                MahAppFlyout_DiscordAlert,
-                MahAppFlyout_RestoreBackup,
-                MahAppFlyout_SetAffinity,
-                MahAppFlyout_EditConfig,
-                MahAppFlyout_ManageAddons,
-                MahAppFlyout_InstallGameServer,
-                MahAppFlyout_ImportGameServer,
-                MahAppFlyout_ServerGroups
-            })
+            foreach (Flyout flyout in _flyouts)
             {
                 AssociateAccessibleLabels(flyout, visited);
             }
@@ -4176,11 +4500,136 @@ namespace WindowsGSM
                 AutomationProperties.SetLabeledBy(label.Target, label);
             }
 
+            foreach (DependencyObject child in GetAccessibleTreeChildren(element))
+            {
+                AssociateAccessibleLabels(child, visited);
+            }
+        }
+
+        private static void SetAccessibleLiveText(TextBlock textBlock, string text)
+        {
+            string statusText = text ?? string.Empty;
+            if (string.Equals(textBlock.Text, statusText, StringComparison.Ordinal)) { return; }
+
+            textBlock.Text = statusText;
+            if (!string.IsNullOrEmpty(statusText)) { RaiseLiveRegionChanged(textBlock); }
+        }
+
+        private static void RaiseLiveRegionChanged(UIElement element)
+        {
+            if (!AutomationPeer.ListenerExists(AutomationEvents.LiveRegionChanged)) { return; }
+
+            AutomationPeer peer = UIElementAutomationPeer.FromElement(element) ?? UIElementAutomationPeer.CreatePeerForElement(element);
+            peer?.RaiseAutomationEvent(AutomationEvents.LiveRegionChanged);
+        }
+
+        private void RegisterFlyoutFocusHandlers()
+        {
+            foreach (Flyout flyout in _flyouts)
+            {
+                flyout.IsOpenChanged += (sender, e) =>
+                {
+                    if (flyout.IsOpen)
+                    {
+                        CaptureFlyoutFocus(flyout);
+                    }
+                    else
+                    {
+                        _flyoutFocusAtOpen.Remove(flyout);
+                    }
+                };
+
+                flyout.OpeningFinished += (sender, e) => FocusFlyoutContent(flyout);
+                flyout.ClosingFinished += (sender, e) => RestoreFlyoutFocusIfClosed();
+            }
+        }
+
+        private void OpenFlyout(Flyout flyout)
+        {
+            CaptureFlyoutFocus(flyout);
+            flyout.IsOpen = true;
+        }
+
+        private void CaptureFlyoutFocus(Flyout flyout)
+        {
+            IInputElement focusedElement = Keyboard.FocusedElement;
+            if (!_flyoutFocusAtOpen.ContainsKey(flyout))
+            {
+                _flyoutFocusAtOpen.Add(flyout, focusedElement);
+            }
+
+            if (!_flyoutFocusCaptured)
+            {
+                _focusBeforeFlyout = focusedElement;
+                _flyoutFocusCaptured = true;
+            }
+        }
+
+        private void FocusFlyoutContent(Flyout flyout)
+        {
+            if (!flyout.IsOpen
+                || !_flyoutFocusAtOpen.TryGetValue(flyout, out IInputElement focusedElementAtOpen)
+                || !ReferenceEquals(Keyboard.FocusedElement, focusedElementAtOpen))
+            {
+                return;
+            }
+
+            if (flyout.Content is DependencyObject content)
+            {
+                System.Windows.Controls.Control focusTarget = FindFirstFocusableControl(content, new HashSet<DependencyObject>());
+                focusTarget?.Focus();
+            }
+        }
+
+        private void RestoreFlyoutFocusIfClosed()
+        {
+            if (_flyouts.Any(flyout => flyout.IsOpen)) { return; }
+
+            IInputElement focusTarget = _focusBeforeFlyout;
+            _focusBeforeFlyout = null;
+            _flyoutFocusCaptured = false;
+            _flyoutFocusAtOpen.Clear();
+
+            if (focusTarget is UIElement element && element.IsVisible && element.IsEnabled && element.Focusable)
+            {
+                Keyboard.Focus(element);
+            }
+            else if (focusTarget is ContentElement contentElement && contentElement.Focusable)
+            {
+                Keyboard.Focus(contentElement);
+            }
+        }
+
+        private static System.Windows.Controls.Control FindFirstFocusableControl(DependencyObject element, HashSet<DependencyObject> visited)
+        {
+            if (element == null || !visited.Add(element)) { return null; }
+
+            if (element is System.Windows.Controls.Control control
+                && !(control is Label)
+                && control.IsVisible
+                && control.IsEnabled
+                && control.Focusable
+                && control.IsTabStop)
+            {
+                return control;
+            }
+
+            foreach (DependencyObject child in GetAccessibleTreeChildren(element))
+            {
+                System.Windows.Controls.Control focusTarget = FindFirstFocusableControl(child, visited);
+                if (focusTarget != null) { return focusTarget; }
+            }
+
+            return null;
+        }
+
+        private static IEnumerable<DependencyObject> GetAccessibleTreeChildren(DependencyObject element)
+        {
             foreach (object child in LogicalTreeHelper.GetChildren(element))
             {
                 if (child is DependencyObject dependencyObject)
                 {
-                    AssociateAccessibleLabels(dependencyObject, visited);
+                    yield return dependencyObject;
                 }
             }
 
@@ -4189,7 +4638,7 @@ namespace WindowsGSM
                 int childCount = VisualTreeHelper.GetChildrenCount(element);
                 for (int i = 0; i < childCount; i++)
                 {
-                    AssociateAccessibleLabels(VisualTreeHelper.GetChild(element, i), visited);
+                    yield return VisualTreeHelper.GetChild(element, i);
                 }
             }
         }
@@ -4700,12 +5149,13 @@ namespace WindowsGSM
             if (gameServer == null) { return false; }
             var goldSourceServer = gameServer as GameServer.Engine.GoldSource;
             var sourceServer = gameServer as GameServer.Engine.Source;
+            _editConfigQueryUsesServerPort = QueryUsesServerPort(gameServer);
             bool supportsMapRotation = goldSourceServer != null || (sourceServer != null && !string.IsNullOrWhiteSpace(sourceServer.Game));
 
             stackPanel_EC_MapRotation.Visibility = supportsMapRotation ? Visibility.Visible : Visibility.Collapsed;
             listBox_EC_AvailableMaps.Items.Clear();
             listBox_EC_MapRotation.Items.Clear();
-            textBlock_EC_MapRotationStatus.Text = string.Empty;
+            SetAccessibleLiveText(textBlock_EC_MapRotationStatus, string.Empty);
             if (supportsMapRotation)
             {
                 string mapDirectory = goldSourceServer != null ? goldSourceServer.MapDirectory : sourceServer.MapDirectory;
@@ -4725,9 +5175,9 @@ namespace WindowsGSM
                     }
                 }
 
-                textBlock_EC_MapRotationStatus.Text = availableMaps.Count == 0
+                SetAccessibleLiveText(textBlock_EC_MapRotationStatus, availableMaps.Count == 0
                     ? string.Format(LocalizationManager.Get("MapRotationNoBspMapsFound"), mapDirectory)
-                    : string.Format(LocalizationManager.Get("MapRotationBspMapsFound"), availableMaps.Count, mapDirectory);
+                    : string.Format(LocalizationManager.Get("MapRotationBspMapsFound"), availableMaps.Count, mapDirectory));
             }
 
             textbox_EC_ServerID.Text = serverConfig.ServerID;
@@ -4736,7 +5186,13 @@ namespace WindowsGSM
             textbox_EC_ServerIP.Text = serverConfig.ServerIP;
             numericUpDown_EC_ServerMaxplayer.Value = int.TryParse(serverConfig.ServerMaxPlayer, out var maxplayer) ? maxplayer : int.Parse(gameServer.Maxplayers);
             numericUpDown_EC_ServerPort.Value = int.TryParse(serverConfig.ServerPort, out var port) ? port : int.Parse(gameServer.Port);
-            numericUpDown_EC_ServerQueryPort.Value = int.TryParse(serverConfig.ServerQueryPort, out var queryPort) ? queryPort : int.Parse(gameServer.QueryPort);
+            numericUpDown_EC_ServerQueryPort.IsEnabled = !_editConfigQueryUsesServerPort;
+            numericUpDown_EC_ServerQueryPort.ToolTip = _editConfigQueryUsesServerPort
+                ? LocalizationManager.Get("QueryPortUsesServerPort")
+                : null;
+            numericUpDown_EC_ServerQueryPort.Value = _editConfigQueryUsesServerPort
+                ? numericUpDown_EC_ServerPort.Value
+                : int.TryParse(serverConfig.ServerQueryPort, out var queryPort) ? queryPort : int.Parse(gameServer.QueryPort);
             textbox_EC_ServerMap.Text = serverConfig.ServerMap;
             textbox_EC_ServerGSLT.Text = serverConfig.ServerGSLT;
             textbox_EC_ServerParam.Text = serverConfig.ServerParam;
@@ -4748,6 +5204,14 @@ namespace WindowsGSM
             numericUpDown_EC_Cod1AlliesBots.Value = int.TryParse(serverConfig.Cod1AlliesBots, out var alliesBots) ? alliesBots : 0;
             numericUpDown_EC_Cod1AxisBots.Value = int.TryParse(serverConfig.Cod1AxisBots, out var axisBots) ? axisBots : 0;
             return true;
+        }
+
+        private void NumericUpDown_EC_ServerPort_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double?> e)
+        {
+            if (_editConfigQueryUsesServerPort && e.NewValue.HasValue)
+            {
+                numericUpDown_EC_ServerQueryPort.Value = e.NewValue.Value;
+            }
         }
 
         private void Button_EditConfig_Save_Click(object sender, RoutedEventArgs e)
@@ -4796,7 +5260,10 @@ namespace WindowsGSM
             ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerIP, textbox_EC_ServerIP.Text.Trim());
             ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerMaxPlayer, numericUpDown_EC_ServerMaxplayer.Value.ToString());
             ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerPort, numericUpDown_EC_ServerPort.Value.ToString());
-            ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerQueryPort, numericUpDown_EC_ServerQueryPort.Value.ToString());
+            string queryPort = QueryUsesServerPort(gameServer)
+                ? numericUpDown_EC_ServerPort.Value.ToString()
+                : numericUpDown_EC_ServerQueryPort.Value.ToString();
+            ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerQueryPort, queryPort);
             ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerMap, textbox_EC_ServerMap.Text.Trim());
             ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerGSLT, textbox_EC_ServerGSLT.Text.Trim());
             ServerConfig.SetSetting(serverId, ServerConfig.SettingName.ServerParam, textbox_EC_ServerParam.Text.Trim());
@@ -5336,6 +5803,11 @@ namespace WindowsGSM
         /// <param name="flyout"></param>
         private void ToggleMahappFlyout(Flyout flyout)
         {
+            if (!flyout.IsOpen)
+            {
+                CaptureFlyoutFocus(flyout);
+            }
+
             MahAppFlyout_DiscordAlert.IsOpen = flyout == MahAppFlyout_DiscordAlert && !MahAppFlyout_DiscordAlert.IsOpen;
             MahAppFlyout_EditConfig.IsOpen = flyout == MahAppFlyout_EditConfig && !MahAppFlyout_EditConfig.IsOpen;
             MahAppFlyout_ImportGameServer.IsOpen = flyout == MahAppFlyout_ImportGameServer && !MahAppFlyout_ImportGameServer.IsOpen;
@@ -5355,13 +5827,18 @@ namespace WindowsGSM
             hMenu_Home.Visibility = (HamburgerMenuControl.SelectedIndex == 0) ? Visibility.Visible : Visibility.Hidden;
             hMenu_Dashboard.Visibility = (HamburgerMenuControl.SelectedIndex == 1) ? Visibility.Visible : Visibility.Hidden;
             hMenu_Schedules.Visibility = (HamburgerMenuControl.SelectedIndex == 2) ? Visibility.Visible : Visibility.Hidden;
-            hMenu_Discordbot.Visibility = (HamburgerMenuControl.SelectedIndex == 3) ? Visibility.Visible : Visibility.Hidden;
+            hMenu_SharedInstallations.Visibility = (HamburgerMenuControl.SelectedIndex == 3) ? Visibility.Visible : Visibility.Hidden;
+            hMenu_Discordbot.Visibility = (HamburgerMenuControl.SelectedIndex == 4) ? Visibility.Visible : Visibility.Hidden;
 
             if (HamburgerMenuControl.SelectedIndex == 2)
             {
                 RefreshBackupSchedules();
             }
             else if (HamburgerMenuControl.SelectedIndex == 3)
+            {
+                RefreshSharedInstallations();
+            }
+            else if (HamburgerMenuControl.SelectedIndex == 4)
             {
                 label_DiscordBotCommands.Content = DiscordBot.Configs.GetCommandsList();
                 button_DiscordBotPrefixEdit.Content = LocalizationManager.Get("Edit");
@@ -5380,6 +5857,63 @@ namespace WindowsGSM
                 {
                     listBox_DiscordBotAdminList.SelectedItem = listBox_DiscordBotAdminList.Items[0];
                 }
+            }
+        }
+
+        private void Button_RefreshSharedInstallations_Click(object sender, RoutedEventArgs e)
+        {
+            RefreshSharedInstallations();
+        }
+
+        private void RefreshSharedInstallations()
+        {
+            try
+            {
+                var linkedServers = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+                foreach (ServerTable server in ServerGroups_GetAllServerRows())
+                {
+                    string installationId = new ServerConfig(server.ID).SharedInstallationId;
+                    if (string.IsNullOrWhiteSpace(installationId)) { continue; }
+
+                    if (!linkedServers.TryGetValue(installationId, out List<string> serverNames))
+                    {
+                        serverNames = new List<string>();
+                        linkedServers.Add(installationId, serverNames);
+                    }
+
+                    string serverName = string.IsNullOrWhiteSpace(server.Name) ? server.ID : server.Name;
+                    serverNames.Add(serverName + " (" + server.ID + ")");
+                }
+
+                var rows = SharedInstallationStore.GetInstallations()
+                    .Select(installation =>
+                    {
+                        linkedServers.TryGetValue(installation.Id, out List<string> serverNames);
+                        return new
+                        {
+                            installation.Id,
+                            Game = installation.GameKey,
+                            AppId = installation.AppId,
+                            State = installation.State,
+                            Build = installation.BuildId,
+                            Created = installation.CreatedUtc.ToLocalTime().ToString("g", CultureInfo.CurrentCulture),
+                            LinkedServers = serverNames == null ? string.Empty : string.Join(", ", serverNames)
+                        };
+                    })
+                    .ToList();
+
+                dataGrid_SharedInstallations.ItemsSource = rows;
+                textBlock_SharedInstallationsStatus.Text = rows.Count == 0
+                    ? LocalizationManager.Get("SharedInstallationsEmpty")
+                    : string.Empty;
+            }
+            catch (Exception exception) when (exception is IOException || exception is InvalidDataException || exception is UnauthorizedAccessException || exception is InvalidOperationException || exception is ArgumentException)
+            {
+                dataGrid_SharedInstallations.ItemsSource = null;
+                textBlock_SharedInstallationsStatus.Text = string.Format(
+                    CultureInfo.CurrentCulture,
+                    LocalizationManager.Get("SharedInstallationsLoadError"),
+                    exception.Message);
             }
         }
 
@@ -5409,9 +5943,13 @@ namespace WindowsGSM
             {
                 HamburgerMenuControl.SelectedIndex = 2;
             }
-            else if (hMenu_Discordbot.Visibility == Visibility.Visible)
+            else if (hMenu_SharedInstallations.Visibility == Visibility.Visible)
             {
                 HamburgerMenuControl.SelectedIndex = 3;
+            }
+            else if (hMenu_Discordbot.Visibility == Visibility.Visible)
+            {
+                HamburgerMenuControl.SelectedIndex = 4;
             }
         }
 
@@ -5421,6 +5959,7 @@ namespace WindowsGSM
             hMenu_Home.Visibility = Visibility.Visible;
             hMenu_Dashboard.Visibility = Visibility.Hidden;
             hMenu_Schedules.Visibility = Visibility.Hidden;
+            hMenu_SharedInstallations.Visibility = Visibility.Hidden;
             hMenu_Discordbot.Visibility = Visibility.Hidden;
 
             await Task.Delay(1); // Delay 0.001 sec due to a bug

@@ -66,7 +66,7 @@ namespace WindowsGSM
                 _serverGroupTargetId = null;
                 ServerGrid.Items.Filter = null;
                 comboBox_ServerGroupTarget.ItemsSource = null;
-                textBlock_ServerGroupStatus.Text = string.Format(LocalizationManager.Get("ServerGroupLoadFailed"), exception.Message);
+                SetAccessibleLiveText(textBlock_ServerGroupStatus, string.Format(LocalizationManager.Get("ServerGroupLoadFailed"), exception.Message));
                 ServerGroups_UpdateControls();
             }
         }
@@ -208,7 +208,7 @@ namespace WindowsGSM
             name = name.Trim();
             if (!ServerGroups_IsValidName(name, null, out string validationMessage))
             {
-                textBlock_ServerGroupStatus.Text = validationMessage;
+                SetAccessibleLiveText(textBlock_ServerGroupStatus, validationMessage);
                 return;
             }
 
@@ -245,7 +245,7 @@ namespace WindowsGSM
             name = name.Trim();
             if (!ServerGroups_IsValidName(name, group.Id, out string validationMessage))
             {
-                textBlock_ServerGroupStatus.Text = validationMessage;
+                SetAccessibleLiveText(textBlock_ServerGroupStatus, validationMessage);
                 return;
             }
 
@@ -299,12 +299,12 @@ namespace WindowsGSM
             ServerTable server = ServerGrid.SelectedItem as ServerTable;
             if (group == null)
             {
-                textBlock_ServerGroupStatus.Text = LocalizationManager.Get("ServerGroupSelectRequired");
+                SetAccessibleLiveText(textBlock_ServerGroupStatus, LocalizationManager.Get("ServerGroupSelectRequired"));
                 return;
             }
             if (server == null)
             {
-                textBlock_ServerGroupStatus.Text = LocalizationManager.Get("ServerGroupServerSelectRequired");
+                SetAccessibleLiveText(textBlock_ServerGroupStatus, LocalizationManager.Get("ServerGroupServerSelectRequired"));
                 return;
             }
             if (group.ServerIds.Contains(server.ID, StringComparer.OrdinalIgnoreCase)) { return; }
@@ -317,7 +317,7 @@ namespace WindowsGSM
                 return;
             }
 
-            textBlock_ServerGroupStatus.Text = string.Format(LocalizationManager.Get("ServerGroupAssigned"), group.Name);
+            SetAccessibleLiveText(textBlock_ServerGroupStatus, string.Format(LocalizationManager.Get("ServerGroupAssigned"), group.Name));
             ServerGroups_ApplySelectedFilter();
         }
 
@@ -327,12 +327,12 @@ namespace WindowsGSM
             ServerTable server = ServerGrid.SelectedItem as ServerTable;
             if (group == null)
             {
-                textBlock_ServerGroupStatus.Text = LocalizationManager.Get("ServerGroupSelectRequired");
+                SetAccessibleLiveText(textBlock_ServerGroupStatus, LocalizationManager.Get("ServerGroupSelectRequired"));
                 return;
             }
             if (server == null)
             {
-                textBlock_ServerGroupStatus.Text = LocalizationManager.Get("ServerGroupServerSelectRequired");
+                SetAccessibleLiveText(textBlock_ServerGroupStatus, LocalizationManager.Get("ServerGroupServerSelectRequired"));
                 return;
             }
 
@@ -346,7 +346,7 @@ namespace WindowsGSM
                 return;
             }
 
-            textBlock_ServerGroupStatus.Text = string.Format(LocalizationManager.Get("ServerGroupRemoved"), group.Name);
+            SetAccessibleLiveText(textBlock_ServerGroupStatus, string.Format(LocalizationManager.Get("ServerGroupRemoved"), group.Name));
             ServerGroups_ApplySelectedFilter();
         }
 
@@ -385,7 +385,7 @@ namespace WindowsGSM
 
         private void ServerGroups_ShowSaveError(string error)
         {
-            textBlock_ServerGroupStatus.Text = string.Format(LocalizationManager.Get("ServerGroupSaveFailed"), error);
+            SetAccessibleLiveText(textBlock_ServerGroupStatus, string.Format(LocalizationManager.Get("ServerGroupSaveFailed"), error));
         }
 
         private static bool IsExpectedServerGroupStorageException(Exception exception)
@@ -423,7 +423,7 @@ namespace WindowsGSM
             ServerGroup group = ServerGroups_GetSelectedGroup();
             if (group == null)
             {
-                textBlock_ServerGroupStatus.Text = LocalizationManager.Get("ServerGroupSelectRequired");
+                SetAccessibleLiveText(textBlock_ServerGroupStatus, LocalizationManager.Get("ServerGroupSelectRequired"));
                 return;
             }
 
@@ -432,7 +432,7 @@ namespace WindowsGSM
                 .ToList();
             if (servers.Count == 0)
             {
-                textBlock_ServerGroupStatus.Text = LocalizationManager.Get("ServerGroupNoMembers");
+                SetAccessibleLiveText(textBlock_ServerGroupStatus, LocalizationManager.Get("ServerGroupNoMembers"));
                 return;
             }
 
@@ -486,11 +486,13 @@ namespace WindowsGSM
                     await Dispatcher.Yield(DispatcherPriority.Background);
                 }
 
-                textBlock_ServerGroupStatus.Text = string.Format(
-                    LocalizationManager.Get("ServerGroupActionComplete"),
-                    succeeded,
-                    failed,
-                    skipped);
+                SetAccessibleLiveText(
+                    textBlock_ServerGroupStatus,
+                    string.Format(
+                        LocalizationManager.Get("ServerGroupActionComplete"),
+                        succeeded,
+                        failed,
+                        skipped));
             }
             finally
             {

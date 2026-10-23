@@ -234,10 +234,14 @@ namespace WindowsGSM.Installer
 
         public async Task<Process> Install(string serverId, string modName, string appId, bool validate = true, bool loginAnonymous = true)
         {
-            // Fix the SteamCMD issue
-            Directory.CreateDirectory(Path.Combine(ServerPath.GetServersServerFiles(serverId), "steamapps"));
+            return await InstallToPath(ServerPath.GetServersServerFiles(serverId), modName, appId, validate, loginAnonymous);
+        }
 
-            SetParameter(ServerPath.GetServersServerFiles(serverId), modName, appId, validate, loginAnonymous);
+        public async Task<Process> InstallToPath(string installPath, string modName, string appId, bool validate = true, bool loginAnonymous = true)
+        {
+            Directory.CreateDirectory(Path.Combine(installPath, "steamapps"));
+
+            SetParameter(installPath, modName, appId, validate, loginAnonymous);
             Process p = await Run();
             SendEnterPreventFreeze(p);
             return p;
@@ -246,7 +250,12 @@ namespace WindowsGSM.Installer
         // New
         public static async Task<(Process, string)> UpdateEx(string serverId, string appId, bool validate = true, bool loginAnonymous = true, string modName = null, string custom = null, bool embedConsole = true)
         {
-            string param = GetParameter(ServerPath.GetServersServerFiles(serverId), appId, validate, loginAnonymous, modName, custom);
+            return await UpdateExAtPath(ServerPath.GetServersServerFiles(serverId), serverId, appId, validate, loginAnonymous, modName, custom, embedConsole);
+        }
+
+        public static async Task<(Process, string)> UpdateExAtPath(string installPath, string serverId, string appId, bool validate = true, bool loginAnonymous = true, string modName = null, string custom = null, bool embedConsole = true)
+        {
+            string param = GetParameter(installPath, appId, validate, loginAnonymous, modName, custom);
             if (param == null)
             {
                 return (null, "Steam account not set up");
@@ -259,7 +268,7 @@ namespace WindowsGSM.Installer
             }
 
             // Fix the SteamCMD issue
-            Directory.CreateDirectory(Path.Combine(ServerPath.GetServersServerFiles(serverId), "steamapps"));
+            Directory.CreateDirectory(Path.Combine(installPath, "steamapps"));
 
             var p = new Process
             {
@@ -354,8 +363,13 @@ namespace WindowsGSM.Installer
 
         public string GetLocalBuild(string serverId, string appId)
         {
+            return GetLocalBuildAtPath(ServerPath.GetServersServerFiles(serverId), appId);
+        }
+
+        public string GetLocalBuildAtPath(string installPath, string appId)
+        {
             string manifestFile = $"appmanifest_{appId}.acf";
-            string manifestPath = Path.Combine(ServerPath.GetServersServerFiles(serverId), "steamapps", manifestFile);
+            string manifestPath = Path.Combine(installPath, "steamapps", manifestFile);
 
             if (!File.Exists(manifestPath))
             {
