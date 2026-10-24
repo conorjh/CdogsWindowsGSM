@@ -13,7 +13,7 @@ namespace WindowsGSM.GameServer
     class COD1 : Engine.ISharedInstallationProvider
     {
         private const string AppId = "2620";
-        private const string ModDirectoryName = "CoD1MeatBots_RC2";
+        internal const string ModDirectoryName = "CoD1MeatBots_RC2";
         private const string FastDlBaseUrl = "https://cdogservers.net/cod1/";
         private const string ModArchiveUrl = "https://www.moddb.com/downloads/start/216746/all";
         private const string ModPageUrl = "https://www.moddb.com/games/call-of-duty/downloads/cod1-meatbot-v02";

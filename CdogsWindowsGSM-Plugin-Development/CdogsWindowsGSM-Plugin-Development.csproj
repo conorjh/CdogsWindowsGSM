@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+	<OutputType>Exe</OutputType>
+	<TargetFramework>net10.0-windows10.0.19041</TargetFramework>
+	<RuntimeIdentifier>win-x64</RuntimeIdentifier>
+	<EnableWindowsTargeting>true</EnableWindowsTargeting>
+	<RootNamespace>CdogsWindowsGSM_Plugin_Development</RootNamespace>
+	<AssemblyName>CdogsWindowsGSM-Plugin-Development</AssemblyName>
+	<GenerateAssemblyInfo>false</GenerateAssemblyInfo>
+	<ImplicitUsings>disable</ImplicitUsings>
+	<Nullable>disable</Nullable>
+	<LangVersion>latest</LangVersion>
+  </PropertyGroup>
+<ItemGroup>
+  <ProjectReference Include="..\CdogsWindowsGSM\CdogsWindowsGSM.csproj" />
+</ItemGroup>
+</Project>

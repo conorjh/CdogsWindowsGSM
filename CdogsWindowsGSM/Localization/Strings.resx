@@ -88,6 +88,8 @@
 	<data name="UseSharedInstallation"><value>Use shared installation</value></data>
 	<data name="ReuseSharedInstallation"><value>Reusing the existing shared Rust installation.</value></data>
 	<data name="SharedInstallationUnsupported"><value>Shared installations are not supported for the selected game.</value></data>
+	<data name="GameServerIntegrationUnavailable"><value>The game server integration could not be loaded.</value></data>
+	<data name="RustSharedInstallationUnavailable"><value>Rust shared installations are temporarily disabled. Rust requires its working directory to contain server bundles, and this build has not verified a separate per-instance data root. Existing shared Rust files are left untouched; shared Rust servers cannot be started or updated. Use a private install for new Rust servers.</value></data>
   <data name="SharedInstallationInvalidId"><value>A valid shared installation ID is required.</value></data>
   <data name="SharedInstallationInstallInProgress"><value>A shared installation for this game is already being installed.</value></data>
   <data name="SharedInstallationMultipleReady"><value>Multiple ready shared installations were found for this game.</value></data>
@@ -95,6 +97,7 @@
   <data name="SharedInstallationNotReady"><value>The shared installation is not ready.</value></data>
   <data name="SharedInstallationUpdateInProgress"><value>The shared installation is being updated. Try again after the update finishes.</value></data>
   <data name="SharedInstallationInUse"><value>The shared installation is in use. Stop all instances before updating it.</value></data>
+	<data name="SharedInstallationUpdateImpact"><value>This update affects the shared game files used by these server instances: {0}. All linked instances must remain stopped during the update. Continue?</value></data>
   <data name="SharedInstallationRegistryBusy"><value>Another shared installation operation is in progress.</value></data>
   <data name="SharedInstallationRegistryInvalid"><value>The shared installation registry is invalid.</value></data>
   <data name="SharedInstallationStateInvalid"><value>The shared installation is not in the expected installing state.</value></data>
@@ -110,6 +113,9 @@
   <data name="SharedInstallationServersColumn"><value>Linked servers</value></data>
 	<data name="SharedInstallationDeleteConfirmation"><value>If this is the last server linked to the installation, its shared game files will also be deleted.</value></data>
   <data name="SharedInstallationDeleteFailed"><value>The server was deleted, but its shared installation could not be removed and was retained for safety: {0}</value></data>
+	<data name="SharedInstallationOwnerRestoreBlocked"><value>This server owns shared game files used by other linked servers. A full restore would replace those files. Delete or unlink the other servers before restoring this server.</value></data>
+	<data name="SharedInstallationCleanupFailed"><value>The incomplete shared installation could not be safely removed: {0}</value></data>
+	<data name="SharedInstallationCleanupNoUnreferencedRecord"><value>It is still referenced by a server or its registry record is unavailable.</value></data>
   <data name="CfxLicenseKeyFromPortal"><value>CFX license key (from portal.cfx.re)</value></data>
   <data name="InstallMeatBots"><value>Install MeatBots</value></data>
   <data name="SetAccount"><value>Set Account</value></data>
@@ -305,6 +311,10 @@
   <data name="StatusRestarting"><value>Restarting</value></data>
 	<data name="BackupSchedules"><value>Scheduled Backups</value></data>
   <data name="ScheduleGame"><value>Game</value></data>
+	<data name="ScheduleBackupType"><value>Backup type</value></data>
+  <data name="BackupTypeFullServer"><value>Full server</value></data>
+	<data name="FullBackup"><value>Full Backup</value></data>
+  <data name="BackupTypeConfiguration"><value>Configuration only</value></data>
   <data name="ScheduleEnabled"><value>Enabled</value></data>
 	<data name="ScheduleSummary"><value>Schedule</value></data>
   <data name="ScheduleFrequency"><value>Repeat</value></data>
@@ -328,6 +338,7 @@
   <data name="ScheduleResultDetails"><value>Details</value></data>
 	<data name="ScheduleBackupStorage"><value>Backup location: {0} (keep {1} backups)</value></data>
   <data name="ScheduleBackupStorageError"><value>Backup location and retention could not be read: {0}</value></data>
+	<data name="ScheduleConfigurationBackupHint"><value>Configuration backups include only the approved files for this game and instance; shared binaries and unrelated server files are excluded.</value></data>
 	<data name="ServerHealth"><value>Health</value></data>
   <data name="HealthHealthy"><value>Healthy</value></data>
   <data name="HealthWarning"><value>Warning</value></data>
@@ -397,6 +408,13 @@
 	<data name="UpdateServerConfirmation"><value>Do you want to update this server?</value></data>
   <data name="ValidateServerConfirmation"><value>Do you want to validate this server?</value></data>
   <data name="BackupServerConfirmation"><value>Do you want to back up this server?</value></data>
+	<data name="ConfigurationBackup"><value>Configuration-only backup</value></data>
+  <data name="ConfigurationBackupConfirmation"><value>Create a configuration-only backup for '{0}'?&#xA;&#xA;Included paths:&#xA;{1}&#xA;&#xA;Shared binaries and all other server files are excluded.</value></data>
+  <data name="ConfigurationBackupRestoreConfirmation"><value>Restore configuration files to '{0}'?&#xA;&#xA;Only these paths will be merged; shared binaries and all other server files remain unchanged:&#xA;{1}&#xA;&#xA;A pre-restore snapshot will be created if the current configuration file exists.</value></data>
+	<data name="ConfigurationBackupUnsupported"><value>Configuration-only backups are not enabled for the selected game or plugin.</value></data>
+  <data name="ConfigurationBackupSnapshotCreated"><value>Pre-restore configuration snapshot created: {0}</value></data>
+	<data name="ConfigurationBackupSnapshotUnavailable"><value>No current configuration files were available to snapshot before restore.</value></data>
+  <data name="ConfigurationBackupResult"><value>Configuration backup includes: {0}</value></data>
   <data name="SaveButton"><value>Save</value></data>
 	<data name="AddButton"><value>Add</value></data>
   <data name="DiscordWebhookTitle"><value>Discord Webhook URL</value></data>

@@ -303,5 +303,18 @@ namespace WindowsGSM.Plugins
                 return string.Empty;
             }
         }
+
+        public PluginBackupPlan GetConfigOnlyBackupPlan(PluginInstanceContext context)
+        {
+            if (context == null)
+            {
+                throw new ArgumentNullException(nameof(context));
+            }
+
+            return new PluginBackupPlan(new[]
+            {
+                new ConfigurationBackupPath("serverfiles", "server.properties")
+            });
+        }
     }
 }

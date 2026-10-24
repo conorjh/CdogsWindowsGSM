@@ -4,16 +4,25 @@
 
 This checklist collects live Windows evidence for the [Alpha roadmap](MULTI-INSTANCE-ALPHA-ROADMAP.md). Test only the features and games included in the exact candidate build you were given; record anything that is unclear or unavailable as **Blocked**, not as a pass.
 
+## Latest pilot report — 24 October 2026
+
+This progress snapshot records the tester's report; the live results have not been independently reproduced here.
+
+| Area | Reported result | Still open |
+|---|---|---|
+| Shared-install checks (SH series) | On the Team Fortress Classic (TFC) pilot, the tester reports the shared install looks good and the SH checks were completed except for update. | Do not count the shared-install update check as passed; update behavior remains unqualified. Selection is now enabled for the 10 Source titles, 7 GoldSrc titles, COD1, and Minecraft Bedrock; these additional providers have not been live-qualified. |
+| BK-03 | Skipped. | Corrupt/truncated and mismatched-archive rejection has not been live-tested. |
+| PL-01 and PL-02 | Not done. | Live plugin v1/v2 loading, capability diagnostics, and cache behavior remain unqualified. |
+| AL-01 | Clean-machine test not done. | Fresh Windows app/updater launch and update remain unqualified. |
+| Rust shared-start failure | The prior E: test log shows Rust looking for `Bundles\\Bundles` under the per-instance `serverfiles` directory instead of the shared install. | Rust shared-install selection and start/update operations are now gated in code; existing shared files are preserved. Private Rust and config-only backup remain available. Re-enable sharing only after a supported asset-root/per-instance-data model is verified. |
+
+The app/test project build succeeded; all 41 test-project tests and all 8 `BuiltInGameCapabilitiesTests` passed. These checks validate host capability gates and path plans only; they do not substitute for any of the remaining live checks above.
+
 ## Highest-priority test
 
-If you can test only one lane, use a disposable Counter-Strike 1.6 (GoldSrc) setup:
+If you can test only one lane, finish SH-04 for the existing TFC pilot on a disposable shared installation. Do not use a valuable install for the update check.
 
-1. Run two server instances from one shared game installation at the same time.
-2. Prove each instance has its own configuration, map cycle, ports, logs, saves, and process controls.
-3. Create and restore a config-only backup for one instance; prove the other instance and shared binaries are untouched.
-4. Confirm the existing full-server backup route still works on a disposable copy.
-
-After this passes, test a second GoldSrc mod such as Day of Defeat for mod-specific paths. Rust config-only backup/restore is a separate optional pilot when the maintainer confirms the build and disk space are suitable; live Rust shared-install qualification is not part of the first pilot.
+The tester reports the other SH checks complete for TFC, but that report has not been independently reproduced and does not qualify other providers. Source games, CoD1, other GoldSrc titles, and Minecraft Bedrock are now selectable but still need game-specific live tests on disposable installations. Rust and plugins remain unavailable; do not force the option or manually attach a shared installation for them. Rust config-only backup/restore is a separate optional test when the maintainer confirms the build and disk space are suitable.
 
 ## Before testing
 
@@ -31,13 +40,14 @@ After this passes, test a second GoldSrc mod such as Day of Defeat for mod-speci
 
 | Priority | Candidate | What to test |
 |---|---|---|
-| P0 | GoldSrc Counter-Strike 1.6 | Two concurrent instances sharing one install; isolation; config-only and full backup/restore; update impact and safe removal. |
-| P1 | GoldSrc Day of Defeat or another assigned mod | Mod-specific config and map-cycle selection; repeat the isolation checks that apply. |
-| P1 | Plugin v1 and v2 examples | v1 compatibility; v2 capability reporting and host validation; cache behavior if diagnostics are available. |
+| P0 | Existing Team Fortress Classic (TFC) pilot | Complete the outstanding shared-install update check (SH-04) on a disposable install; capture impact, result, and recovery evidence. |
+| P1 | Minecraft Bedrock shared install and config-only backup | On disposable instances, verify separate properties/allowlist/permissions and world data; test two instances, update exclusion while running, and that config-only backup/restore touches only the three declared files. |
+| P1 | Plugin v1 and v2 examples | v1 compatibility; v2 capability reporting and host validation; cache behavior if diagnostics are available. Do not test plugin shared binaries. |
 | P1 | Clean supported Windows VM | Self-contained app and updater launch/update without developer-machine dependencies. |
 | Optional | Rust config-only backup/restore | Test only when assigned and there is sufficient disposable storage. |
-| By assignment | Source-derived games, CoD1, or a named plugin provider | Test only when the exact game/provider is listed as supported in the candidate's Alpha matrix. |
-| Out of scope unless explicitly enabled | SDK2013 shared installs, private-to-shared migration, unqualified plugin providers | Do not infer support from a visible option or detected plugin method. |
+| Not live-qualified | Source-derived games, CoD1, non-TFC GoldSrc titles, and Minecraft Bedrock | Shared-install selection is enabled, but these providers have not completed game-specific live qualification. TFC's reported update check remains open. Do not infer runtime approval from an engine family or an old server configuration. |
+| Gated | Rust shared installs and all plugins | The shared-install option is unavailable for these providers in this candidate. Do not force it or infer runtime approval from method signatures. |
+| Out of scope unless explicitly enabled | SDK2013 shared installs, private-to-shared migration | Do not attempt these workflows. |
 
 ## Shared-install pilot
 
@@ -45,7 +55,7 @@ Use the supported shared-install workflow in the candidate. If the workflow or e
 
 ### SH-01 — Create two instances from one install
 
-- [ ] Start with a fresh, disposable GoldSrc installation; do not convert an existing private install.
+- [ ] Use a disposable Team Fortress Classic (TFC) shared installation; do not convert an existing private install.
 - [ ] Create two server instances with distinct IDs, names, and non-conflicting ports, both referencing the same shared installation.
 - [ ] Record the instance IDs and the shared-install path/identifier shown by the app.
 
@@ -154,6 +164,7 @@ Use the sample plugins supplied with the candidate or by the maintainer; you do 
 ### AL-02 — Core workflow and accessibility smoke test
 
 - [ ] If the candidate includes a normal private server workflow, install or import a disposable server; start, stop, restart, use the console, and check logs.
+- [ ] Open the Server Files and Server Configs browse actions for a private and a shared instance. Confirm the app stays open and Server Files opens the selected instance's own `servers\<id>\serverfiles` folder; shared binaries are kept in the separate installation.
 - [ ] Verify health/query states distinguish a running process from a supported query result; an unsupported or never-verified query should not be presented as a confirmed failure.
 - [ ] Use keyboard-only navigation through the main server and backup flows. Check focus order, visible focus, labels, and whether dialogs can be completed without a mouse.
 - [ ] If available, use Narrator or NVDA for the same flows. Check high-contrast mode and a non-default display scale; report clipped text, hidden controls, or missing announcements.

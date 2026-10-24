@@ -7,14 +7,14 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace WindowsGSM_Plugin_Development
+namespace CdogsWindowsGSM_Plugin_Development
 {
     class Program
     {
         static void Main(string[] args)
         {
             Console.BackgroundColor = ConsoleColor.DarkBlue;
-            var title = "Welcome to WindowsGSM Plugin Development Environment";
+            var title = "Welcome to CdogsWindowsGSM Plugin Development Environment";
             Console.WriteLine($"\t{string.Concat(Enumerable.Repeat("-", title.Length))}\t\t");
             Console.WriteLine($"\t{title}\t\t");
             Console.WriteLine($"\t{string.Concat(Enumerable.Repeat("-", title.Length))}\t\t");
@@ -36,7 +36,7 @@ namespace WindowsGSM_Plugin_Development
             }
 
             var wgsmPlugins = Directory.CreateDirectory(Path.Combine(appOutputDirectory, "plugins")).FullName;
-            var localPlugins = Path.Combine(repositoryRoot, "WindowsGSM-Plugin-Development", "Plugins");
+            var localPlugins = Path.Combine(repositoryRoot, "CdogsWindowsGSM-Plugin-Development", "Plugins");
 
             Console.Write("\nSearching your new plugins in ");
             Console.ForegroundColor = ConsoleColor.Yellow;

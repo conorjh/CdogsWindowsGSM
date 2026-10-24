@@ -137,7 +137,7 @@ namespace WindowsGSM
         public static readonly string WGSM_VERSION = "v" + System.Reflection.CustomAttributeExtensions.GetCustomAttribute<System.Reflection.AssemblyInformationalVersionAttribute>(System.Reflection.Assembly.GetExecutingAssembly()).InformationalVersion;
         public static readonly int MAX_SERVER = 256;
         public static readonly string WGSM_PATH = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName);
-        public static readonly string DEFAULT_THEME = "Cyan";
+        public static readonly string DEFAULT_THEME = "Emerald";
         private const string LatestReleaseApiUrl = "https://api.github.com/repos/conorjh/CdogsWindowsGSM/releases/latest";
         private const string UpdaterAssetUrl = "https://github.com/conorjh/CdogsWindowsGSM/releases/latest/download/CdogsWindowsGSM-Updater.exe";
         private const string UpdaterFileName = "CdogsWindowsGSM-Updater.exe";
@@ -164,6 +164,8 @@ namespace WindowsGSM
         private bool _flyoutFocusCaptured;
         private readonly Random _mapRotationRandom = new Random();
         private readonly System.Windows.Threading.DispatcherTimer _backupScheduleTimer = new System.Windows.Threading.DispatcherTimer();
+        private bool _isLoadingBackupScheduleEditor;
+        private bool _backupScheduleTimeChanged;
         private DateTime _backupScheduleStartedAt;
         private DateTime _backupScheduleLastTickAt;
         private bool _backupScheduleTickRunning;
@@ -542,6 +544,7 @@ namespace WindowsGSM
                 else
                 {
                     loadedCount++;
+                    Log("Plugins", $"{plugin.FileName} loaded with API v{plugin.ApiVersion}; capabilities: {plugin.Capabilities}.");
                     var converter = new BrushConverter();
                     Brush brush;
                     try
@@ -650,7 +653,7 @@ namespace WindowsGSM
 
         private void Hyperlink_RequestNavigate(object sender, System.Windows.Navigation.RequestNavigateEventArgs e)
         {
-            Process.Start(e.Uri.AbsoluteUri);
+            OpenWithShell(e.Uri.AbsoluteUri);
         }
 
         private async void ImportPlugin_Click(object sender, RoutedEventArgs e)
@@ -856,7 +859,9 @@ namespace WindowsGSM
 
         private static bool QueryUsesServerPort(object gameServer)
         {
-            return gameServer is GameServer.Engine.Source || gameServer is GameServer.Engine.GoldSource;
+            return gameServer is GameServer.Engine.Source ||
+                gameServer is GameServer.Engine.GoldSource ||
+                gameServer is GameServer.MCBE;
         }
 
         private static string GetQueryPortDisplay(ServerConfig serverConfig, object gameServer, int? detectedMainPort)
@@ -1260,9 +1265,40 @@ namespace WindowsGSM
 
         private void DataGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            UpdateConfigurationBackupMenuVisibility(ServerGrid.SelectedItem as ServerTable);
             if (ServerGrid.SelectedIndex != -1)
             {
                 DataGrid_RefreshElements();
+            }
+        }
+
+        private void UpdateConfigurationBackupMenuVisibility(ServerTable server)
+        {
+            if (menuItem_ConfigurationBackup != null)
+            {
+                menuItem_ConfigurationBackup.Visibility = IsConfigurationBackupSupported(server?.Game)
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
+            }
+        }
+
+        private void ServerRowContextMenu_Opened(object sender, RoutedEventArgs e)
+        {
+            System.Windows.Controls.ContextMenu contextMenu = sender as System.Windows.Controls.ContextMenu;
+            if (contextMenu == null) { return; }
+
+            DataGridRow row = contextMenu.PlacementTarget as DataGridRow;
+            ServerTable server = row?.Item as ServerTable ?? ServerGrid.SelectedItem as ServerTable;
+            System.Windows.Controls.MenuItem backupMenuItem = contextMenu.Items.OfType<System.Windows.Controls.MenuItem>()
+                .FirstOrDefault(item => item.Name == "menuItem_Backup_Context");
+            System.Windows.Controls.MenuItem configurationBackupItem = backupMenuItem?.Items
+                .OfType<System.Windows.Controls.MenuItem>()
+                .FirstOrDefault(item => item.Name == "menuItem_ConfigurationBackup_Context");
+            if (configurationBackupItem != null)
+            {
+                configurationBackupItem.Visibility = IsConfigurationBackupSupported(server?.Game)
+                    ? Visibility.Visible
+                    : Visibility.Collapsed;
             }
         }
 
@@ -1476,15 +1512,35 @@ namespace WindowsGSM
             string servername = textbox_InstallServerName.Text;
             string servergame = selectedgame.Name;
             bool isRust = IsRustGame(servergame);
+            bool isBedrock = string.Equals(servergame, GameServer.MCBE.FullName, StringComparison.Ordinal);
             bool useSharedInstallation = checkBox_Install_SharedInstallation.IsChecked == true;
             object gameServerObject = GameServer.Data.Class.Get(servergame, newServerConfig, PluginsList);
             dynamic gameServer = gameServerObject;
-            GameServer.Engine.ISharedInstallationProvider sharedProvider = gameServerObject as GameServer.Engine.ISharedInstallationProvider;
-            bool isSupportedSharedProvider = sharedProvider != null && gameServerObject.GetType().Assembly == typeof(GameServer.RUST).Assembly;
-            if (useSharedInstallation && !isSupportedSharedProvider)
+            GameServer.Engine.ISharedInstallationProvider sharedProvider = null;
+            PluginSharedInstallationAdapter pluginSharedProvider = null;
+            string sharedInstallationAppId = null;
+            string sharedInstallationExecutableName = null;
+            if (useSharedInstallation && !TryGetSharedInstallationProvider(
+                gameServerObject,
+                servergame,
+                out sharedProvider,
+                out pluginSharedProvider,
+                out sharedInstallationAppId,
+                out sharedInstallationExecutableName,
+                out string sharedProviderError))
             {
-                MessageBox.Show(LocalizationManager.Get("SharedInstallationUnsupported"), LocalizationManager.Get("ErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(
+                    string.IsNullOrWhiteSpace(sharedProviderError)
+                        ? LocalizationManager.Get("SharedInstallationUnsupported")
+                        : sharedProviderError,
+                    LocalizationManager.Get("ErrorTitle"),
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Error);
                 return;
+            }
+            if ((isRust || isBedrock) && sharedProvider == null)
+            {
+                sharedProvider = gameServerObject as GameServer.Engine.ISharedInstallationProvider;
             }
 
             bool isCod1 = IsCod1Game(servergame);
@@ -1531,7 +1587,11 @@ namespace WindowsGSM
             {
                 try
                 {
-                    sharedInstallation = SharedInstallationStore.ResolveOrCreate(servergame, sharedProvider.SharedInstallationAppId, sharedProvider.SharedInstallationExecutableName);
+                    sharedInstallation = SharedInstallationStore.ResolveOrCreate(
+                        newServerConfig.ServerID,
+                        servergame,
+                        sharedInstallationAppId,
+                        sharedInstallationExecutableName);
                     newServerConfig.SharedInstallationId = sharedInstallation.InstallationId;
                 }
                 catch (Exception exception) when (exception is ArgumentException || exception is IOException || exception is InvalidDataException || exception is UnauthorizedAccessException || exception is InvalidOperationException)
@@ -1550,6 +1610,7 @@ namespace WindowsGSM
             button_Install.IsEnabled = false;
             textbox_InstallLog.Text = string.Empty;
 
+            SharedInstallationOperationResult sharedBinaryInstallResult = null;
             if (useSharedInstallation && !sharedInstallation.Created)
             {
                 AppendLogText(textbox_InstallLog, LocalizationManager.Get("ReuseSharedInstallation") + Environment.NewLine);
@@ -1557,7 +1618,37 @@ namespace WindowsGSM
             }
             else if (useSharedInstallation)
             {
-                Installer = await sharedProvider.InstallSharedBinaries();
+                if (pluginSharedProvider != null)
+                {
+                    sharedBinaryInstallResult = await InvokeSharedBinaryInstallAsync(
+                        () => pluginSharedProvider.InstallSharedBinaries(new SharedInstallationContext(
+                            sharedInstallation.InstallationId,
+                            servergame,
+                            sharedInstallationAppId,
+                            sharedInstallationExecutableName,
+                            SharedInstallationStore.GetServerBinaryRoot(sharedInstallation.InstallationId))),
+                        () => Convert.ToString(gameServer.Error),
+                        () => gameServer.IsInstallValid(),
+                        servergame,
+                        "installing shared binaries");
+                    Installer = sharedBinaryInstallResult.Process;
+                }
+                else if (sharedProvider != null)
+                {
+                    sharedBinaryInstallResult = await InvokeSharedBinaryInstallAsync(
+                        () => sharedProvider.InstallSharedBinaries(),
+                        () => Convert.ToString(gameServer.Error),
+                        () => gameServer.IsInstallValid(),
+                        servergame,
+                        "installing shared binaries");
+                    Installer = sharedBinaryInstallResult.Process;
+                }
+                else
+                {
+                    sharedBinaryInstallResult = SharedInstallationOperationResult.Failed(
+                        "No shared-install provider is available for the selected game.");
+                    Installer = null;
+                }
             }
             else
             {
@@ -1566,33 +1657,46 @@ namespace WindowsGSM
 
             if (Installer != null)
             {
-                //Wait installer exit. Example: steamcmd.exe
+                Process installer = Installer;
                 await Task.Run(() =>
                 {
-                    var reader = Installer.StandardOutput;
-                    while (!reader.EndOfStream)
+                    if (installer.StartInfo.RedirectStandardOutput)
                     {
-                        var nextLine = reader.ReadLine();
-                        if (nextLine.Contains("Logging in user "))
+                        var reader = installer.StandardOutput;
+                        while (!reader.EndOfStream)
                         {
-                            nextLine += Environment.NewLine + "Please send the Login Token:";
-                        }
+                            var nextLine = reader.ReadLine();
+                            if (nextLine.Contains("Logging in user "))
+                            {
+                                nextLine += Environment.NewLine + "Please send the Login Token:";
+                            }
 
-                        System.Windows.Application.Current.Dispatcher.Invoke(() =>
-                        {
-                            AppendLogText(textbox_InstallLog, nextLine + Environment.NewLine);
-                        });
+                            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                            {
+                                AppendLogText(textbox_InstallLog, nextLine + Environment.NewLine);
+                            });
+                        }
                     }
 
-                    Installer?.WaitForExit();
+                    installer.WaitForExit();
                 });
             }
 
-            string installFailure = Installer == null
-                ? (useSharedInstallation && sharedInstallation != null && !sharedInstallation.Created
-                    ? string.Empty
-                    : (string.IsNullOrWhiteSpace(gameServer.Error) ? "Installer did not return a process." : gameServer.Error))
-                : (Installer.ExitCode == 0 ? string.Empty : $"Installer exited with code {Installer.ExitCode}.");
+            string installFailure;
+            if (useSharedInstallation && sharedInstallation != null && !sharedInstallation.Created)
+            {
+                installFailure = string.Empty;
+            }
+            else if (useSharedInstallation)
+            {
+                installFailure = GetSharedInstallationFailure(sharedBinaryInstallResult);
+            }
+            else
+            {
+                installFailure = Installer == null
+                    ? (string.IsNullOrWhiteSpace(gameServer.Error) ? "Installer did not return a process." : gameServer.Error)
+                    : (Installer.ExitCode == 0 ? string.Empty : $"Installer exited with code {Installer.ExitCode}.");
+            }
             bool baseInstallValid = isCod1 ? gameServer.IsBaseInstallValid() : gameServer.IsInstallValid();
             if (isCod1 && (!useSharedInstallation || (sharedInstallation != null && sharedInstallation.Created)) &&
                 (!baseInstallValid || Installer == null || Installer.ExitCode != 0))
@@ -1636,7 +1740,11 @@ namespace WindowsGSM
             bool sharedBinariesReady = !useSharedInstallation || !sharedInstallation.Created;
             if (useSharedInstallation && sharedInstallation.Created)
             {
-                if (baseInstallValid && ((Installer != null && Installer.ExitCode == 0) || isCod1))
+                bool sharedBinaryInstallSucceeded = sharedBinaryInstallResult != null &&
+                    (sharedBinaryInstallResult.Status == SharedInstallationOperationStatus.Succeeded ||
+                        (sharedBinaryInstallResult.Status == SharedInstallationOperationStatus.Started &&
+                            Installer != null && Installer.ExitCode == 0));
+                if (baseInstallValid && (sharedBinaryInstallSucceeded || isCod1))
                 {
                     try
                     {
@@ -1647,32 +1755,9 @@ namespace WindowsGSM
                     catch (Exception exception) when (exception is IOException || exception is InvalidDataException || exception is UnauthorizedAccessException || exception is InvalidOperationException)
                     {
                         installFailure = exception.Message;
-                        try
-                        {
-                            SharedInstallationStore.MarkFailed(sharedInstallation.InstallationId);
-                        }
-                        catch (Exception failureException) when (failureException is IOException || failureException is InvalidDataException || failureException is UnauthorizedAccessException || failureException is InvalidOperationException)
-                        {
-                            installFailure += Environment.NewLine + failureException.Message;
-                        }
-                    }
-                }
-                else
-                {
-                    try
-                    {
-                        SharedInstallationStore.MarkFailed(sharedInstallation.InstallationId);
-                    }
-                    catch (Exception exception) when (exception is IOException || exception is InvalidDataException || exception is UnauthorizedAccessException || exception is InvalidOperationException)
-                    {
-                        installFailure = string.IsNullOrWhiteSpace(installFailure)
-                            ? exception.Message
-                            : installFailure + Environment.NewLine + exception.Message;
                     }
                 }
             }
-
-            sharedInstallation?.Dispose();
 
             bool installValid = sharedBinariesReady && baseInstallValid && string.IsNullOrWhiteSpace(componentFailure) && gameServer.IsInstallValid();
             if (installValid)
@@ -1693,9 +1778,33 @@ namespace WindowsGSM
                     newServerConfig.CfxLicenseKey = passwordBox_Install_CfxLicenseKey.Password.Trim();
                 }
 
-                if (isRust || useSharedInstallation)
+                if (isRust || isBedrock || useSharedInstallation)
                 {
-                    if (!await sharedProvider.InstallConfigOnly())
+                    if (useSharedInstallation && pluginSharedProvider != null)
+                    {
+                        SharedInstallationOperationResult configResult = await InvokePluginConfigOnlyOperationAsync(
+                            () => pluginSharedProvider.InstallConfigOnly(new ServerInstanceContext(
+                                newServerConfig.ServerID,
+                                servergame,
+                                newServerConfig.SharedInstallationId,
+                                SharedInstallationStore.GetServerBinaryRoot(newServerConfig.SharedInstallationId),
+                                ServerPath.GetServersServerFiles(newServerConfig.ServerID))),
+                            servergame,
+                            "preparing instance configuration");
+                        if (configResult.Status != SharedInstallationOperationStatus.Succeeded)
+                        {
+                            installValid = false;
+                            installFailure = configResult.Status == SharedInstallationOperationStatus.Started
+                                ? "The plugin returned a running process for config-only setup."
+                                : configResult.ErrorMessage;
+                        }
+                    }
+                    else if (sharedProvider == null)
+                    {
+                        installValid = false;
+                        installFailure = "No config-only provider is available for the selected game.";
+                    }
+                    else if (!await sharedProvider.InstallConfigOnly())
                     {
                         installValid = false;
                         installFailure = gameServer.Error;
@@ -1710,9 +1819,47 @@ namespace WindowsGSM
                     : gameServer.Error;
             }
 
+            if (!installValid)
+            {
+                string failedInstallationId = sharedInstallation != null && sharedInstallation.Created
+                    ? sharedInstallation.InstallationId
+                    : null;
+                sharedInstallation?.Dispose();
+                sharedInstallation = null;
+
+                if (!string.IsNullOrWhiteSpace(failedInstallationId))
+                {
+                    try
+                    {
+                        if (!SharedInstallationStore.DeleteIfUnreferenced(failedInstallationId))
+                        {
+                            installFailure += Environment.NewLine + string.Format(
+                                LocalizationManager.Get("SharedInstallationCleanupFailed"),
+                                LocalizationManager.Get("SharedInstallationCleanupNoUnreferencedRecord"));
+                        }
+                    }
+                    catch (Exception exception) when (exception is ArgumentException || exception is IOException ||
+                        exception is InvalidDataException || exception is UnauthorizedAccessException ||
+                        exception is InvalidOperationException)
+                    {
+                        installFailure += Environment.NewLine + string.Format(
+                            LocalizationManager.Get("SharedInstallationCleanupFailed"),
+                            exception.Message);
+                    }
+                }
+            }
+
             if (installValid)
             {
-                newServerConfig.CreateWindowsGSMConfig();
+                try
+                {
+                    newServerConfig.CreateWindowsGSMConfig();
+                }
+                finally
+                {
+                    sharedInstallation?.Dispose();
+                    sharedInstallation = null;
+                }
 
                 // Create WindowsGSM.cfg and game server config
                 try
@@ -1731,7 +1878,7 @@ namespace WindowsGSM
                             Log(newServerConfig.ServerID, servergame + " config: " + cfxServer.Notice);
                         }
                     }
-                    else if (!isRust && !useSharedInstallation)
+                    else if (!isRust && !isBedrock && !useSharedInstallation)
                     {
                         gameServer.CreateServerCFG();
                     }
@@ -1790,8 +1937,7 @@ namespace WindowsGSM
             {
                 object gameServerObject = GameServer.Data.Class.Get(selectedgame.Name, pluginList: PluginsList);
                 dynamic gameServer = gameServerObject;
-                bool isSupportedSharedProvider = gameServerObject is GameServer.Engine.ISharedInstallationProvider &&
-                    gameServerObject.GetType().Assembly == typeof(GameServer.RUST).Assembly;
+                bool isSupportedSharedProvider = IsSharedInstallationProviderAvailable(gameServerObject, selectedgame.Name);
                 checkBox_Install_SharedInstallation.Visibility = isSupportedSharedProvider ? Visibility.Visible : Visibility.Collapsed;
                 if (!gameServer.loginAnonymous)
                 {
@@ -1815,7 +1961,7 @@ namespace WindowsGSM
             string userDataPath = ServerPath.GetBin("steamcmd", "userData.txt");
             if (File.Exists(userDataPath))
             {
-                Process.Start(userDataPath);
+                OpenWithShell(userDataPath);
             }
         }
 
@@ -2205,10 +2351,29 @@ namespace WindowsGSM
 
         private async void Actions_UpdateAllServers_Click(object sender, RoutedEventArgs e)
         {
+            var updatedSharedInstallations = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var server in ServerGroups_GetAllServerRows())
             {
                 if (GetServerMetadata(server.ID).ServerStatus == ServerStatus.Stopped)
                 {
+                    string installationId;
+                    try
+                    {
+                        installationId = new ServerConfig(server.ID).SharedInstallationId;
+                    }
+                    catch (Exception exception) when (exception is IOException || exception is InvalidDataException || exception is UnauthorizedAccessException)
+                    {
+                        Log(server.ID, "Server: Fail to update");
+                        Log(server.ID, $"[ERROR] Could not read server configuration: {exception.Message}");
+                        continue;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(installationId) && !updatedSharedInstallations.Add(installationId))
+                    {
+                        Log(server.ID, "[NOTICE] Skipped because another linked server already handled this shared installation in Update All.");
+                        continue;
+                    }
+
                     await GameServer_Update(server);
                 }
             }
@@ -2223,6 +2388,7 @@ namespace WindowsGSM
 
             MessageBoxResult result = System.Windows.MessageBox.Show(LocalizationManager.Get("UpdateServerConfirmation"), LocalizationManager.Get("ConfirmationTitle"), MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (result != MessageBoxResult.Yes) { return; }
+            if (!ConfirmSharedInstallationUpdateImpact(server)) { return; }
 
             await GameServer_Update(server);
         }
@@ -2236,8 +2402,46 @@ namespace WindowsGSM
 
             MessageBoxResult result = System.Windows.MessageBox.Show(LocalizationManager.Get("ValidateServerConfirmation"), LocalizationManager.Get("ConfirmationTitle"), MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (result != MessageBoxResult.Yes) { return; }
+            if (!ConfirmSharedInstallationUpdateImpact(server)) { return; }
 
             await GameServer_Update(server, notes: " | Validate", validate: true);
+        }
+
+        private bool ConfirmSharedInstallationUpdateImpact(ServerTable server)
+        {
+            try
+            {
+                string installationId = new ServerConfig(server.ID).SharedInstallationId;
+                if (string.IsNullOrWhiteSpace(installationId))
+                {
+                    return true;
+                }
+
+                Dictionary<string, ServerTable> serversById = ServerGroups_GetAllServerRows()
+                    .ToDictionary(row => row.ID, StringComparer.OrdinalIgnoreCase);
+                string linkedServers = string.Join(", ", SharedInstallationStore.GetLinkedServerIds(installationId)
+                    .Select(serverId =>
+                    {
+                        if (!serversById.TryGetValue(serverId, out ServerTable linkedServer))
+                        {
+                            return serverId;
+                        }
+
+                        return string.IsNullOrWhiteSpace(linkedServer.Name)
+                            ? serverId
+                            : $"{linkedServer.Name} ({serverId})";
+                    }));
+                string message = string.Format(
+                    CultureInfo.CurrentCulture,
+                    LocalizationManager.Get("SharedInstallationUpdateImpact"),
+                    linkedServers);
+                return System.Windows.MessageBox.Show(message, LocalizationManager.Get("ConfirmationTitle"), MessageBoxButton.YesNo, MessageBoxImage.Warning) == MessageBoxResult.Yes;
+            }
+            catch (Exception exception) when (exception is ArgumentException || exception is IOException || exception is InvalidDataException || exception is UnauthorizedAccessException || exception is InvalidOperationException)
+            {
+                MessageBox.Show(exception.Message, LocalizationManager.Get("ErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
+                return false;
+            }
         }
 
         private async void Actions_Backup_Click(object sender, RoutedEventArgs e)
@@ -2253,58 +2457,387 @@ namespace WindowsGSM
             await GameServer_Backup(server);
         }
 
-        private void BackupScheduleGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        private async void Actions_ConfigurationBackup_Click(object sender, RoutedEventArgs e)
         {
-            BackupScheduleRow row = BackupScheduleGrid.SelectedItem as BackupScheduleRow;
-            if (row == null)
+            ServerTable server = ServerGrid.SelectedItem as ServerTable;
+            if (server == null) { return; }
+            if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped) { return; }
+
+            if (!IsConfigurationBackupSupported(server.Game))
             {
-                label_BackupScheduleServer.Text = string.Empty;
-                textBox_BackupScheduleTime.Text = string.Empty;
-                comboBox_BackupScheduleFrequency.SelectedValue = null;
-                comboBox_BackupScheduleDay.SelectedValue = null;
-                switch_BackupScheduleEnabled.IsOn = false;
-                switch_BackupScheduleEnabled.IsEnabled = false;
-                button_SaveBackupSchedule.IsEnabled = false;
-                button_RunBackupNow.IsEnabled = false;
-                label_BackupScheduleStorage.Text = string.Empty;
-                label_BackupScheduleStatus.Text = string.Empty;
-                UpdateBackupScheduleEditor();
+                MessageBox.Show(LocalizationManager.Get("ConfigurationBackupUnsupported"), LocalizationManager.Get("ErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
-            label_BackupScheduleServer.Text = row.ServerName;
-            switch_BackupScheduleEnabled.IsOn = row.Enabled;
-            bool configurationAvailable = string.IsNullOrEmpty(row.ConfigurationError);
-            switch_BackupScheduleEnabled.IsEnabled = configurationAvailable;
-            button_SaveBackupSchedule.IsEnabled = configurationAvailable;
-            button_RunBackupNow.IsEnabled = configurationAvailable;
-            label_BackupScheduleStorage.Text = row.BackupStorage;
-            SetAccessibleLiveText(label_BackupScheduleStatus, row.LastResultMessage);
-
-            if (TryGetSimpleBackupSchedule(row.CronExpression, out bool weekly, out int hour, out int minute, out int dayOfWeek))
+            ConfigurationBackupContext configurationContext;
+            try
             {
-                textBox_BackupScheduleTime.Text = string.Format(CultureInfo.InvariantCulture, "{0:00}:{1:00}", hour, minute);
-                comboBox_BackupScheduleDay.SelectedValue = dayOfWeek.ToString(CultureInfo.InvariantCulture);
-                comboBox_BackupScheduleFrequency.SelectedValue = weekly ? "Weekly" : "Daily";
+                List<PluginMetadata> pluginSnapshot = PluginsList?.ToList();
+                configurationContext = await Task.Run(() => GetConfigurationBackupContext(server.ID, pluginSnapshot));
             }
-            else
+            catch (Exception exception) when (IsExpectedBackupFileException(exception))
             {
-                textBox_BackupScheduleTime.Text = string.Empty;
-                comboBox_BackupScheduleDay.SelectedValue = null;
-                comboBox_BackupScheduleFrequency.SelectedValue = "Custom";
+                Log(server.ID, $"[ERROR] Could not prepare the configuration backup: {exception.Message}");
+                MessageBox.Show(exception.Message, LocalizationManager.Get("ErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
             }
 
-            UpdateBackupScheduleEditor();
+            string confirmation = GetBackupConfirmationMessage(
+                server,
+                BackupScheduleConfig.BackupTypeConfiguration,
+                configurationContext.Paths);
+            if (MessageBox.Show(confirmation, LocalizationManager.Get("ConfirmationTitle"), MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes) { return; }
+
+            await GameServer_Backup(
+                server,
+                string.Empty,
+                BackupScheduleConfig.BackupTypeConfiguration,
+                configurationContext);
+        }
+
+        private bool IsConfigurationBackupSupported(string serverGame)
+        {
+            if (BuiltInGameCapabilities.SupportsConfigurationBackup(serverGame))
+            {
+                return true;
+            }
+
+            PluginMetadata plugin = GetLoadedPlugin(serverGame);
+            return plugin != null &&
+                plugin.ApiVersion == PluginApiLevel.CapabilityMethods &&
+                (plugin.Capabilities & WindowsGSMPluginCapability.ConfigurationBackup) != 0;
+        }
+
+        private PluginMetadata GetLoadedPlugin(string gameKey, IEnumerable<PluginMetadata> pluginSnapshot = null)
+        {
+            return (pluginSnapshot ?? PluginsList)?.FirstOrDefault(item =>
+                item.IsLoaded &&
+                string.Equals(item.FullName, gameKey, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private async Task<SharedInstallationOperationResult> InvokePluginConfigOnlyOperationAsync(
+            Func<Task<SharedInstallationOperationResult>> operation,
+            string gameKey,
+            string operationName)
+        {
+            try
+            {
+                SharedInstallationOperationResult result = await operation();
+                if (result == null)
+                {
+                    PluginMetadata plugin = GetLoadedPlugin(gameKey);
+                    string pluginName = plugin == null ? gameKey : plugin.FileName;
+                    return SharedInstallationOperationResult.Failed(
+                        $"Plugin '{pluginName}' returned no result while {operationName}.");
+                }
+                if (result.Status == SharedInstallationOperationStatus.Started &&
+                    result.Process.Id <= 0)
+                {
+                    PluginMetadata plugin = GetLoadedPlugin(gameKey);
+                    string pluginName = plugin == null ? gameKey : plugin.FileName;
+                    return SharedInstallationOperationResult.Failed(
+                        $"Plugin '{pluginName}' must return a started installer process while {operationName}.");
+                }
+
+                return result;
+            }
+            catch (OperationCanceledException exception)
+            {
+                PluginMetadata plugin = GetLoadedPlugin(gameKey);
+                string pluginName = plugin == null ? gameKey : plugin.FileName;
+                string detail = string.IsNullOrWhiteSpace(exception.Message) ? "The operation was cancelled." : exception.Message;
+                return SharedInstallationOperationResult.Cancelled(
+                    $"Plugin '{pluginName}' was cancelled while {operationName}: {detail}");
+            }
+            catch (Exception exception)
+            {
+                PluginMetadata plugin = GetLoadedPlugin(gameKey);
+                string pluginName = plugin == null ? gameKey : plugin.FileName;
+                string detail = string.IsNullOrWhiteSpace(exception.Message) ? exception.GetType().Name : exception.Message;
+                return SharedInstallationOperationResult.Failed(
+                    $"Plugin '{pluginName}' failed while {operationName}: {detail}");
+            }
+        }
+
+        private async Task<SharedInstallationOperationResult> InvokeSharedBinaryInstallAsync(
+            Func<Task<Process>> operation,
+            Func<string> getFailureMessage,
+            Func<bool> isInstallValid,
+            string gameKey,
+            string operationName)
+        {
+            string providerName = GetLoadedPlugin(gameKey)?.FileName ?? gameKey;
+            try
+            {
+                Process process = await operation();
+                if (process == null)
+                {
+                    string failureMessage = getFailureMessage();
+                    if (!string.IsNullOrWhiteSpace(failureMessage))
+                    {
+                        return SharedInstallationOperationResult.Failed(failureMessage);
+                    }
+
+                    return isInstallValid()
+                        ? SharedInstallationOperationResult.Succeeded()
+                        : SharedInstallationOperationResult.Failed(
+                            $"Provider '{providerName}' returned no installer process and the shared installation is invalid while {operationName}.");
+                }
+                if (process.Id <= 0)
+                {
+                    return SharedInstallationOperationResult.Failed(
+                        $"Provider '{providerName}' returned a process that has not started while {operationName}.");
+                }
+
+                return SharedInstallationOperationResult.Started(process);
+            }
+            catch (OperationCanceledException exception)
+            {
+                string detail = string.IsNullOrWhiteSpace(exception.Message) ? "The operation was cancelled." : exception.Message;
+                return SharedInstallationOperationResult.Cancelled(
+                    $"Provider '{providerName}' was cancelled while {operationName}: {detail}");
+            }
+            catch (Exception exception)
+            {
+                string detail = string.IsNullOrWhiteSpace(exception.Message) ? exception.GetType().Name : exception.Message;
+                return SharedInstallationOperationResult.Failed(
+                    $"Provider '{providerName}' failed while {operationName}: {detail}");
+            }
+        }
+
+        private static string GetSharedInstallationFailure(SharedInstallationOperationResult result)
+        {
+            if (result == null)
+            {
+                return "The shared-install provider returned no operation result.";
+            }
+
+            switch (result.Status)
+            {
+                case SharedInstallationOperationStatus.Succeeded:
+                    return string.Empty;
+                case SharedInstallationOperationStatus.Started:
+                    if (result.Process == null)
+                    {
+                        return "The shared-install provider reported a running operation without a process.";
+                    }
+
+                    return result.Process.ExitCode == 0
+                        ? string.Empty
+                        : $"Installer exited with code {result.Process.ExitCode}.";
+                case SharedInstallationOperationStatus.Cancelled:
+                case SharedInstallationOperationStatus.Failed:
+                    return result.ErrorMessage;
+                default:
+                    return "The shared-install provider returned an unsupported operation status.";
+            }
+        }
+
+        private bool IsSharedInstallationProviderAvailable(object gameServerObject, string gameKey)
+        {
+            if (gameServerObject is GameServer.Engine.ISharedInstallationProvider &&
+                gameServerObject.GetType().Assembly == typeof(GameServer.RUST).Assembly)
+            {
+                return BuiltInGameCapabilities.SupportsSharedInstallation(gameKey, gameServerObject);
+            }
+
+            // API capability signatures do not prove provider-specific runtime isolation.
+            return false;
+        }
+
+        private string GetSharedInstallationEligibilityError(
+            ServerConfig serverConfig,
+            object gameServerObject,
+            string gameKey)
+        {
+            if (serverConfig == null ||
+                string.IsNullOrWhiteSpace(serverConfig.SharedInstallationId) ||
+                IsSharedInstallationProviderAvailable(gameServerObject, gameKey))
+            {
+                return null;
+            }
+
+            return string.Equals(gameKey, GameServer.RUST.FullName, StringComparison.OrdinalIgnoreCase)
+                ? LocalizationManager.Get("RustSharedInstallationUnavailable")
+                : LocalizationManager.Get("SharedInstallationUnsupported");
+        }
+
+        private bool TryGetSharedInstallationProvider(
+            object gameServerObject,
+            string gameKey,
+            out GameServer.Engine.ISharedInstallationProvider provider,
+            out PluginSharedInstallationAdapter pluginProvider,
+            out string appId,
+            out string executableName,
+            out string error)
+        {
+            provider = null;
+            pluginProvider = null;
+            appId = null;
+            executableName = null;
+            error = null;
+            if (gameServerObject is GameServer.Engine.ISharedInstallationProvider builtInProvider &&
+                gameServerObject.GetType().Assembly == typeof(GameServer.RUST).Assembly)
+            {
+                if (!BuiltInGameCapabilities.SupportsSharedInstallation(gameKey, builtInProvider))
+                {
+                    error = LocalizationManager.Get("SharedInstallationUnsupported");
+                    return false;
+                }
+
+                provider = builtInProvider;
+                try
+                {
+                    appId = builtInProvider.SharedInstallationAppId;
+                    executableName = builtInProvider.SharedInstallationExecutableName;
+                    return true;
+                }
+                catch (Exception exception)
+                {
+                    error = $"The game integration failed to describe its shared installation: {exception.Message}";
+                    return false;
+                }
+            }
+
+            error = LocalizationManager.Get("SharedInstallationUnsupported");
+            return false;
+        }
+
+        private static string GetBackupConfirmationMessage(
+            ServerTable server,
+            string backupType,
+            IEnumerable<ConfigurationBackupPath> configurationPaths = null)
+        {
+            if (backupType == BackupScheduleConfig.BackupTypeConfiguration)
+            {
+                string includedPaths = string.Join(
+                    ", ",
+                    (configurationPaths ?? Enumerable.Empty<ConfigurationBackupPath>())
+                        .Select(path => path.RootId + "/" + path.RelativePath));
+                return string.Format(
+                    CultureInfo.CurrentCulture,
+                    LocalizationManager.Get("ConfigurationBackupConfirmation"),
+                    server.Name,
+                    includedPaths);
+            }
+
+            if (backupType != BackupScheduleConfig.BackupTypeFullServer)
+            {
+                throw new InvalidDataException($"Unsupported backup type: {backupType}.");
+            }
+
+            return LocalizationManager.Get("BackupServerConfirmation");
+        }
+
+        private void BackupScheduleGrid_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            _isLoadingBackupScheduleEditor = true;
+            try
+            {
+                _backupScheduleTimeChanged = false;
+                BackupScheduleRow row = BackupScheduleGrid.SelectedItem as BackupScheduleRow;
+                if (row == null)
+                {
+                    label_BackupScheduleServer.Text = string.Empty;
+                    textBox_BackupScheduleTime.Text = string.Empty;
+                    comboBox_BackupScheduleFrequency.SelectedValue = null;
+                    comboBox_BackupScheduleType.SelectedValue = null;
+                    comboBox_BackupScheduleType.IsEnabled = false;
+                    comboBox_BackupScheduleDay.SelectedValue = null;
+                    switch_BackupScheduleEnabled.IsOn = false;
+                    switch_BackupScheduleEnabled.IsEnabled = false;
+                    button_RunBackupNow.IsEnabled = false;
+                    label_BackupScheduleStorage.Text = string.Empty;
+                    label_BackupScheduleStatus.Text = string.Empty;
+                    UpdateBackupScheduleEditor();
+                    return;
+                }
+
+                label_BackupScheduleServer.Text = row.ServerName;
+                switch_BackupScheduleEnabled.IsOn = row.Enabled;
+                comboBox_BackupScheduleType.SelectedValue = row.BackupType;
+                bool configurationAvailable = string.IsNullOrEmpty(row.ConfigurationError);
+                switch_BackupScheduleEnabled.IsEnabled = configurationAvailable;
+                button_RunBackupNow.IsEnabled = configurationAvailable;
+                label_BackupScheduleStorage.Text = row.BackupStorage;
+                SetAccessibleLiveText(label_BackupScheduleStatus, row.LastResultMessage);
+
+                if (TryGetSimpleBackupSchedule(row.CronExpression, out bool weekly, out int hour, out int minute, out int dayOfWeek))
+                {
+                    textBox_BackupScheduleTime.Text = string.Format(CultureInfo.InvariantCulture, "{0:00}:{1:00}", hour, minute);
+                    comboBox_BackupScheduleDay.SelectedValue = dayOfWeek.ToString(CultureInfo.InvariantCulture);
+                    comboBox_BackupScheduleFrequency.SelectedValue = weekly ? "Weekly" : "Daily";
+                }
+                else
+                {
+                    textBox_BackupScheduleTime.Text = string.Empty;
+                    comboBox_BackupScheduleDay.SelectedValue = null;
+                    comboBox_BackupScheduleFrequency.SelectedValue = "Custom";
+                }
+
+                UpdateBackupScheduleEditor();
+            }
+            finally
+            {
+                _isLoadingBackupScheduleEditor = false;
+            }
         }
 
         private void BackupScheduleFrequency_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
+            if (_isLoadingBackupScheduleEditor) { return; }
             UpdateBackupScheduleEditor();
+            SaveBackupScheduleFromEditor();
+        }
+
+        private void BackupScheduleType_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_isLoadingBackupScheduleEditor) { return; }
+            UpdateBackupScheduleEditor();
+            SaveBackupScheduleFromEditor();
+        }
+
+        private void BackupScheduleDay_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_isLoadingBackupScheduleEditor) { return; }
+            SaveBackupScheduleFromEditor();
+        }
+
+        private void BackupScheduleEnabled_Toggled(object sender, RoutedEventArgs e)
+        {
+            if (_isLoadingBackupScheduleEditor) { return; }
+            SaveBackupScheduleFromEditor();
+        }
+
+        private void BackupScheduleTime_TextChanged(object sender, TextChangedEventArgs e)
+        {
+            if (_isLoadingBackupScheduleEditor)
+            {
+                return;
+            }
+
+            _backupScheduleTimeChanged = true;
+            SaveBackupScheduleFromEditor(refreshGrid: false, reportValidationErrors: false);
+        }
+
+        private void BackupScheduleTime_LostFocus(object sender, RoutedEventArgs e)
+        {
+            if (_isLoadingBackupScheduleEditor || !_backupScheduleTimeChanged)
+            {
+                return;
+            }
+
+            BackupScheduleRow row = BackupScheduleGrid.SelectedItem as BackupScheduleRow;
+            if (row != null && SaveBackupScheduleFromEditor(refreshGrid: false))
+            {
+                _backupScheduleTimeChanged = false;
+                RefreshBackupSchedules(row.ServerId);
+            }
         }
 
         private void UpdateBackupScheduleEditor()
         {
-            if (comboBox_BackupScheduleFrequency == null || label_BackupScheduleTime == null || label_BackupScheduleDay == null)
+            if (comboBox_BackupScheduleFrequency == null || comboBox_BackupScheduleType == null || label_BackupScheduleTime == null || label_BackupScheduleDay == null)
             {
                 return;
             }
@@ -2317,6 +2850,7 @@ namespace WindowsGSM
                 label_BackupScheduleDay.Visibility = Visibility.Collapsed;
                 comboBox_BackupScheduleDay.Visibility = Visibility.Collapsed;
                 comboBox_BackupScheduleFrequency.IsEnabled = false;
+                comboBox_BackupScheduleType.IsEnabled = false;
                 textBox_BackupScheduleTime.IsEnabled = false;
                 comboBox_BackupScheduleDay.IsEnabled = false;
                 label_BackupScheduleHint.Text = LocalizationManager.Get("ScheduleNoServerSelected");
@@ -2325,6 +2859,14 @@ namespace WindowsGSM
 
             bool configurationAvailable = string.IsNullOrEmpty(row.ConfigurationError);
             string frequency = comboBox_BackupScheduleFrequency.SelectedValue as string;
+            string backupType = comboBox_BackupScheduleType.SelectedValue as string;
+            ComboBoxItem configurationTypeItem = comboBox_BackupScheduleType.Items.OfType<ComboBoxItem>()
+                .FirstOrDefault(item => item.Tag as string == BackupScheduleConfig.BackupTypeConfiguration);
+            if (configurationTypeItem != null)
+            {
+                configurationTypeItem.IsEnabled = row.SupportsConfigurationBackup;
+            }
+
             bool weekly = frequency == "Weekly";
             bool simpleSchedule = frequency == "Daily" || weekly;
             label_BackupScheduleTime.Visibility = simpleSchedule ? Visibility.Visible : Visibility.Collapsed;
@@ -2332,19 +2874,44 @@ namespace WindowsGSM
             label_BackupScheduleDay.Visibility = weekly ? Visibility.Visible : Visibility.Collapsed;
             comboBox_BackupScheduleDay.Visibility = weekly ? Visibility.Visible : Visibility.Collapsed;
             comboBox_BackupScheduleFrequency.IsEnabled = configurationAvailable;
+            comboBox_BackupScheduleType.IsEnabled = configurationAvailable;
             textBox_BackupScheduleTime.IsEnabled = configurationAvailable && simpleSchedule;
             comboBox_BackupScheduleDay.IsEnabled = configurationAvailable && weekly;
             label_BackupScheduleHint.Text = !configurationAvailable
                 ? row.ConfigurationError
-                : frequency == "Custom"
-                    ? LocalizationManager.Get("ScheduleCustomHint")
-                    : LocalizationManager.Get("ScheduleSimpleHint");
+                : backupType == BackupScheduleConfig.BackupTypeConfiguration
+                    ? row.SupportsConfigurationBackup
+                        ? LocalizationManager.Get("ScheduleConfigurationBackupHint")
+                        : LocalizationManager.Get("ConfigurationBackupUnsupported")
+                    : frequency == "Custom"
+                        ? LocalizationManager.Get("ScheduleCustomHint")
+                        : LocalizationManager.Get("ScheduleSimpleHint");
         }
 
-        private void Button_SaveBackupSchedule_Click(object sender, RoutedEventArgs e)
+        private bool SaveBackupScheduleFromEditor(bool refreshGrid = true, bool reportValidationErrors = true)
         {
+            if (_isLoadingBackupScheduleEditor) { return false; }
+
             BackupScheduleRow row = BackupScheduleGrid.SelectedItem as BackupScheduleRow;
-            if (row == null) { return; }
+            if (row == null || !string.IsNullOrEmpty(row.ConfigurationError)) { return false; }
+
+            string backupType = comboBox_BackupScheduleType.SelectedValue as string;
+            if (backupType != BackupScheduleConfig.BackupTypeFullServer && backupType != BackupScheduleConfig.BackupTypeConfiguration)
+            {
+                if (reportValidationErrors)
+                {
+                    SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleInvalidMessage"));
+                }
+                return false;
+            }
+            if (backupType == BackupScheduleConfig.BackupTypeConfiguration && !row.SupportsConfigurationBackup)
+            {
+                if (reportValidationErrors)
+                {
+                    SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ConfigurationBackupUnsupported"));
+                }
+                return false;
+            }
 
             string frequency = comboBox_BackupScheduleFrequency.SelectedValue as string;
             string expression;
@@ -2356,8 +2923,11 @@ namespace WindowsGSM
             {
                 if (!DateTime.TryParseExact(textBox_BackupScheduleTime.Text.Trim(), "HH:mm", CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTime scheduledTime))
                 {
-                    SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleInvalidMessage"));
-                    return;
+                    if (reportValidationErrors)
+                    {
+                        SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleInvalidMessage"));
+                    }
+                    return false;
                 }
 
                 if (frequency == "Daily")
@@ -2372,8 +2942,11 @@ namespace WindowsGSM
                 }
                 else
                 {
-                    SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleInvalidMessage"));
-                    return;
+                    if (reportValidationErrors)
+                    {
+                        SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleInvalidMessage"));
+                    }
+                    return false;
                 }
             }
 
@@ -2381,27 +2954,36 @@ namespace WindowsGSM
             bool validSchedule = schedule != null && TryGetNextBackupOccurrence(schedule, DateTime.Now, out DateTime _);
             if ((frequency != "Custom" || switch_BackupScheduleEnabled.IsOn) && !validSchedule)
             {
-                SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleInvalidMessage"));
-                return;
+                if (reportValidationErrors)
+                {
+                    SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleInvalidMessage"));
+                }
+                return false;
             }
 
             if (!TryLoadBackupSchedule(row.ServerId, out BackupScheduleConfig config, out string error))
             {
                 SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(LocalizationManager.Get("ScheduleSaveFailed"), error));
-                return;
+                return false;
             }
 
             config.CronExpression = expression;
             config.Enabled = switch_BackupScheduleEnabled.IsOn;
+            config.BackupType = backupType;
             config.LastEvaluatedAt = DateTime.Now;
             if (!TrySaveBackupSchedule(row.ServerId, config, out error))
             {
                 SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(LocalizationManager.Get("ScheduleSaveFailed"), error));
-                return;
+                return false;
             }
 
             SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleSaved"));
-            RefreshBackupSchedules(row.ServerId);
+            if (refreshGrid)
+            {
+                _backupScheduleTimeChanged = false;
+                RefreshBackupSchedules(row.ServerId);
+            }
+            return true;
         }
 
         private async void Button_RunBackupNow_Click(object sender, RoutedEventArgs e)
@@ -2422,6 +3004,12 @@ namespace WindowsGSM
                 return;
             }
 
+            if (config.BackupType == BackupScheduleConfig.BackupTypeConfiguration && !row.SupportsConfigurationBackup)
+            {
+                SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ConfigurationBackupUnsupported"));
+                return;
+            }
+
             if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped)
             {
                 config.LastAttemptedAt = DateTime.Now;
@@ -2438,7 +3026,7 @@ namespace WindowsGSM
                 return;
             }
 
-            MessageBoxResult result = System.Windows.MessageBox.Show(LocalizationManager.Get("BackupServerConfirmation"), LocalizationManager.Get("ConfirmationTitle"), MessageBoxButton.YesNo, MessageBoxImage.Question);
+            MessageBoxResult result = System.Windows.MessageBox.Show(GetBackupConfirmationMessage(server, config.BackupType), LocalizationManager.Get("ConfirmationTitle"), MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (result != MessageBoxResult.Yes) { return; }
 
             await RunBackupScheduleNow(server, config);
@@ -2471,7 +3059,7 @@ namespace WindowsGSM
                 return;
             }
 
-            bool completed = await GameServer_Backup(server, " | Run from Schedules");
+            bool completed = await GameServer_Backup(server, " | Run from Schedules", config.BackupType);
             config.LastAttemptedAt = DateTime.Now;
             config.LastResult = completed ? BackupScheduleConfig.ResultCompleted : BackupScheduleConfig.ResultFailed;
             config.LastResultMessage = completed ? BackupScheduleConfig.MessageCompleted : BackupScheduleConfig.MessageFailed;
@@ -2495,6 +3083,8 @@ namespace WindowsGSM
                         server.ID,
                         server.Name,
                         server.Game,
+                        BackupScheduleConfig.BackupTypeFullServer,
+                        IsConfigurationBackupSupported(server.Game),
                         false,
                         string.Empty,
                         LocalizationManager.Get("ScheduleConfigError"),
@@ -2531,6 +3121,8 @@ namespace WindowsGSM
                     server.ID,
                     server.Name,
                     server.Game,
+                    config.BackupType,
+                    IsConfigurationBackupSupported(server.Game),
                     config.Enabled,
                     config.CronExpression,
                     GetBackupScheduleDescription(config.CronExpression),
@@ -2752,8 +3344,16 @@ namespace WindowsGSM
             var backupConfig = new BackupConfig(server.ID);
             if (Directory.Exists(backupConfig.BackupLocation))
             {
-                string zipFileName = $"WGSM-Backup-Server-{server.ID}-";
-                foreach (var fi in new DirectoryInfo(backupConfig.BackupLocation).GetFiles("*.zip").Where(x => x.Name.Contains(zipFileName)).OrderByDescending(x => x.LastWriteTime))
+                string fullBackupPrefix = $"WGSM-Backup-Server-{server.ID}-";
+                string configurationBackupPrefix = $"WGSM-Backup-Config-Server-{server.ID}-";
+                bool configurationBackupSupported = IsConfigurationBackupSupported(server.Game);
+                foreach (FileInfo fi in new DirectoryInfo(backupConfig.BackupLocation).GetFiles()
+                    .Where(file =>
+                        (string.Equals(file.Extension, ".zip", StringComparison.OrdinalIgnoreCase) && file.Name.StartsWith(fullBackupPrefix, StringComparison.OrdinalIgnoreCase)) ||
+                        (configurationBackupSupported &&
+                            string.Equals(file.Extension, ConfigurationBackupArchive.FileExtension, StringComparison.OrdinalIgnoreCase) &&
+                            file.Name.StartsWith(configurationBackupPrefix, StringComparison.OrdinalIgnoreCase)))
+                    .OrderByDescending(file => file.LastWriteTimeUtc))
                 {
                     listbox_RestoreBackup.Items.Add(fi.Name);
                 }
@@ -2870,8 +3470,35 @@ namespace WindowsGSM
             ServerMetadata metadata = GetServerMetadata(server.ID);
             ClearDetectedMainPort(server);
             ServerConfig serverConfig = new ServerConfig(server.ID);
+            if (!string.IsNullOrWhiteSpace(serverConfig.SharedInstallationId) &&
+                !BuiltInGameCapabilities.SupportsSharedInstallation(server.Game))
+            {
+                string unsupportedSharedInstallationError = GetSharedInstallationEligibilityError(serverConfig, null, server.Game);
+                Log(server.ID, "Server: Fail to start");
+                Log(server.ID, "[ERROR] " + unsupportedSharedInstallationError);
+                return null;
+            }
+
             dynamic gameServer = GameServer.Data.Class.Get(server.Game, serverConfig, PluginsList);
-            if (gameServer == null) { return null; }
+            if (gameServer == null)
+            {
+                if (!string.IsNullOrWhiteSpace(serverConfig.SharedInstallationId))
+                {
+                    Log(server.ID, "Server: Fail to start");
+                    Log(server.ID, "[ERROR] " + LocalizationManager.Get("SharedInstallationUnsupported"));
+                }
+                return null;
+            }
+
+            string sharedInstallationError = GetSharedInstallationEligibilityError(serverConfig, gameServer, server.Game);
+            if (sharedInstallationError != null)
+            {
+                _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Stopped;
+                Log(server.ID, "Server: Fail to start");
+                Log(server.ID, "[ERROR] " + sharedInstallationError);
+                SetServerStatus(server, "Stopped");
+                return null;
+            }
 
             //End All Running Process
             await EndAllRunningProcess(server.ID);
@@ -2882,7 +3509,7 @@ namespace WindowsGSM
             try
             {
                 startPath = !string.IsNullOrWhiteSpace(serverConfig.SharedInstallationId)
-                    ? ServerPath.GetSharedInstallationServerFiles(serverConfig.SharedInstallationId, gameServer.StartPath)
+                    ? Path.Combine(SharedInstallationStore.GetServerBinaryRoot(serverConfig.SharedInstallationId), gameServer.StartPath)
                     : ServerPath.GetServersServerFiles(server.ID, gameServer.StartPath);
             }
             catch (ArgumentException exception)
@@ -3074,7 +3701,17 @@ namespace WindowsGSM
 
         private async Task<(Process, string, dynamic)> Server_BeginUpdate(ServerTable server, bool silenceCheck, bool forceUpdate, bool validate = false, string custum = null)
         {
-            dynamic gameServer = GameServer.Data.Class.Get(server.Game, new ServerConfig(server.ID), PluginsList);
+            ServerConfig serverConfig = new ServerConfig(server.ID);
+            dynamic gameServer = GameServer.Data.Class.Get(server.Game, serverConfig, PluginsList);
+            string sharedInstallationError = GetSharedInstallationEligibilityError(serverConfig, gameServer, server.Game);
+            if (sharedInstallationError != null)
+            {
+                if (gameServer != null)
+                {
+                    gameServer.Error = sharedInstallationError;
+                }
+                return (null, string.Empty, gameServer);
+            }
 
             string localVersion = gameServer.GetLocalBuild();
             if (string.IsNullOrWhiteSpace(localVersion) && !silenceCheck)
@@ -3134,6 +3771,28 @@ namespace WindowsGSM
 
             Process p = GetServerMetadata(server.ID).Process;
             if (p != null) { return; }
+
+            ServerConfig serverConfig = new ServerConfig(server.ID);
+            if (!string.IsNullOrWhiteSpace(serverConfig.SharedInstallationId))
+            {
+                string sharedInstallationError;
+                if (!BuiltInGameCapabilities.SupportsSharedInstallation(server.Game))
+                {
+                    sharedInstallationError = GetSharedInstallationEligibilityError(serverConfig, null, server.Game);
+                }
+                else
+                {
+                    object gameServerObject = GameServer.Data.Class.Get(server.Game, serverConfig, PluginsList);
+                    sharedInstallationError = GetSharedInstallationEligibilityError(serverConfig, gameServerObject, server.Game);
+                }
+
+                if (sharedInstallationError != null)
+                {
+                    Log(server.ID, "Server: Fail to start");
+                    Log(server.ID, "[ERROR] " + sharedInstallationError);
+                    return;
+                }
+            }
 
             if (GetServerMetadata(server.ID).BackupOnStart)
             {
@@ -3232,6 +3891,41 @@ namespace WindowsGSM
                 return false;
             }
 
+            try
+            {
+                ServerConfig serverConfig = new ServerConfig(server.ID);
+                string installationId = serverConfig.SharedInstallationId;
+                if (!string.IsNullOrWhiteSpace(installationId))
+                {
+                    string sharedInstallationError;
+                    if (!BuiltInGameCapabilities.SupportsSharedInstallation(server.Game))
+                    {
+                        sharedInstallationError = GetSharedInstallationEligibilityError(serverConfig, null, server.Game);
+                    }
+                    else
+                    {
+                        object gameServerObject = GameServer.Data.Class.Get(server.Game, serverConfig, PluginsList);
+                        sharedInstallationError = GetSharedInstallationEligibilityError(serverConfig, gameServerObject, server.Game);
+                    }
+
+                    if (sharedInstallationError != null)
+                    {
+                        Log(server.ID, "Server: Fail to update");
+                        Log(server.ID, "[ERROR] " + sharedInstallationError);
+                        return false;
+                    }
+
+                    List<string> linkedServerIds = SharedInstallationStore.GetLinkedServerIds(installationId);
+                    Log(server.ID, $"[NOTICE] Shared installation update affects server instances: {string.Join(", ", linkedServerIds)}.");
+                }
+            }
+            catch (Exception exception) when (exception is ArgumentException || exception is IOException || exception is InvalidDataException || exception is UnauthorizedAccessException || exception is InvalidOperationException)
+            {
+                Log(server.ID, "Server: Fail to update");
+                Log(server.ID, $"[ERROR] Could not determine shared installation impact: {exception.Message}");
+                return false;
+            }
+
             //Begin update
             _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Updating;
             Log(server.ID, "Action: Update" + notes);
@@ -3242,7 +3936,12 @@ namespace WindowsGSM
             {
                 var (p, remoteVersion, gameServer) = await Server_BeginUpdate(server, silenceCheck: validate, forceUpdate: true, validate: validate);
 
-                if (p == null && string.IsNullOrEmpty(gameServer.Error))
+                if (gameServer == null)
+                {
+                    Log(server.ID, "Server: Fail to update");
+                    Log(server.ID, "[ERROR] " + LocalizationManager.Get("GameServerIntegrationUnavailable"));
+                }
+                else if (p == null && string.IsNullOrEmpty(gameServer.Error))
                 {
                     Log(server.ID, $"Server: Updated ({remoteVersion})");
                     updateSucceeded = true;
@@ -3276,10 +3975,22 @@ namespace WindowsGSM
             return updateSucceeded;
         }
 
-        private async Task<bool> GameServer_Backup(ServerTable server, string notes = "")
+        private async Task<bool> GameServer_Backup(
+            ServerTable server,
+            string notes = "",
+            string backupType = BackupScheduleConfig.BackupTypeFullServer,
+            ConfigurationBackupContext preparedConfigurationContext = null)
         {
             if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped)
             {
+                return false;
+            }
+
+            bool configurationOnly = backupType == BackupScheduleConfig.BackupTypeConfiguration;
+            if (!configurationOnly && backupType != BackupScheduleConfig.BackupTypeFullServer)
+            {
+                Log(server.ID, "Server: Fail to backup");
+                Log(server.ID, $"[ERROR] Unsupported backup type: {backupType}.");
                 return false;
             }
 
@@ -3291,34 +4002,53 @@ namespace WindowsGSM
             string temporaryZipPath = null;
             try
             {
+                ConfigurationBackupContext configurationContext = preparedConfigurationContext;
+                if (configurationOnly && configurationContext == null)
+                {
+                    List<PluginMetadata> pluginSnapshot = PluginsList?.ToList();
+                    configurationContext = await Task.Run(() => GetConfigurationBackupContext(server.ID, pluginSnapshot));
+                }
                 await EndAllRunningProcess(server.ID);
                 await Task.Delay(1000);
 
                 BackupConfig backupConfig = new BackupConfig(server.ID);
                 string backupLocation = ServerPath.GetBackups(server.ID);
-                string zipFileName = $"WGSM-Backup-Server-{server.ID}-";
-                string zipFile = Path.Combine(backupLocation, $"{zipFileName}{DateTime.Now.ToString("yyyyMMddHHmmssfff")}.zip");
-                temporaryZipPath = zipFile + "." + Guid.NewGuid().ToString("N") + ".tmp";
-                string startPath = ServerPath.GetServers(server.ID);
+                string backupPrefix = configurationOnly
+                    ? $"WGSM-Backup-Config-Server-{server.ID}-"
+                    : $"WGSM-Backup-Server-{server.ID}-";
+                string backupExtension = configurationOnly ? ConfigurationBackupArchive.FileExtension : ".zip";
+                string backupFileName = configurationOnly
+                    ? $"{backupPrefix}{DateTime.Now:yyyyMMddHHmmssfff}-{Guid.NewGuid():N}{backupExtension}"
+                    : $"{backupPrefix}{DateTime.Now:yyyyMMddHHmmssfff}{backupExtension}";
+                string backupPath = Path.Combine(backupLocation, backupFileName);
 
-                await Task.Run(() => ZipFile.CreateFromDirectory(startPath, temporaryZipPath));
-                File.Move(temporaryZipPath, zipFile);
-                temporaryZipPath = null;
+                if (configurationOnly)
+                {
+                    ConfigurationBackupResult backupResult = await Task.Run(() => CreateConfigurationBackup(configurationContext, backupPath));
+                    string includedPaths = string.Join(", ", backupResult.IncludedPaths.Select(path => path.RootId + "/" + path.RelativePath));
+                    Log(server.ID, string.Format(LocalizationManager.Get("ConfigurationBackupResult"), includedPaths));
+                }
+                else
+                {
+                    temporaryZipPath = backupPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
+                    string startPath = ServerPath.GetServers(server.ID);
+
+                    using (SharedInstallationStore.AcquireReadLeaseForServer(new ServerConfig(server.ID)))
+                    {
+                        await Task.Run(() => ZipFile.CreateFromDirectory(startPath, temporaryZipPath));
+                    }
+                    File.Move(temporaryZipPath, backupPath);
+                    temporaryZipPath = null;
+                }
 
                 string retentionError = null;
                 try
                 {
-                    await Task.Run(() =>
-                    {
-                        foreach (FileInfo backupFile in new DirectoryInfo(backupLocation)
-                            .GetFiles("*.zip")
-                            .Where(file => file.Name.StartsWith(zipFileName, StringComparison.OrdinalIgnoreCase))
-                            .OrderByDescending(file => file.LastWriteTimeUtc)
-                            .Skip(backupConfig.MaximumBackups))
-                        {
-                            backupFile.Delete();
-                        }
-                    });
+                    await Task.Run(() => ApplyBackupRetention(
+                        backupLocation,
+                        backupPrefix,
+                        backupExtension,
+                        backupConfig.MaximumBackups));
                 }
                 catch (Exception e) when (IsExpectedBackupFileException(e))
                 {
@@ -3363,9 +4093,182 @@ namespace WindowsGSM
             }
         }
 
+        private sealed class ConfigurationBackupContext
+        {
+            public ServerConfig ServerConfig { get; set; }
+            public Dictionary<string, string> Roots { get; set; }
+            public List<ConfigurationBackupPath> Paths { get; set; }
+            public string SharedInstallationBuildId { get; set; } = string.Empty;
+        }
+
+        private ConfigurationBackupContext GetConfigurationBackupContext(
+            string serverId,
+            IEnumerable<PluginMetadata> pluginSnapshot = null)
+        {
+            ServerConfig serverConfig = new ServerConfig(serverId);
+            if (!IsConfigurationBackupSupported(serverConfig.ServerGame))
+            {
+                throw new InvalidOperationException(LocalizationManager.Get("ConfigurationBackupUnsupported"));
+            }
+
+            var roots = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "serverfiles", ServerPath.GetServersServerFiles(serverId) }
+            };
+
+            List<ConfigurationBackupPath> paths;
+            if (BuiltInGameCapabilities.SupportsConfigurationBackup(serverConfig.ServerGame))
+            {
+                if (BuiltInGameCapabilities.IsGoldSourceGame(serverConfig.ServerGame) &&
+                    !string.IsNullOrWhiteSpace(serverConfig.SharedInstallationId))
+                {
+                    SharedInstallationStore.EnsureReady(serverConfig.SharedInstallationId);
+                    roots.Add(
+                        "sharedserverfiles",
+                        SharedInstallationStore.GetServerBinaryRoot(serverConfig.SharedInstallationId));
+                }
+
+                paths = ConfigurationBackupArchive.ValidatePlan(
+                    roots,
+                    BuiltInGameCapabilities.GetConfigurationBackupPlan(serverConfig, roots));
+            }
+            else
+            {
+                PluginMetadata plugin = GetLoadedPlugin(serverConfig.ServerGame, pluginSnapshot);
+                if (plugin == null ||
+                    plugin.ApiVersion != PluginApiLevel.CapabilityMethods ||
+                    (plugin.Capabilities & WindowsGSMPluginCapability.ConfigurationBackup) == 0)
+                {
+                    throw new InvalidOperationException(LocalizationManager.Get("ConfigurationBackupUnsupported"));
+                }
+
+                object pluginInstance;
+                try
+                {
+                    pluginInstance = PluginManagement.GetPluginClass(plugin, serverConfig);
+                }
+                catch (Exception exception)
+                {
+                    throw new InvalidOperationException(
+                        $"Plugin '{plugin.FileName}' could not be initialized for its backup plan: {exception.Message}",
+                        exception);
+                }
+
+                var pluginContext = new PluginInstanceContext(
+                    serverConfig.ServerID,
+                    serverConfig.ServerGame,
+                    serverConfig.SharedInstallationId,
+                    roots);
+                PluginBackupPlan plan;
+                try
+                {
+                    plan = PluginCapabilityInspector.GetConfigOnlyBackupPlan(pluginInstance, pluginContext);
+                }
+                catch (Exception exception)
+                {
+                    throw new InvalidOperationException(
+                        $"Plugin '{plugin.FileName}' failed to provide its backup plan: {exception.Message}",
+                        exception);
+                }
+
+                if (plan == null || plan.SchemaVersion != PluginBackupPlan.CurrentSchemaVersion)
+                {
+                    throw new InvalidDataException($"Plugin '{plugin.FileName}' returned an empty or unsupported backup plan.");
+                }
+
+                paths = ConfigurationBackupArchive.ValidatePlan(roots, plan.Paths);
+            }
+
+            return new ConfigurationBackupContext
+            {
+                ServerConfig = serverConfig,
+                Roots = roots,
+                Paths = paths
+            };
+        }
+
+        private static ConfigurationBackupResult CreateConfigurationBackup(ConfigurationBackupContext context, string archivePath)
+        {
+            using (SharedInstallationStore.AcquireReadLeaseForServer(context.ServerConfig))
+            {
+                context.SharedInstallationBuildId = GetSharedInstallationBuildId(context.ServerConfig.SharedInstallationId);
+                return ConfigurationBackupArchive.Create(
+                    archivePath,
+                    context.ServerConfig.ServerID,
+                    context.ServerConfig.ServerGame,
+                    context.ServerConfig.SharedInstallationId,
+                    context.SharedInstallationBuildId,
+                    context.Roots,
+                    context.Paths);
+            }
+        }
+
+        private static List<string> GetConfigurationBackupRestorePreview(ConfigurationBackupContext context, string archivePath)
+        {
+            using (SharedInstallationStore.AcquireReadLeaseForServer(context.ServerConfig))
+            {
+                context.SharedInstallationBuildId = GetSharedInstallationBuildId(context.ServerConfig.SharedInstallationId);
+                return ConfigurationBackupArchive.GetRestorePreview(
+                    archivePath,
+                    context.ServerConfig.ServerID,
+                    context.ServerConfig.ServerGame,
+                    context.ServerConfig.SharedInstallationId,
+                    context.SharedInstallationBuildId,
+                    context.Roots,
+                    context.Paths);
+            }
+        }
+
+        private static List<string> RestoreConfigurationBackup(ConfigurationBackupContext context, string archivePath)
+        {
+            using (SharedInstallationStore.AcquireReadLeaseForServer(context.ServerConfig))
+            {
+                context.SharedInstallationBuildId = GetSharedInstallationBuildId(context.ServerConfig.SharedInstallationId);
+                return ConfigurationBackupArchive.Restore(
+                    archivePath,
+                    context.ServerConfig.ServerID,
+                    context.ServerConfig.ServerGame,
+                    context.ServerConfig.SharedInstallationId,
+                    context.SharedInstallationBuildId,
+                    context.Roots,
+                    context.Paths);
+            }
+        }
+
+        private static string GetSharedInstallationBuildId(string installationId)
+        {
+            if (string.IsNullOrWhiteSpace(installationId))
+            {
+                return string.Empty;
+            }
+
+            SharedInstallationRecord installation = SharedInstallationStore.GetInstallations()
+                .SingleOrDefault(record => string.Equals(record.Id, installationId, StringComparison.OrdinalIgnoreCase));
+            if (installation == null)
+            {
+                throw new InvalidDataException("The referenced shared installation could not be found.");
+            }
+
+            return installation.BuildId ?? string.Empty;
+        }
+
+        private static void ApplyBackupRetention(string backupLocation, string backupPrefix, string backupExtension, int maximumBackups)
+        {
+            foreach (FileInfo backupFile in new DirectoryInfo(backupLocation)
+                .GetFiles("*" + backupExtension)
+                .Where(file => file.Name.StartsWith(backupPrefix, StringComparison.OrdinalIgnoreCase))
+                .OrderByDescending(file => file.LastWriteTimeUtc)
+                .Skip(maximumBackups))
+            {
+                backupFile.Delete();
+            }
+        }
+
         private static bool IsExpectedBackupFileException(Exception exception)
         {
             return exception is IOException ||
+                exception is InvalidDataException ||
+                exception is InvalidOperationException ||
                 exception is UnauthorizedAccessException ||
                 exception is ArgumentException ||
                 exception is NotSupportedException ||
@@ -3385,6 +4288,42 @@ namespace WindowsGSM
             {
                 Log(server.ID, "Server: Fail to restore backup");
                 Log(server.ID, "[ERROR] Backup not found");
+                return false;
+            }
+
+            if (string.Equals(Path.GetExtension(backupPath), ConfigurationBackupArchive.FileExtension, StringComparison.OrdinalIgnoreCase))
+            {
+                return await GameServer_RestoreConfigurationBackup(server, backupPath);
+            }
+            if (!string.Equals(Path.GetExtension(backupPath), ".zip", StringComparison.OrdinalIgnoreCase))
+            {
+                Log(server.ID, "Server: Fail to restore backup");
+                Log(server.ID, "[ERROR] Unsupported backup file type");
+                return false;
+            }
+
+            try
+            {
+                string sharedInstallationId = new ServerConfig(server.ID).SharedInstallationId;
+                if (!string.IsNullOrWhiteSpace(sharedInstallationId) &&
+                    SharedInstallationStore.IsServerFilesRootOwner(server.ID, sharedInstallationId) &&
+                    SharedInstallationStore.GetLinkedServerIds(sharedInstallationId)
+                        .Any(serverId => !string.Equals(serverId, server.ID, StringComparison.OrdinalIgnoreCase)))
+                {
+                    string message = LocalizationManager.Get("SharedInstallationOwnerRestoreBlocked");
+                    Log(server.ID, "Server: Fail to restore backup");
+                    Log(server.ID, "[ERROR] " + message);
+                    MessageBox.Show(message, LocalizationManager.Get("ErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return false;
+                }
+            }
+            catch (Exception exception) when (exception is ArgumentException || exception is IOException ||
+                exception is InvalidDataException || exception is UnauthorizedAccessException ||
+                exception is InvalidOperationException)
+            {
+                Log(server.ID, "Server: Fail to restore backup");
+                Log(server.ID, "[ERROR] " + exception.Message);
+                MessageBox.Show(exception.Message, LocalizationManager.Get("ErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
                 return false;
             }
 
@@ -3447,11 +4386,120 @@ namespace WindowsGSM
             return true;
         }
 
+        private async Task<bool> GameServer_RestoreConfigurationBackup(ServerTable server, string backupPath)
+        {
+            ConfigurationBackupContext configurationContext;
+            List<string> includedPaths;
+            try
+            {
+                List<PluginMetadata> pluginSnapshot = PluginsList?.ToList();
+                configurationContext = await Task.Run(() => GetConfigurationBackupContext(server.ID, pluginSnapshot));
+                includedPaths = await Task.Run(() => GetConfigurationBackupRestorePreview(configurationContext, backupPath));
+            }
+            catch (Exception exception) when (IsExpectedBackupFileException(exception))
+            {
+                Log(server.ID, "Server: Fail to restore configuration backup");
+                Log(server.ID, $"[ERROR] {exception.Message}");
+                return false;
+            }
+
+            string preview = string.Join(Environment.NewLine, includedPaths);
+            string confirmation = string.Format(
+                CultureInfo.CurrentCulture,
+                LocalizationManager.Get("ConfigurationBackupRestoreConfirmation"),
+                server.Name,
+                preview);
+            if (MessageBox.Show(confirmation, LocalizationManager.Get("ConfirmationTitle"), MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            {
+                return false;
+            }
+
+            if (ConfigurationBackupArchive.HasExistingFiles(configurationContext.Roots, configurationContext.Paths))
+            {
+                try
+                {
+                    BackupConfig backupConfig = new BackupConfig(server.ID);
+                    string backupLocation = ServerPath.GetBackups(server.ID);
+                    string snapshotPrefix = $"WGSM-Backup-Config-Server-{server.ID}-";
+                    string snapshotPath = Path.Combine(
+                        backupLocation,
+                        $"{snapshotPrefix}{DateTime.Now:yyyyMMddHHmmssfff}-{Guid.NewGuid():N}{ConfigurationBackupArchive.FileExtension}");
+                    ConfigurationBackupResult snapshot = await Task.Run(() => CreateConfigurationBackup(configurationContext, snapshotPath));
+                    Log(server.ID, string.Format(LocalizationManager.Get("ConfigurationBackupSnapshotCreated"), snapshot.ArchivePath));
+
+                    try
+                    {
+                        await Task.Run(() => ApplyBackupRetention(
+                            backupLocation,
+                            snapshotPrefix,
+                            ConfigurationBackupArchive.FileExtension,
+                            backupConfig.MaximumBackups));
+                    }
+                    catch (Exception exception) when (IsExpectedBackupFileException(exception))
+                    {
+                        Log(server.ID, $"[NOTICE] Configuration snapshot was created, but old snapshots could not be removed: {exception.Message}");
+                    }
+                }
+                catch (Exception exception) when (IsExpectedBackupFileException(exception))
+                {
+                    Log(server.ID, "Server: Fail to restore configuration backup");
+                    Log(server.ID, $"[ERROR] Could not create the pre-restore configuration snapshot: {exception.Message}");
+                    return false;
+                }
+            }
+            else
+            {
+                Log(server.ID, $"[NOTICE] {LocalizationManager.Get("ConfigurationBackupSnapshotUnavailable")}");
+            }
+
+            _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Restoring;
+            Log(server.ID, "Action: Restore Configuration Backup");
+            SetServerStatus(server, "Restoring");
+            try
+            {
+                List<string> restoredPaths = await Task.Run(() => RestoreConfigurationBackup(configurationContext, backupPath));
+                Log(server.ID, "Server: Restored");
+                Log(server.ID, string.Format(
+                    LocalizationManager.Get("ConfigurationBackupResult"),
+                    string.Join(", ", restoredPaths)));
+                return true;
+            }
+            catch (Exception exception) when (IsExpectedBackupFileException(exception))
+            {
+                Log(server.ID, "Server: Fail to restore configuration backup");
+                Log(server.ID, $"[ERROR] {exception.Message}");
+                return false;
+            }
+            finally
+            {
+                _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Stopped;
+                SetServerStatus(server, "Stopped");
+            }
+        }
+
         private async Task<bool> GameServer_Delete(ServerTable server, string sharedInstallationId)
         {
             if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped)
             {
                 return false;
+            }
+
+            bool preserveSharedBinaryRoot = false;
+            if (!string.IsNullOrWhiteSpace(sharedInstallationId))
+            {
+                try
+                {
+                    preserveSharedBinaryRoot = SharedInstallationStore.IsServerFilesRootOwner(server.ID, sharedInstallationId);
+                }
+                catch (Exception exception) when (exception is ArgumentException || exception is IOException ||
+                    exception is InvalidDataException || exception is UnauthorizedAccessException ||
+                    exception is InvalidOperationException)
+                {
+                    Log(server.ID, "Server: Fail to delete server");
+                    Log(server.ID, "[ERROR] " + exception.Message);
+                    MessageBox.Show(exception.Message, LocalizationManager.Get("ErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
+                    return false;
+                }
             }
 
             //Begin delete
@@ -3468,6 +4516,7 @@ namespace WindowsGSM
             await Task.Delay(1000);
 
             string serverPath = ServerPath.GetServers(server.ID);
+            string deleteError = string.Empty;
 
             await Task.Run(() =>
             {
@@ -3475,16 +4524,55 @@ namespace WindowsGSM
                 {
                     if (Directory.Exists(serverPath))
                     {
-                        Directory.Delete(serverPath, true);
+                        if (preserveSharedBinaryRoot)
+                        {
+                            string preservedRoot = Path.GetFullPath(ServerPath.GetServersServerFiles(server.ID))
+                                .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                            foreach (string entry in Directory.GetFileSystemEntries(serverPath))
+                            {
+                                string fullEntryPath = Path.GetFullPath(entry)
+                                    .TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                                if (string.Equals(fullEntryPath, preservedRoot, StringComparison.OrdinalIgnoreCase))
+                                {
+                                    continue;
+                                }
+
+                                if (Directory.Exists(entry))
+                                {
+                                    Directory.Delete(entry, true);
+                                }
+                                else
+                                {
+                                    File.Delete(entry);
+                                }
+                            }
+                        }
+                        else
+                        {
+                            Directory.Delete(serverPath, true);
+                        }
                     }
                 }
-                catch
+                catch (Exception exception) when (exception is IOException || exception is UnauthorizedAccessException ||
+                    exception is System.Security.SecurityException)
                 {
-
+                    deleteError = exception.Message;
                 }
             });
 
             await Task.Delay(1000);
+
+            if (!string.IsNullOrWhiteSpace(deleteError))
+            {
+                Log(server.ID, "Server: Fail to delete server");
+                Log(server.ID, "[ERROR] " + deleteError);
+
+                _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Stopped;
+                SetServerStatus(server, "Stopped");
+
+                MessageBox.Show(deleteError, LocalizationManager.Get("ErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
+                return false;
+            }
 
             if (Directory.Exists(serverPath))
             {
@@ -3900,7 +4988,7 @@ namespace WindowsGSM
                     config.LastResultMessage = string.Empty;
                     if (!TrySaveBackupSchedule(server.ID, config, out _)) { continue; }
 
-                    bool completed = await GameServer_Backup(server, " | Scheduled backup");
+                    bool completed = await GameServer_Backup(server, " | Scheduled backup", config.BackupType);
                     config.LastEvaluatedAt = DateTime.Now;
                     config.LastAttemptedAt = DateTime.Now;
                     config.LastResult = completed ? BackupScheduleConfig.ResultCompleted : BackupScheduleConfig.ResultFailed;
@@ -4299,12 +5387,24 @@ namespace WindowsGSM
         }
 
         #region Menu - Browse
+        private static void OpenWithShell(string target)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo(target) { UseShellExecute = true });
+            }
+            catch (Exception exception) when (exception is System.ComponentModel.Win32Exception || exception is InvalidOperationException)
+            {
+                MessageBox.Show(exception.Message, LocalizationManager.Get("ErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
         private void Browse_ServerBackups_Click(object sender, RoutedEventArgs e)
         {
             var server = (Functions.ServerTable)ServerGrid.SelectedItem;
             if (server == null) { return; }
 
-            Process.Start(Functions.ServerPath.GetBackups(server.ID));
+            OpenWithShell(Functions.ServerPath.GetBackups(server.ID));
         }
 
         private void Browse_BackupFiles_Click(object sender, RoutedEventArgs e)
@@ -4312,8 +5412,8 @@ namespace WindowsGSM
             var server = (Functions.ServerTable)ServerGrid.SelectedItem;
             if (server == null) { return; }
 
-            var backupConfig = new Functions.BackupConfig(server.ID);
-            backupConfig.Open();
+            _ = new Functions.BackupConfig(server.ID);
+            OpenWithShell(Functions.ServerPath.GetServersConfigs(server.ID, "BackupConfig.cfg"));
         }
 
         private void Browse_ServerConfigs_Click(object sender, RoutedEventArgs e)
@@ -4324,7 +5424,7 @@ namespace WindowsGSM
             string path = Functions.ServerPath.GetServersConfigs(server.ID);
             if (Directory.Exists(path))
             {
-                Process.Start(path);
+                OpenWithShell(path);
             }
         }
 
@@ -4336,7 +5436,7 @@ namespace WindowsGSM
             string path = Functions.ServerPath.GetServersServerFiles(server.ID);
             if (Directory.Exists(path))
             {
-                Process.Start(path);
+                OpenWithShell(path);
             }
         }
         #endregion
@@ -4344,12 +5444,12 @@ namespace WindowsGSM
         #region Top Bar Button
         private void Button_Website_Click(object sender, RoutedEventArgs e)
         {
-            Process.Start("https://windowsgsm.com/");
+            OpenWithShell("https://windowsgsm.com/");
         }
 
         private void Button_Discord_Click(object sender, RoutedEventArgs e)
         {
-            Process.Start("https://discord.gg/bGc7t2R");
+            OpenWithShell("https://discord.gg/bGc7t2R");
         }
 
         private void Button_Settings_Click(object sender, RoutedEventArgs e)
@@ -4674,12 +5774,12 @@ namespace WindowsGSM
 
         private void Help_OnlineDocumentation_Click(object sender, RoutedEventArgs e)
         {
-            Process.Start("https://docs.windowsgsm.com");
+            OpenWithShell("https://docs.windowsgsm.com");
         }
 
         private void Help_ReportIssue_Click(object sender, RoutedEventArgs e)
         {
-            Process.Start("https://github.com/conorjh/CdogsWindowsGSM/issues");
+            OpenWithShell("https://github.com/conorjh/CdogsWindowsGSM/issues");
         }
 
         private async void Help_SoftwareUpdates_Click(object sender, RoutedEventArgs e)
@@ -5232,6 +6332,19 @@ namespace WindowsGSM
 
             var serverConfig = new ServerConfig(serverId);
             var gameServer = GameServer.Data.Class.Get(serverConfig.ServerGame, serverConfig, PluginsList);
+            if (gameServer is GameServer.MCBE)
+            {
+                try
+                {
+                    GameServer.MCBE.ParseServerPort(numericUpDown_EC_ServerPort.Value.ToString());
+                }
+                catch (InvalidDataException exception)
+                {
+                    MessageBox.Show(exception.Message, LocalizationManager.Get("SaveErrorTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+            }
+
             var goldSourceServer = gameServer as GameServer.Engine.GoldSource;
             var sourceServer = gameServer as GameServer.Engine.Source;
             string mapCyclePath = goldSourceServer != null ? goldSourceServer.MapCyclePath : sourceServer != null && !string.IsNullOrWhiteSpace(sourceServer.Game) ? sourceServer.MapCyclePath : null;
@@ -5277,6 +6390,21 @@ namespace WindowsGSM
             if (IsCfxGame(textbox_EC_ServerGame.Text) && !string.IsNullOrWhiteSpace(cfxLicenseKey))
             {
                 ServerConfig.SetSetting(serverId, ServerConfig.SettingName.CfxLicenseKey, cfxLicenseKey);
+            }
+
+            if (gameServer is GameServer.MCBE)
+            {
+                var updatedServerConfig = new ServerConfig(serverId);
+                var bedrockServer = new GameServer.MCBE(updatedServerConfig);
+                if (!bedrockServer.UpdateServerPropertiesFromWindowsGsmSettings())
+                {
+                    MessageBox.Show(
+                        bedrockServer.Error,
+                        LocalizationManager.Get("SaveErrorTitle"),
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Error);
+                    return;
+                }
             }
 
             LoadServerTable();
@@ -5794,7 +6922,7 @@ namespace WindowsGSM
             string inviteLink = g_DiscordBot.GetInviteLink();
             if (!string.IsNullOrWhiteSpace(inviteLink))
             {
-                Process.Start(g_DiscordBot.GetInviteLink());
+                OpenWithShell(g_DiscordBot.GetInviteLink());
             }
         }
         #endregion
@@ -5869,26 +6997,24 @@ namespace WindowsGSM
         {
             try
             {
-                var linkedServers = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-                foreach (ServerTable server in ServerGroups_GetAllServerRows())
-                {
-                    string installationId = new ServerConfig(server.ID).SharedInstallationId;
-                    if (string.IsNullOrWhiteSpace(installationId)) { continue; }
-
-                    if (!linkedServers.TryGetValue(installationId, out List<string> serverNames))
-                    {
-                        serverNames = new List<string>();
-                        linkedServers.Add(installationId, serverNames);
-                    }
-
-                    string serverName = string.IsNullOrWhiteSpace(server.Name) ? server.ID : server.Name;
-                    serverNames.Add(serverName + " (" + server.ID + ")");
-                }
+                Dictionary<string, ServerTable> serversById = ServerGroups_GetAllServerRows()
+                    .ToDictionary(server => server.ID, StringComparer.OrdinalIgnoreCase);
 
                 var rows = SharedInstallationStore.GetInstallations()
                     .Select(installation =>
                     {
-                        linkedServers.TryGetValue(installation.Id, out List<string> serverNames);
+                        List<string> serverNames = SharedInstallationStore.GetLinkedServerIds(installation.Id)
+                            .Select(serverId =>
+                            {
+                                if (!serversById.TryGetValue(serverId, out ServerTable server))
+                                {
+                                    return serverId;
+                                }
+
+                                string serverName = string.IsNullOrWhiteSpace(server.Name) ? serverId : server.Name;
+                                return serverName + " (" + serverId + ")";
+                            })
+                            .ToList();
                         return new
                         {
                             installation.Id,
@@ -5897,7 +7023,7 @@ namespace WindowsGSM
                             State = installation.State,
                             Build = installation.BuildId,
                             Created = installation.CreatedUtc.ToLocalTime().ToString("g", CultureInfo.CurrentCulture),
-                            LinkedServers = serverNames == null ? string.Empty : string.Join(", ", serverNames)
+                            LinkedServers = string.Join(", ", serverNames)
                         };
                     })
                     .ToList();

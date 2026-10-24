@@ -24,6 +24,8 @@ namespace WindowsGSM.Functions
         public string GameImage, AuthorImage, FullName, FileName, Error;
         public Plugin Plugin;
         public Type Type;
+        public int ApiVersion = PluginApiLevel.Legacy;
+        public WindowsGSMPluginCapability Capabilities;
         public List<string> CacheDiagnostics = new List<string>();
     }
 
@@ -95,6 +97,15 @@ namespace WindowsGSM.Functions
             try
             {
                 pluginMetadata.Type = compilation.Assembly.GetType($"WindowsGSM.Plugins.{Path.GetFileNameWithoutExtension(path)}");
+                if (pluginMetadata.Type == null)
+                {
+                    throw new InvalidDataException($"The plugin does not define the expected type 'WindowsGSM.Plugins.{Path.GetFileNameWithoutExtension(path)}'.");
+                }
+
+                PluginCapabilityProfile profile = PluginCapabilityInspector.Inspect(pluginMetadata.Type);
+                pluginMetadata.ApiVersion = profile.Version;
+                pluginMetadata.Capabilities = profile.Capabilities;
+
                 var plugin = GetPluginClass(pluginMetadata);
                 pluginMetadata.FullName = $"{plugin.FullName} [{pluginMetadata.FileName}]";
                 pluginMetadata.Plugin = plugin.Plugin;
@@ -253,6 +264,20 @@ namespace WindowsGSM.Functions
                 };
             }
 
+            return new PluginCompilationEnvironment
+            {
+                References = metadataReferences,
+                Fingerprint = ComputePluginEnvironmentFingerprint(references)
+            };
+        }
+
+        internal static string ComputePluginEnvironmentFingerprint(List<PluginCompilationReference> references)
+        {
+            if (references == null)
+            {
+                throw new ArgumentNullException(nameof(references));
+            }
+
             using (IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
             {
                 AppendFingerprintValue(hash, "CacheFormat", PluginCompilationCache.CurrentFormatVersion.ToString(CultureInfo.InvariantCulture));
@@ -274,15 +299,11 @@ namespace WindowsGSM.Functions
                     AppendFingerprintValue(hash, "ReferenceSha256", reference.ContentHash);
                 }
 
-                return new PluginCompilationEnvironment
-                {
-                    References = metadataReferences,
-                    Fingerprint = Convert.ToHexString(hash.GetHashAndReset())
-                };
+                return Convert.ToHexString(hash.GetHashAndReset());
             }
         }
 
-        private static List<PluginCompilationReference> CreatePluginReferences()
+        internal static List<PluginCompilationReference> CreatePluginReferences()
         {
             var references = new List<PluginCompilationReference>();
             var assemblyNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -383,7 +404,7 @@ namespace WindowsGSM.Functions
             throw new InvalidOperationException($"Could not access metadata for runtime assembly '{assembly.GetName().Name}'.");
         }
 
-        private static string ComputePluginFingerprint(string sourceFileName, string expectedTypeName, byte[] sourceBytes, string environmentFingerprint)
+        internal static string ComputePluginFingerprint(string sourceFileName, string expectedTypeName, byte[] sourceBytes, string environmentFingerprint)
         {
             using (IncrementalHash hash = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
             {
@@ -480,7 +501,7 @@ namespace WindowsGSM.Functions
             public string CacheDiagnostic;
         }
 
-        private sealed class PluginCompilationReference
+        internal sealed class PluginCompilationReference
         {
             public MetadataReference Reference { get; private set; }
             public string Identity { get; private set; }

@@ -37,12 +37,12 @@ namespace WindowsGSM.GameServer.Engine
         public string MapDirectory => Path.Combine(GetBinaryRoot(), Game, "maps");
 
         public string MapCyclePath => UsesSharedInstallation
-            ? Functions.ServerPath.GetSharedInstallationServerFiles(serverData.SharedInstallationId, Game, GetSharedMapCycleFileName(serverData.ServerID))
+            ? Path.Combine(GetBinaryRoot(), Game, GetSharedMapCycleFileName(serverData.ServerID))
             : Functions.ServerPath.GetServersServerFiles(serverData.ServerID, Game, "mapcycle.txt");
 
         public static void DeleteSharedMapCycleFile(string installationId, string serverId)
         {
-            string serverFilesRoot = Functions.ServerPath.GetSharedInstallationServerFiles(installationId);
+            string serverFilesRoot = Functions.SharedInstallationStore.GetServerBinaryRoot(installationId);
             if (!Directory.Exists(serverFilesRoot))
             {
                 return;
@@ -59,7 +59,7 @@ namespace WindowsGSM.GameServer.Engine
             }
         }
 
-        private static string GetSharedMapCycleFileName(string serverId)
+        internal static string GetSharedMapCycleFileName(string serverId)
         {
             return $"windowsgsm_goldsrc_mapcycle_{serverId}.txt";
         }

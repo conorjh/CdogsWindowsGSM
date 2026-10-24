@@ -84,6 +84,8 @@
 	<data name="UseSharedInstallation"><value>Usar instalación compartida</value></data>
 	<data name="ReuseSharedInstallation"><value>Reutilizando la instalación compartida de Rust existente.</value></data>
 	<data name="SharedInstallationUnsupported"><value>El juego seleccionado no admite instalaciones compartidas.</value></data>
+	<data name="GameServerIntegrationUnavailable"><value>No se pudo cargar la integración del servidor de juego.</value></data>
+	<data name="RustSharedInstallationUnavailable"><value>Las instalaciones compartidas de Rust están desactivadas temporalmente. Rust necesita que su directorio de trabajo contenga los paquetes de recursos y esta versión no ha verificado una ruta de datos separada por instancia. Los archivos compartidos existentes se conservarán; los servidores compartidos de Rust no se pueden iniciar ni actualizar. Use una instalación privada para los servidores nuevos de Rust.</value></data>
   <data name="SharedInstallationInvalidId"><value>Se requiere un identificador válido de instalación compartida.</value></data>
   <data name="SharedInstallationInstallInProgress"><value>Ya se está instalando una instalación compartida para este juego.</value></data>
   <data name="SharedInstallationMultipleReady"><value>Se encontraron varias instalaciones compartidas listas para este juego.</value></data>
@@ -91,6 +93,7 @@
   <data name="SharedInstallationNotReady"><value>La instalación compartida no está lista.</value></data>
   <data name="SharedInstallationUpdateInProgress"><value>La instalación compartida se está actualizando. Inténtelo de nuevo cuando finalice.</value></data>
   <data name="SharedInstallationInUse"><value>La instalación compartida está en uso. Detenga todas las instancias antes de actualizarla.</value></data>
+	<data name="SharedInstallationUpdateImpact"><value>Esta actualización afecta a los archivos compartidos que utilizan estas instancias de servidor: {0}. Todas las instancias vinculadas deben permanecer detenidas durante la actualización. ¿Desea continuar?</value></data>
   <data name="SharedInstallationRegistryBusy"><value>Hay otra operación de instalación compartida en curso.</value></data>
   <data name="SharedInstallationRegistryInvalid"><value>El registro de instalaciones compartidas no es válido.</value></data>
   <data name="SharedInstallationStateInvalid"><value>La instalación compartida no está en el estado de instalación esperado.</value></data>
@@ -106,6 +109,9 @@
   <data name="SharedInstallationServersColumn"><value>Servidores vinculados</value></data>
 	<data name="SharedInstallationDeleteConfirmation"><value>Si este es el último servidor vinculado a la instalación, también se eliminarán sus archivos de juego compartidos.</value></data>
   <data name="SharedInstallationDeleteFailed"><value>El servidor se eliminó, pero no se pudo quitar su instalación compartida y se conservó por seguridad: {0}</value></data>
+	<data name="SharedInstallationOwnerRestoreBlocked"><value>Este servidor es propietario de archivos de juego compartidos que utilizan otros servidores vinculados. Una restauración completa reemplazaría esos archivos. Elimine o desvincule los otros servidores antes de restaurar este servidor.</value></data>
+	<data name="SharedInstallationCleanupFailed"><value>No se pudo quitar de forma segura la instalación compartida incompleta: {0}</value></data>
+	<data name="SharedInstallationCleanupNoUnreferencedRecord"><value>Otro servidor aún la referencia o el registro de instalación no está disponible.</value></data>
   <data name="CfxLicenseKeyFromPortal"><value>Clave de licencia CFX (de portal.cfx.re)</value></data>
   <data name="InstallMeatBots"><value>Instalar MeatBots</value></data>
   <data name="SetAccount"><value>Configurar cuenta</value></data>
@@ -301,6 +307,10 @@
   <data name="StatusRestarting"><value>Reiniciando</value></data>
 	<data name="BackupSchedules"><value>Copias de seguridad programadas</value></data>
   <data name="ScheduleGame"><value>Juego</value></data>
+	<data name="ScheduleBackupType"><value>Tipo de copia</value></data>
+  <data name="BackupTypeFullServer"><value>Servidor completo</value></data>
+	<data name="FullBackup"><value>Copia de seguridad completa</value></data>
+  <data name="BackupTypeConfiguration"><value>Solo configuración</value></data>
   <data name="ScheduleEnabled"><value>Activado</value></data>
 	<data name="ScheduleSummary"><value>Programación</value></data>
   <data name="ScheduleFrequency"><value>Frecuencia</value></data>
@@ -324,6 +334,7 @@
   <data name="ScheduleResultDetails"><value>Detalles</value></data>
   <data name="ScheduleBackupStorage"><value>Ubicación de las copias: {0} (conservar {1} copias)</value></data>
   <data name="ScheduleBackupStorageError"><value>No se pudo leer la ubicación ni la retención de copias: {0}</value></data>
+  <data name="ScheduleConfigurationBackupHint"><value>Las copias de configuración solo incluyen server.cfg de la instancia de Rust; se excluyen los binarios compartidos y los demás archivos.</value></data>
 	<data name="ServerHealth"><value>Estado</value></data>
   <data name="HealthHealthy"><value>Correcto</value></data>
   <data name="HealthWarning"><value>Advertencia</value></data>
@@ -393,6 +404,13 @@
 	<data name="UpdateServerConfirmation"><value>¿Quieres actualizar este servidor?</value></data>
   <data name="ValidateServerConfirmation"><value>¿Quieres validar este servidor?</value></data>
   <data name="BackupServerConfirmation"><value>¿Quieres crear una copia de seguridad de este servidor?</value></data>
+	<data name="ConfigurationBackup"><value>Copia solo de configuración</value></data>
+  <data name="ConfigurationBackupConfirmation"><value>¿Crear una copia solo de configuración para '{0}'?&#xA;&#xA;Rutas incluidas:&#xA;{1}&#xA;&#xA;Se excluyen los binarios compartidos y todos los demás archivos del servidor.</value></data>
+  <data name="ConfigurationBackupRestoreConfirmation"><value>¿Restaurar los archivos de configuración en '{0}'?&#xA;&#xA;Solo se combinarán estas rutas; los binarios compartidos y los demás archivos del servidor no cambiarán:&#xA;{1}&#xA;&#xA;Se creará una copia previa si el archivo de configuración actual existe.</value></data>
+  <data name="ConfigurationBackupUnsupported"><value>Las copias solo de configuración solo están disponibles para el archivo server.cfg de Rust.</value></data>
+  <data name="ConfigurationBackupSnapshotCreated"><value>Copia de configuración previa a la restauración creada: {0}</value></data>
+  <data name="ConfigurationBackupSnapshotUnavailable"><value>No había un server.cfg actual de Rust disponible para guardar antes de la restauración.</value></data>
+  <data name="ConfigurationBackupResult"><value>La copia de configuración incluye: {0}</value></data>
   <data name="SaveButton"><value>Guardar</value></data>
 	<data name="AddButton"><value>Añadir</value></data>
   <data name="DiscordWebhookTitle"><value>URL del webhook de Discord</value></data>

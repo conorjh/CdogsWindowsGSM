@@ -17,32 +17,32 @@ namespace WindowsGSM.Installer
     public class SteamCMD
     {
         private static readonly string _exeFile = "steamcmd.exe";
-        private static readonly string _installPath = ServerPath.GetBin("steamcmd");
-        private static readonly string _userDataPath = Path.Combine(_installPath, "userData.txt");
+        private static string InstallPath => ServerPath.GetBin("steamcmd");
+        private static string UserDataPath => Path.Combine(InstallPath, "userData.txt");
         private string _param;
         public string Error;
 
         public SteamCMD()
         {
-            Directory.CreateDirectory(_installPath);
+            Directory.CreateDirectory(InstallPath);
         }
 
         private static async Task<bool> Download()
         {
-            Directory.CreateDirectory(_installPath);
-            var exePath = Path.Combine(_installPath, _exeFile);
+            Directory.CreateDirectory(InstallPath);
+            var exePath = Path.Combine(InstallPath, _exeFile);
             if (File.Exists(exePath)) { return true; }
             
             try
             {
-                var zipPath = Path.Combine(_installPath, "steamcmd.zip");
+                var zipPath = Path.Combine(InstallPath, "steamcmd.zip");
                 using (var webClient = new WebClient())
                 {
                     await webClient.DownloadFileTaskAsync("https://steamcdn-a.akamaihd.net/client/installer/steamcmd.zip", zipPath);
                 }
 
                 //Extract steamcmd.zip and delete the zip
-                await Task.Run(() => ZipFile.ExtractToDirectory(zipPath, _installPath));
+                await Task.Run(() => ZipFile.ExtractToDirectory(zipPath, InstallPath));
                 await Task.Run(() => File.Delete(zipPath));
 
                 return true;
@@ -66,9 +66,9 @@ namespace WindowsGSM.Installer
             {
                 string steamUser = null, steamPass = null;
 
-                if (File.Exists(_userDataPath))
+                if (File.Exists(UserDataPath))
                 {
-                    string[] lines = File.ReadAllLines(_userDataPath);
+                    string[] lines = File.ReadAllLines(UserDataPath);
 
                     foreach (string line in lines)
                     {
@@ -163,13 +163,13 @@ namespace WindowsGSM.Installer
         // New parameter script
         private static (string, string) GetSteamUsernamePassword()
         {
-            if (!File.Exists(_userDataPath))
+            if (!File.Exists(UserDataPath))
             {
                 return (null, null);
             }
 
             string username = null, password = null;
-            foreach (var line in File.ReadAllLines(_userDataPath).ToList())
+            foreach (var line in File.ReadAllLines(UserDataPath).ToList())
             {
                 if (line[0] == '/' && line[1] == '/') { continue; } // Skip the line if it is a comment line
                 var keyValue = line.Split(new[] { '=' }, 2);
@@ -185,7 +185,8 @@ namespace WindowsGSM.Installer
 
         public async Task<Process> Run()
         {
-            string exePath = Path.Combine(_installPath, _exeFile);
+            string installPath = InstallPath;
+            string exePath = Path.Combine(installPath, _exeFile);
             if (!File.Exists(exePath))
             {
                 //If steamcmd.exe not exists, download steamcmd.exe
@@ -214,7 +215,7 @@ namespace WindowsGSM.Installer
             {
                 StartInfo =
                 {
-                    WorkingDirectory = _installPath,
+                    WorkingDirectory = installPath,
                     FileName = exePath,
                     Arguments = _param,
                     WindowStyle = ProcessWindowStyle.Minimized,
@@ -261,7 +262,8 @@ namespace WindowsGSM.Installer
                 return (null, "Steam account not set up");
             }
 
-            string exePath = Path.Combine(_installPath, _exeFile);
+            string steamCmdPath = InstallPath;
+            string exePath = Path.Combine(steamCmdPath, _exeFile);
             if (!File.Exists(exePath) && !await Download())
             {
                 return (null, "Unable to download steamcmd");
@@ -274,7 +276,7 @@ namespace WindowsGSM.Installer
             {
                 StartInfo =
                 {
-                    WorkingDirectory = _installPath,
+                    WorkingDirectory = steamCmdPath,
                     FileName = exePath,
                     Arguments = param,
                     WindowStyle = ProcessWindowStyle.Minimized,
@@ -402,7 +404,8 @@ namespace WindowsGSM.Installer
 
         public async Task<string> GetRemoteBuild(string appId)
         {
-            string exePath = Path.Combine(_installPath, "steamcmd.exe");
+            string installPath = InstallPath;
+            string exePath = Path.Combine(installPath, "steamcmd.exe");
             if (!File.Exists(exePath))
             {
                 //If steamcmd.exe not exists, download steamcmd.exe
@@ -422,7 +425,7 @@ namespace WindowsGSM.Installer
             // Removes appinfo.vdf as a fix for not always getting up to date version info from SteamCMD.
             await Task.Run(() =>
             {
-                string vdfPath = Path.Combine(_installPath, "appcache", "appinfo.vdf");
+                string vdfPath = Path.Combine(installPath, "appcache", "appinfo.vdf");
                 try
                 {
                     if (File.Exists(vdfPath))
@@ -468,11 +471,11 @@ namespace WindowsGSM.Installer
 
         public void CreateUserDataTxtIfNotExist()
         {
-            if (!File.Exists(_userDataPath))
+            if (!File.Exists(UserDataPath))
             {
-                File.Create(_userDataPath).Dispose();
+                File.Create(UserDataPath).Dispose();
 
-                using (TextWriter textwriter = new StreamWriter(_userDataPath))
+                using (TextWriter textwriter = new StreamWriter(UserDataPath))
                 {
                     textwriter.WriteLine("// For security and compatibility reasons, WindowsGSM suggests you to create a new steam account.");
                     textwriter.WriteLine("// More info: (https://docs.windowsgsm.com/installer/steamcmd)");

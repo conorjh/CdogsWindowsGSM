@@ -3,7 +3,10 @@ CdogsWindowsGSM/bin/
 CdogsWindowsGSM/obj/
 CdogsWindowsGSM.Updater/bin/
 CdogsWindowsGSM.Updater/obj/
-WindowsGSM-Plugin-Development/bin/
-WindowsGSM-Plugin-Development/obj/
+CdogsWindowsGSM-Plugin-Development/bin/
+CdogsWindowsGSM-Plugin-Development/obj/
 /artifacts/
 CdogsWindowsGSM.sln.DotSettings.user
+CdogsWindowsGSM.Tests/bin/
+CdogsWindowsGSM.Tests/obj/
+CdogsWindowsGSM.Tests/steam-credentials.txt

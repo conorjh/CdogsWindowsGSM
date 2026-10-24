@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Threading.Tasks;
+using WindowsGSM.Functions;
 
 namespace WindowsGSM.GameServer.Engine
 {
@@ -10,4 +11,5 @@ namespace WindowsGSM.GameServer.Engine
         Task<Process> InstallSharedBinaries();
         Task<bool> InstallConfigOnly();
     }
+
 }

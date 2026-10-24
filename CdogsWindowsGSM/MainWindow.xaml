@@ -656,6 +656,7 @@
                     <DataGrid.Columns>
                         <DataGridTextColumn Header="{loc:Loc Key=ColumnServerName}" Binding="{Binding ServerName}" Width="2*"/>
                         <DataGridTextColumn Header="{loc:Loc Key=ScheduleGame}" Binding="{Binding Game}" Width="*"/>
+                        <DataGridTextColumn Header="{loc:Loc Key=ScheduleBackupType}" Binding="{Binding BackupTypeDisplay}" Width="*"/>
                         <DataGridCheckBoxColumn Header="{loc:Loc Key=ScheduleEnabled}" Binding="{Binding Enabled, Mode=OneWay}" Width="Auto"/>
                         <DataGridTextColumn Header="{loc:Loc Key=ScheduleSummary}" Binding="{Binding ScheduleDescription}" Width="2*"/>
                         <DataGridTextColumn Header="{loc:Loc Key=ScheduleNextRun}" Binding="{Binding NextRun}" Width="2*"/>
@@ -678,12 +679,12 @@
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <Label Grid.Row="0" Grid.Column="0" Content="{loc:Loc Key=SelectedServer}"/>
                     <TextBlock x:Name="label_BackupScheduleServer" Grid.Row="0" Grid.Column="1" VerticalAlignment="Center"/>
                     <Label Grid.Row="0" Grid.Column="2" Content="{loc:Loc Key=ScheduleEnabled}" Target="{Binding ElementName=switch_BackupScheduleEnabled}"/>
-                    <mah:ToggleSwitch x:Name="switch_BackupScheduleEnabled" Grid.Row="0" Grid.Column="3" VerticalAlignment="Center"/>
-                    <Button x:Name="button_SaveBackupSchedule" Grid.Row="0" Grid.Column="4" Content="{loc:Loc Key=ScheduleSave}" Margin="8,0,0,0" Padding="12,4" Click="Button_SaveBackupSchedule_Click"/>
+                    <mah:ToggleSwitch x:Name="switch_BackupScheduleEnabled" Grid.Row="0" Grid.Column="3" VerticalAlignment="Center" Toggled="BackupScheduleEnabled_Toggled"/>
                     <Label Grid.Row="1" Grid.Column="0" Content="{loc:Loc Key=ScheduleFrequency}" Target="{Binding ElementName=comboBox_BackupScheduleFrequency}"/>
                     <ComboBox x:Name="comboBox_BackupScheduleFrequency" Grid.Row="1" Grid.Column="1" SelectedValuePath="Tag" SelectionChanged="BackupScheduleFrequency_SelectionChanged" VerticalContentAlignment="Center">
                         <ComboBoxItem Content="{loc:Loc Key=ScheduleDaily}" Tag="Daily"/>
@@ -691,10 +692,10 @@
                         <ComboBoxItem Content="{loc:Loc Key=ScheduleCustom}" Tag="Custom"/>
                     </ComboBox>
                     <Label x:Name="label_BackupScheduleTime" Grid.Row="1" Grid.Column="2" Content="{loc:Loc Key=ScheduleTime}" Target="{Binding ElementName=textBox_BackupScheduleTime}" VerticalAlignment="Center"/>
-                    <TextBox x:Name="textBox_BackupScheduleTime" Grid.Row="1" Grid.Column="3" MaxLength="5" VerticalContentAlignment="Center"/>
+                    <TextBox x:Name="textBox_BackupScheduleTime" Grid.Row="1" Grid.Column="3" MaxLength="5" VerticalContentAlignment="Center" TextChanged="BackupScheduleTime_TextChanged" LostFocus="BackupScheduleTime_LostFocus"/>
                     <Button x:Name="button_RunBackupNow" Grid.Row="1" Grid.Column="4" Content="{loc:Loc Key=ScheduleRunNow}" Margin="8,0,0,0" Padding="12,4" Click="Button_RunBackupNow_Click"/>
                     <Label x:Name="label_BackupScheduleDay" Grid.Row="2" Grid.Column="0" Content="{loc:Loc Key=ScheduleDayOfWeek}" Target="{Binding ElementName=comboBox_BackupScheduleDay}" VerticalAlignment="Center" Visibility="Collapsed"/>
-                    <ComboBox x:Name="comboBox_BackupScheduleDay" Grid.Row="2" Grid.Column="1" SelectedValuePath="Tag" VerticalContentAlignment="Center" Visibility="Collapsed">
+                    <ComboBox x:Name="comboBox_BackupScheduleDay" Grid.Row="2" Grid.Column="1" SelectedValuePath="Tag" SelectionChanged="BackupScheduleDay_SelectionChanged" VerticalContentAlignment="Center" Visibility="Collapsed">
                         <ComboBoxItem Content="{loc:Loc Key=ScheduleSunday}" Tag="0"/>
                         <ComboBoxItem Content="{loc:Loc Key=ScheduleMonday}" Tag="1"/>
                         <ComboBoxItem Content="{loc:Loc Key=ScheduleTuesday}" Tag="2"/>
@@ -703,9 +704,14 @@
                         <ComboBoxItem Content="{loc:Loc Key=ScheduleFriday}" Tag="5"/>
                         <ComboBoxItem Content="{loc:Loc Key=ScheduleSaturday}" Tag="6"/>
                     </ComboBox>
-                    <TextBlock x:Name="label_BackupScheduleStorage" Grid.Row="3" Grid.Column="0" Grid.ColumnSpan="5" TextWrapping="Wrap" Margin="0,6,0,0"/>
-                    <TextBlock x:Name="label_BackupScheduleHint" Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="2" TextWrapping="Wrap" Margin="0,6,10,0"/>
-                    <TextBlock x:Name="label_BackupScheduleStatus" AutomationProperties.LiveSetting="Polite" Grid.Row="4" Grid.Column="2" Grid.ColumnSpan="3" TextWrapping="Wrap" Margin="10,6,0,0"/>
+                    <Label Grid.Row="3" Grid.Column="0" Content="{loc:Loc Key=ScheduleBackupType}" Target="{Binding ElementName=comboBox_BackupScheduleType}"/>
+                    <ComboBox x:Name="comboBox_BackupScheduleType" Grid.Row="3" Grid.Column="1" SelectedValuePath="Tag" SelectionChanged="BackupScheduleType_SelectionChanged" VerticalContentAlignment="Center">
+                        <ComboBoxItem Content="{loc:Loc Key=BackupTypeFullServer}" Tag="FullServer"/>
+                        <ComboBoxItem Content="{loc:Loc Key=BackupTypeConfiguration}" Tag="Configuration"/>
+                    </ComboBox>
+                    <TextBlock x:Name="label_BackupScheduleStorage" Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="5" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                    <TextBlock x:Name="label_BackupScheduleHint" Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2" TextWrapping="Wrap" Margin="0,6,10,0"/>
+                    <TextBlock x:Name="label_BackupScheduleStatus" AutomationProperties.LiveSetting="Polite" Grid.Row="5" Grid.Column="2" Grid.ColumnSpan="3" TextWrapping="Wrap" Margin="10,6,0,0"/>
                 </Grid>
             </Grid>
         </DockPanel>
@@ -816,6 +822,7 @@
                                 <Image Source="/CdogsWindowsGSM;component/Images/Backup.ico" Width="23" Margin="3"/>
                             </MenuItem.Icon>
                         </MenuItem>
+                        <MenuItem x:Name="menuItem_ConfigurationBackup" Header="{loc:Loc Key=ConfigurationBackup}" Click="Actions_ConfigurationBackup_Click" Visibility="Collapsed"/>
                         <MenuItem Header="{loc:Loc Key=RestoreBackup}" Click="Actions_RestoreBackup_Click">
                             <MenuItem.Icon>
                                 <Image Source="/CdogsWindowsGSM;component/Images/Restore.ico" Width="23" Margin="3"/>
@@ -935,7 +942,7 @@
                           IsSynchronizedWithCurrentItem="True"
                           HorizontalScrollBarVisibility="Disabled">
                     <DataGrid.Resources>
-                        <ContextMenu x:Key="ServerRowContextMenu">
+                        <ContextMenu x:Key="ServerRowContextMenu" Opened="ServerRowContextMenu_Opened">
                             <MenuItem Header="{loc:Loc Key=Start}" Click="Actions_Start_Click">
                                 <MenuItem.Icon><Image Source="/CdogsWindowsGSM;component/Images/Start.ico" Width="23" Margin="3"/></MenuItem.Icon>
                             </MenuItem>
@@ -955,8 +962,10 @@
                                 <MenuItem Header="{loc:Loc Key=Update}" Click="Actions_Update_Click"/>
                                 <MenuItem Header="{loc:Loc Key=UpdateValidate}" Click="Actions_UpdateValidate_Click"/>
                             </MenuItem>
-                            <MenuItem Header="{loc:Loc Key=Backup}" Click="Actions_Backup_Click">
+                            <MenuItem x:Name="menuItem_Backup_Context" Header="{loc:Loc Key=Backup}">
                                 <MenuItem.Icon><Image Source="/CdogsWindowsGSM;component/Images/Backup.ico" Width="23" Margin="3"/></MenuItem.Icon>
+                                <MenuItem Header="{loc:Loc Key=FullBackup}" Click="Actions_Backup_Click"/>
+                                <MenuItem x:Name="menuItem_ConfigurationBackup_Context" Header="{loc:Loc Key=ConfigurationBackup}" Click="Actions_ConfigurationBackup_Click" Visibility="Collapsed"/>
                             </MenuItem>
                             <MenuItem Header="{loc:Loc Key=RestoreBackup}" Click="Actions_RestoreBackup_Click">
                                 <MenuItem.Icon><Image Source="/CdogsWindowsGSM;component/Images/Restore.ico" Width="23" Margin="3"/></MenuItem.Icon>
@@ -1192,6 +1201,64 @@
 
         <Grid>
             <Grid.Resources>
+                <DrawingImage x:Key="ScheduleIcon">
+                    <DrawingImage.Drawing>
+                        <DrawingGroup>
+                            <GeometryDrawing Brush="{DynamicResource MahApps.Brushes.ThemeForeground}">
+                                <GeometryDrawing.Geometry>
+                                    <RectangleGeometry Rect="3,4,18,18" RadiusX="2" RadiusY="2"/>
+                                </GeometryDrawing.Geometry>
+                            </GeometryDrawing>
+                            <GeometryDrawing Brush="{DynamicResource MahApps.Brushes.Accent}">
+                                <GeometryDrawing.Geometry>
+                                    <RectangleGeometry Rect="5,6,14,4"/>
+                                </GeometryDrawing.Geometry>
+                            </GeometryDrawing>
+                            <GeometryDrawing Brush="{DynamicResource MahApps.Brushes.ThemeBackground}">
+                                <GeometryDrawing.Geometry>
+                                    <RectangleGeometry Rect="5,10,14,10"/>
+                                </GeometryDrawing.Geometry>
+                            </GeometryDrawing>
+                            <GeometryDrawing Brush="{DynamicResource MahApps.Brushes.ThemeForeground}">
+                                <GeometryDrawing.Geometry>
+                                    <GeometryGroup>
+                                        <RectangleGeometry Rect="7,2,2,7" RadiusX="1" RadiusY="1"/>
+                                        <RectangleGeometry Rect="15,2,2,7" RadiusX="1" RadiusY="1"/>
+                                    </GeometryGroup>
+                                </GeometryDrawing.Geometry>
+                            </GeometryDrawing>
+                            <GeometryDrawing Brush="{DynamicResource MahApps.Brushes.Accent}">
+                                <GeometryDrawing.Geometry>
+                                    <GeometryGroup>
+                                        <EllipseGeometry Center="8,12" RadiusX="1" RadiusY="1"/>
+                                        <EllipseGeometry Center="12,12" RadiusX="1" RadiusY="1"/>
+                                        <EllipseGeometry Center="8,16" RadiusX="1" RadiusY="1"/>
+                                        <EllipseGeometry Center="12,16" RadiusX="1" RadiusY="1"/>
+                                    </GeometryGroup>
+                                </GeometryDrawing.Geometry>
+                            </GeometryDrawing>
+                            <GeometryDrawing Brush="{DynamicResource MahApps.Brushes.ThemeBackground}">
+                                <GeometryDrawing.Pen>
+                                    <Pen Brush="{DynamicResource MahApps.Brushes.Accent}" Thickness="1.5"/>
+                                </GeometryDrawing.Pen>
+                                <GeometryDrawing.Geometry>
+                                    <EllipseGeometry Center="17,17" RadiusX="5" RadiusY="5"/>
+                                </GeometryDrawing.Geometry>
+                            </GeometryDrawing>
+                            <GeometryDrawing Brush="{x:Null}">
+                                <GeometryDrawing.Pen>
+                                    <Pen Brush="{DynamicResource MahApps.Brushes.ThemeForeground}" Thickness="1.2" StartLineCap="Round" EndLineCap="Round"/>
+                                </GeometryDrawing.Pen>
+                                <GeometryDrawing.Geometry>
+                                    <GeometryGroup>
+                                        <LineGeometry StartPoint="17,14" EndPoint="17,17"/>
+                                        <LineGeometry StartPoint="17,17" EndPoint="19,18"/>
+                                    </GeometryGroup>
+                                </GeometryDrawing.Geometry>
+                            </GeometryDrawing>
+                        </DrawingGroup>
+                    </DrawingImage.Drawing>
+                </DrawingImage>
                 <DataTemplate x:Key="MenuItemTemplate" DataType="{x:Type mah:HamburgerMenuImageItem}">
                     <Grid Height="48">
                         <Grid.ColumnDefinitions>
@@ -1240,11 +1307,7 @@
                                 <BitmapImage UriSource="pack://application:,,,/CdogsWindowsGSM;component/Images/HMenu/Dashboard.ico" />
                             </mah:HamburgerMenuImageItem.Thumbnail>
                         </mah:HamburgerMenuImageItem>
-                        <mah:HamburgerMenuImageItem Label="{loc:Loc Key=NavSchedules}" AutomationProperties.Name="{loc:Loc Key=NavSchedules}">
-                            <mah:HamburgerMenuImageItem.Thumbnail>
-                                <BitmapImage UriSource="pack://application:,,,/CdogsWindowsGSM;component/Images/Backup.ico" />
-                            </mah:HamburgerMenuImageItem.Thumbnail>
-                        </mah:HamburgerMenuImageItem>
+                        <mah:HamburgerMenuImageItem Label="{loc:Loc Key=NavSchedules}" Thumbnail="{StaticResource ScheduleIcon}" AutomationProperties.Name="{loc:Loc Key=NavSchedules}"/>
                         <mah:HamburgerMenuImageItem Label="{loc:Loc Key=NavSharedInstallations}" AutomationProperties.Name="{loc:Loc Key=NavSharedInstallations}">
                             <mah:HamburgerMenuImageItem.Thumbnail>
                                 <BitmapImage UriSource="pack://application:,,,/CdogsWindowsGSM;component/Images/HMenu/Dashboard.ico" />

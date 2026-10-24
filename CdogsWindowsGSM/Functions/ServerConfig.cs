@@ -11,6 +11,7 @@ namespace WindowsGSM.Functions
     {
         public static class SettingName
         {
+            public const string ConfigVersion = "configversion";
             public const string ServerGame = "servergame";
             public const string ServerName = "servername";
             public const string ServerIP = "serverip";
@@ -46,7 +47,11 @@ namespace WindowsGSM.Functions
             public const string SharedInstallationId = "sharedinstallationid";
         }
 
+        public const int CurrentSchemaVersion = 2;
+        private const int LegacySchemaVersion = 1;
+
         public string ServerID;
+        public int SchemaVersion = LegacySchemaVersion;
         public string ServerGame;
         public string ServerName;
         public string ServerIP;
@@ -88,19 +93,17 @@ namespace WindowsGSM.Functions
             {
                 for (int id = 1; id <= MainWindow.MAX_SERVER; id++)
                 {
-                    string serverid_dir = MainWindow.WGSM_PATH + @"\servers\" + id;
-                    if (Directory.Exists(serverid_dir))
+                    string candidateServerId = id.ToString();
+                    if (SharedInstallationStore.IsServerFilesRootOwner(candidateServerId))
                     {
-                        string config = MainWindow.WGSM_PATH + @"\servers\" + id + @"\configs\WindowsGSM.cfg";
-                        if (!File.Exists(config))
-                        {
-                            ServerID = id.ToString();
-                            break;
-                        }
+                        continue;
                     }
-                    else
+
+                    string serverDirectory = ServerPath.GetServers(candidateServerId);
+                    string config = ServerPath.GetServersConfigs(candidateServerId, "WindowsGSM.cfg");
+                    if (!Directory.Exists(serverDirectory) || !File.Exists(config))
                     {
-                        ServerID = id.ToString();
+                        ServerID = candidateServerId;
                         break;
                     }
                 }
@@ -123,6 +126,12 @@ namespace WindowsGSM.Functions
 
                         switch (keyvalue[0])
                         {
+                            case SettingName.ConfigVersion:
+                                if (!int.TryParse(keyvalue[1], out SchemaVersion))
+                                {
+                                    throw new InvalidDataException("The server configuration schema version is invalid.");
+                                }
+                                break;
                             case SettingName.ServerGame: ServerGame = keyvalue[1]; break;
                             case SettingName.ServerName: ServerName = keyvalue[1]; break;
                             case SettingName.ServerIP: ServerIP = keyvalue[1]; break;
@@ -159,11 +168,17 @@ namespace WindowsGSM.Functions
                         }
                     }
                 }
+
+                if (SchemaVersion < LegacySchemaVersion || SchemaVersion > CurrentSchemaVersion)
+                {
+                    throw new InvalidDataException($"Unsupported server configuration schema version: {SchemaVersion}.");
+                }
             }
         }
 
         public void SetData(string serverGame, string serverName, dynamic gameServer)
         {
+            SchemaVersion = CurrentSchemaVersion;
             ServerGame = serverGame;
             ServerName = serverName;
             ServerIP = GetIPAddress();
@@ -234,6 +249,7 @@ namespace WindowsGSM.Functions
 
                 using (TextWriter textwriter = new StreamWriter(configpath))
                 {
+                    textwriter.WriteLine($"{SettingName.ConfigVersion}=\"{SchemaVersion}\"");
                     textwriter.WriteLine($"{SettingName.ServerGame}=\"{ServerGame}\"");
                     textwriter.WriteLine($"{SettingName.ServerName}=\"{ServerName}\"");
                     textwriter.WriteLine($"{SettingName.ServerIP}=\"{ServerIP}\"");

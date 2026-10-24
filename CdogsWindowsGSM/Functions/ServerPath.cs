@@ -1,11 +1,15 @@
 ﻿using System.IO;
 using System;
+using System.Threading;
 using WindowsGSM.Localization;
 
 namespace WindowsGSM.Functions
 {
     public static class ServerPath
     {
+        private static readonly AsyncLocal<string> PathRootOverride = new AsyncLocal<string>();
+        internal static bool IsTestRootOverrideActive => PathRootOverride.Value != null;
+
         public static class FolderName
         {
             public static string Bin = "bin";
@@ -38,7 +42,41 @@ namespace WindowsGSM.Functions
         /// <returns></returns>
         public static string Get(string path1 = "", string path2 = "", string path3 = "")
         {
-            return Path.Combine(MainWindow.WGSM_PATH, path1, path2, path3);
+            return Path.Combine(PathRootOverride.Value ?? MainWindow.WGSM_PATH, path1, path2, path3);
+        }
+
+        internal static IDisposable UseRootForTesting(string rootPath)
+        {
+            if (string.IsNullOrWhiteSpace(rootPath) || !Path.IsPathRooted(rootPath))
+            {
+                throw new ArgumentException("An absolute test root is required.", nameof(rootPath));
+            }
+
+            string previousRoot = PathRootOverride.Value;
+            PathRootOverride.Value = Path.GetFullPath(rootPath);
+            return new PathRootOverrideScope(previousRoot);
+        }
+
+        private sealed class PathRootOverrideScope : IDisposable
+        {
+            private readonly string _previousRoot;
+            private bool _disposed;
+
+            public PathRootOverrideScope(string previousRoot)
+            {
+                _previousRoot = previousRoot;
+            }
+
+            public void Dispose()
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                PathRootOverride.Value = _previousRoot;
+                _disposed = true;
+            }
         }
 
         /// <summary>
@@ -55,7 +93,7 @@ namespace WindowsGSM.Functions
                 return backupConfig.BackupLocation;
             }
 
-            string defaultBackupPath = Path.Combine(MainWindow.WGSM_PATH, FolderName.Backups, serverId);
+            string defaultBackupPath = Path.Combine(Get(), FolderName.Backups, serverId);
             Directory.CreateDirectory(defaultBackupPath);
             return defaultBackupPath;
         }
@@ -69,12 +107,12 @@ namespace WindowsGSM.Functions
         /// <returns></returns>
         public static string GetBin(string path1 = "", string path2 = "", string path3 = "")
         {
-            return Path.Combine(MainWindow.WGSM_PATH, FolderName.Bin, path1, path2, path3);
+            return Path.Combine(Get(), FolderName.Bin, path1, path2, path3);
         }
 
         public static string GetInstaller(string path = "") // Unused
         {
-            return Path.Combine(MainWindow.WGSM_PATH, FolderName.Installer, path);
+            return Path.Combine(Get(), FolderName.Installer, path);
         }
 
         /// <summary>
@@ -86,7 +124,7 @@ namespace WindowsGSM.Functions
         /// <returns></returns>
         public static string GetLogs(string path1 = "", string path2 = "", string path3 = "")
         {
-            return Path.Combine(MainWindow.WGSM_PATH, FolderName.Logs, path1, path2, path3);
+            return Path.Combine(Get(), FolderName.Logs, path1, path2, path3);
         }
 
         /// <summary>
@@ -98,7 +136,7 @@ namespace WindowsGSM.Functions
         /// <returns></returns>
         public static string GetPlugins(string path1 = "", string path2 = "", string path3 = "")
         {
-            return Path.Combine(MainWindow.WGSM_PATH, FolderName.Plugins, path1, path2, path3);
+            return Path.Combine(Get(), FolderName.Plugins, path1, path2, path3);
         }
 
         /// <summary>
@@ -110,7 +148,7 @@ namespace WindowsGSM.Functions
         /// <returns></returns>
         public static string GetServers(string serverId, string path1 = "", string path2 = "")
         {
-            return Path.Combine(MainWindow.WGSM_PATH, FolderName.Servers, serverId, path1, path2);
+            return Path.Combine(Get(), FolderName.Servers, serverId, path1, path2);
         }
 
         /// <summary>
@@ -172,7 +210,8 @@ namespace WindowsGSM.Functions
 
         public static string GetSharedInstallationLockFile(string installationId)
         {
-            return Path.Combine(GetSharedInstallationRoot(installationId), ".windowsgsm.lock");
+            GetSharedInstallationRoot(installationId);
+            return Path.Combine(Get(FolderName.Configs, "SharedInstallations"), installationId + ".lock");
         }
 
         public static string GetSharedInstallationsRegistry()

@@ -17,6 +17,8 @@ jobs:
       run: |
         dotnet build CdogsWindowsGSM.sln --configuration Release --no-restore
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    - name: Run automated tests
+      run: dotnet test CdogsWindowsGSM.sln --configuration Release --no-build
     - name: Verify single-file outputs
       shell: pwsh
       run: |

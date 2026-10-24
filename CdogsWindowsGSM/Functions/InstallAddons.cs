@@ -12,6 +12,11 @@ namespace WindowsGSM.Functions
     {
         public static bool? IsAMXModXAndMetaModPExists(Functions.ServerTable server)
         {
+            if (IsSharedInstallation(server))
+            {
+                return null;
+            }
+
             dynamic gameServer = GameServer.Data.Class.Get(server.Game);
             if (!(gameServer is GameServer.Engine.GoldSource))
             {
@@ -25,6 +30,11 @@ namespace WindowsGSM.Functions
 
         public static async Task<bool> AMXModXAndMetaModP(Functions.ServerTable server)
         {
+            if (IsSharedInstallation(server))
+            {
+                return false;
+            }
+
             try
             {
                 dynamic gameServer = GameServer.Data.Class.Get(server.Game);
@@ -38,6 +48,11 @@ namespace WindowsGSM.Functions
 
         public static bool? IsSourceModAndMetaModExists(Functions.ServerTable server)
         {
+            if (IsSharedInstallation(server))
+            {
+                return null;
+            }
+
             dynamic gameServer = GameServer.Data.Class.Get(server.Game);
             if (!(gameServer is GameServer.Engine.Source))
             {
@@ -51,6 +66,11 @@ namespace WindowsGSM.Functions
 
         public static async Task<bool> SourceModAndMetaMod(Functions.ServerTable server)
         {
+            if (IsSharedInstallation(server))
+            {
+                return false;
+            }
+
             try
             {
                 dynamic gameServer = GameServer.Data.Class.Get(server.Game);
@@ -141,6 +161,11 @@ namespace WindowsGSM.Functions
             {
                 return false;
             }
+        }
+
+        private static bool IsSharedInstallation(Functions.ServerTable server)
+        {
+            return !string.IsNullOrWhiteSpace(new ServerConfig(server.ID).SharedInstallationId);
         }
 
         private static async Task<string> GetOxideModLatestVersion()

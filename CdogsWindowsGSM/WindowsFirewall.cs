@@ -23,6 +23,11 @@ namespace WindowsGSM
 
         public async Task<bool> IsRuleExist()
         {
+            if (Functions.ServerPath.IsTestRootOverrideActive)
+            {
+                return true;
+            }
+
             try
             {
                 string script = "$ErrorActionPreference = 'Stop'; " + ActiveProfilesScript +
@@ -54,6 +59,11 @@ namespace WindowsGSM
 
         public async Task<bool> AddRule()
         {
+            if (Functions.ServerPath.IsTestRootOverrideActive)
+            {
+                return true;
+            }
+
             try
             {
                 if (await IsRuleExist())
@@ -88,6 +98,11 @@ namespace WindowsGSM
 
         public async Task<bool> RemoveRule()
         {
+            if (Functions.ServerPath.IsTestRootOverrideActive)
+            {
+                return true;
+            }
+
             try
             {
                 string script = "$ErrorActionPreference = 'Stop'; " +
@@ -105,6 +120,11 @@ namespace WindowsGSM
 
         public async Task RemoveRuleEx()
         {
+            if (Functions.ServerPath.IsTestRootOverrideActive)
+            {
+                return;
+            }
+
             try
             {
                 string path = GetFullPath();

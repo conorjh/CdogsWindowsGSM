@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using WindowsGSM.Localization;
 
 namespace WindowsGSM.Functions
 {
@@ -29,7 +30,7 @@ namespace WindowsGSM.Functions
             string configPath = ServerPath.GetServersConfigs(_serverId, "BackupConfig.cfg");
             if (!File.Exists(configPath))
             {
-                File.WriteAllText(configPath, $"{SettingName.BackupLocation}=\"{Path.Combine(MainWindow.WGSM_PATH, "Backups", serverId)}\"{Environment.NewLine}{SettingName.MaximumBackups}=\"{DefaultMaximumBackups}\"");
+                File.WriteAllText(configPath, $"{SettingName.BackupLocation}=\"{Path.Combine(ServerPath.Get(), "Backups", serverId)}\"{Environment.NewLine}{SettingName.MaximumBackups}=\"{DefaultMaximumBackups}\"");
             }
 
             LoadConfig();
@@ -54,7 +55,7 @@ namespace WindowsGSM.Functions
 
         public void Open()
         {
-            Process.Start(ServerPath.GetServersConfigs(_serverId, "BackupConfig.cfg"));
+            Process.Start(new ProcessStartInfo(ServerPath.GetServersConfigs(_serverId, "BackupConfig.cfg")) { UseShellExecute = true });
         }
 
         private void LoadConfig()
@@ -80,6 +81,8 @@ namespace WindowsGSM.Functions
     {
         public const int CurrentSchemaVersion = 1;
         public const string DefaultCronExpression = "0 2 * * *";
+        public const string BackupTypeFullServer = "FullServer";
+        public const string BackupTypeConfiguration = "Configuration";
         public const string ResultRunning = "Running";
         public const string ResultCompleted = "Completed";
         public const string ResultSkipped = "Skipped";
@@ -95,6 +98,7 @@ namespace WindowsGSM.Functions
         public int SchemaVersion { get; set; } = CurrentSchemaVersion;
         public bool Enabled { get; set; }
         public string CronExpression { get; set; } = DefaultCronExpression;
+        public string BackupType { get; set; } = BackupTypeFullServer;
         public DateTime? LastEvaluatedAt { get; set; }
         public DateTime? LastAttemptedOccurrence { get; set; }
         public DateTime? LastAttemptedAt { get; set; }
@@ -118,6 +122,10 @@ namespace WindowsGSM.Functions
             if (config.SchemaVersion != CurrentSchemaVersion)
             {
                 throw new InvalidDataException($"Unsupported backup schedule schema version: {config.SchemaVersion}.");
+            }
+            if (config.BackupType != BackupTypeFullServer && config.BackupType != BackupTypeConfiguration)
+            {
+                throw new InvalidDataException($"Unsupported backup type in schedule: {config.BackupType}.");
             }
 
             return config;
@@ -166,6 +174,11 @@ namespace WindowsGSM.Functions
         public string ServerId { get; private set; }
         public string ServerName { get; private set; }
         public string Game { get; private set; }
+        public string BackupType { get; private set; }
+        public string BackupTypeDisplay => BackupType == BackupScheduleConfig.BackupTypeConfiguration
+            ? LocalizationManager.Get("BackupTypeConfiguration")
+            : LocalizationManager.Get("BackupTypeFullServer");
+        public bool SupportsConfigurationBackup { get; private set; }
         public bool Enabled { get; private set; }
         public string CronExpression { get; private set; }
         public string ScheduleDescription { get; private set; }
@@ -180,6 +193,8 @@ namespace WindowsGSM.Functions
             string serverId,
             string serverName,
             string game,
+            string backupType,
+            bool supportsConfigurationBackup,
             bool enabled,
             string cronExpression,
             string scheduleDescription,
@@ -193,6 +208,8 @@ namespace WindowsGSM.Functions
             ServerId = serverId;
             ServerName = serverName;
             Game = game;
+            BackupType = backupType;
+            SupportsConfigurationBackup = supportsConfigurationBackup;
             Enabled = enabled;
             CronExpression = cronExpression;
             ScheduleDescription = scheduleDescription;

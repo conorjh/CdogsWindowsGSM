@@ -1,0 +1,37 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.19041</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="MSTest" Version="4.0.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Using Include="Microsoft.VisualStudio.TestTools.UnitTesting" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CdogsWindowsGSM\CdogsWindowsGSM.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\CdogsWindowsGSM-Plugin-Development\Examples\Skeleton.cs"
+          Link="Fixtures\Skeleton.cs"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\CdogsWindowsGSM-Plugin-Development\Examples\SkeletonV2.cs"
+          Link="Fixtures\SkeletonV2.cs"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\CdogsWindowsGSM-Plugin-Development\Examples\GarrysModV2.cs"
+          Link="Fixtures\GarrysModV2.cs"
+          CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\CdogsWindowsGSM-Plugin-Development\Examples\CS16StandaloneV2.cs"
+          Link="Fixtures\CS16StandaloneV2.cs"
+          CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
