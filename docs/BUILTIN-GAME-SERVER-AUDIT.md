@@ -3,6 +3,8 @@
 - **Audit date:** 2026-10-21
 - **Scope:** the 57 built-in entries registered in `CdogsWindowsGSM\GameServer\Data\Class.cs`. Plugins are excluded.
 
+For the later integration-suite review and actionable pre-alpha backlog covering all 57 built-ins plus both V2 game examples, see the [game integration alpha audit and AI handoff](GAME-INTEGRATION-ALPHA-AUDIT.md). This document's runtime and endpoint snapshots remain historical evidence, not current qualification.
+
 ## Scope and confidence
 
 This combines source-code/public-endpoint review with a limited runtime smoke test below; it is not a 57-game live integration run. No game servers were downloaded or launched. No Steam credentials, game licenses, CFX license key, or EULA acceptance were supplied. Per request, account-gated Steam operations are marked **N/A** rather than tested. Public Steam player-count endpoints do not require a Steam account.
