@@ -2,7 +2,6 @@
   <PropertyGroup>
 	<OutputType>WinExe</OutputType>
 	<TargetFramework>net10.0-windows10.0.19041</TargetFramework>
-	<BaseOutputPath Condition="'$(Configuration)' == 'Debug'">E:\CdogsWindowsGSM\bin\</BaseOutputPath>
 	<UseWPF>true</UseWPF>
 	<UseWindowsForms>true</UseWindowsForms>
 	<EnableWindowsTargeting>true</EnableWindowsTargeting>
