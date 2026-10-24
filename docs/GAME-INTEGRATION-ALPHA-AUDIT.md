@@ -3,24 +3,33 @@
 - Audit date: 24 October 2026.
 - Branch: `audit/alpha-game-integration-readiness`.
 - Source baseline: `42e07a9950203fb266358b01aff84f90d2df8b02` (`dev`). Line references below refer to that baseline, not a future implementation branch.
+- Resumption source tree: `4ebcb5121e54cee4a5825d2c63eff8f8de8ea029`, which includes the audit and the portable Debug-output fix. Game and test implementations are unchanged from the source baseline.
 - Scope: all 57 built-ins selected by `BuiltInGameIntegrationTests.BuiltInGameCases`, both live V2 example cases, all four test methods in that class, and the host paths needed to interpret their results.
-- Deliverable: an audit/backlog, not fixes, support removal, new capability enablement, or live qualification. Existing user changes are outside this audit.
+- Deliverable: an audit/backlog with recorded execution evidence, not game fixes, support removal, or new capability enablement. The build-path correction is recorded under ENV-01. Existing user changes are outside this audit.
 
 Navigation: [test inventory](#test-inventory-and-oracle-review), [harness/host tasks](#shared-harness-and-host-work), [qualification gaps](#qualification-gaps-not-demonstrated-game-failures), [every game](#game-by-game-ledger), [adapter tasks](#consolidated-adapter-work), [handoff and evidence](#handoff-workflow-and-evidence-contract).
 
 ## Read this first
 
-**No game is newly live-qualified by this report.** All 59 live game/example cases remain **Not run in this audit**. Every game has a source review and a follow-up entry below; a source-reviewed implementation is not a passing install, ready server, safe update, or verified save.
+**No game is newly live-qualified by this report.** The SDK/build gate is resolved, but all 59 live game/example cases were **Blocked / Skipped at credentials preflight** in the native run. None of those 59 cases reached live install/update/launch. Every game has a source review and a follow-up entry below; passing local fixture tests or skipping live rows is not a passing install, ready server, safe update, or verified save.
 
 | Evidence | Result in this audit |
 |---|---|
-| Native Visual Studio build of `CdogsWindowsGSM.Tests` | Blocked: `NETSDK1141`, unable to resolve the SDK selected by the repository's `global.json` (`10.0.100`, `latestFeature`, no prereleases). Do not change that SDK policy merely to hide this machine's resolution failure. |
-| Native Test Explorer discovery | No tests returned for the test project before a successful build. This is not evidence that its source contains no tests. |
-| Native run of the two non-live integration methods | **0 executed, 0 passed, 0 failed**; Visual Studio aborted because of build failures. There is no green baseline to cite. |
-| Full/live integration run | Not started. No game packages were downloaded or game servers launched for this audit. No mutations were applied. |
-| SteamCMD setup requested during the audit | Official SteamCMD opened on **C:** under `%LOCALAPPDATA%\CdogsWindowsGSM\GameIntegration\bin\steamcmd`; the user reported completing interactive login. The process was observed running/responding. The user-level `CDOGS_GAME_INTEGRATION_ROOT` was set to that C-drive root. No credentials or Steam Guard codes were read into this report. |
-| Authentication boundary | Interactive SteamCMD login does **not** satisfy the suite's separate `steam-credentials.txt` parsing requirement. Do not extract a password from a console, login cache, or process to work around that requirement. |
+| Native Visual Studio build of `CdogsWindowsGSM.Tests` | **Passed** using installed .NET SDK **10.0.402**, after NuGet restore and removal of the hard-coded E-drive Debug output. The repository's `global.json` remains unchanged (`10.0.100`, `latestFeature`, no prereleases). |
+| Native Test Explorer discovery | **103 tests discovered** during the native integration run; the four methods in this class expanded to the expected 61 cases. This is not a claim that all 103 tests were run. |
+| Native run of the integration class | **61 cases: 2 Passed, 0 Failed, 59 Skipped.** The catalog and local V2 plugin-backup methods passed. All 57 built-in live rows and both plugin live rows stopped because the separate credentials file was missing. |
+| Relevant local regression run through `dotnet test` | **38 executed, 38 Passed, 0 Failed, 0 Skipped.** Covers `BuiltInGameCapabilitiesTests`, `SharedInstallationStoreTests`, `ConfigurationBackupArchiveTests`, `PluginApiContractTests`, and both non-live integration methods. These two methods overlap the native run; do not add the passing counts together. |
+| Selected TFC retry after preparing the local template | **One intended live row, Blocked / Skipped**: `Fill in both steamUser and steamPass in steam-credentials.txt before enabling live game tests.` The method expanded to 57 rows: TFC stopped at credentials preflight and the other **56** were deliberately excluded by the exact game selector. Zero lifecycle operations, passes, or failures. A zero runner exit code with all rows skipped is not a successful live test. |
+| Game install/update/launch qualification | Not reached. No game packages were downloaded or game servers launched for this audit. No mutations were applied. |
+| SteamCMD setup requested during the audit | Official SteamCMD is installed on **C:** under `%LOCALAPPDATA%\CdogsWindowsGSM\GameIntegration\bin\steamcmd`; the user previously reported completing interactive login. That interactive process subsequently closed. The user-level `CDOGS_GAME_INTEGRATION_ROOT` remains set to the C-drive root. No credentials or Steam Guard codes were read into this report. |
+| Authentication boundary | Interactive SteamCMD login does **not** satisfy the suite's separate credentials-file requirement. An empty, git-ignored `CdogsWindowsGSM.Tests\steam-credentials.txt` template was prepared and opened in Notepad for local user entry; the last selected retry still found no configured credential pair. Do not extract a password from a console, login cache, or process to work around this gate. |
 | Historical pilot | The [tester checklist](ALPHA-TESTER-CHECKLIST.md) records a tester-reported TFC shared-install pilot with update still open. It is not an independently reproduced result for this baseline or any other game. |
+
+Resumption target: `net10.0-windows10.0.19041`, Debug test assemblies on Windows `10.0.26200.0`. The tests exercise managed adapters, not the published application's UI. Sanitized result artifacts are retained locally outside the repository:
+
+- Local baseline: `%LOCALAPPDATA%\CdogsWindowsGSM\GameIntegration\audit-results\20261024-213634-sdk-resume\alpha-local-baseline.trx` (38 passing local tests).
+- Selected TFC preflight: `%LOCALAPPDATA%\CdogsWindowsGSM\GameIntegration\audit-results\20261024-214652-tfc-preflight\alpha-tfc-preflight.trx` (one credential-blocked row, 56 selector exclusions). The 59 skipped native live rows are a separate run, not the count in this artifact.
+- SHA-256 of assemblies used for the saved local baseline: `CdogsWindowsGSM.Tests.dll` = `7FDD748F072B8E08A4AB1C52E0952F28A3A04E6004FCD5EB77B5B916D8AB45A6`; `CdogsWindowsGSM.dll` = `1E708AF384D5867BCC5ECAD983F2458420180E6D5F1900F2E2501FAE1EA0144D`.
 
 The [21 October built-in audit](BUILTIN-GAME-SERVER-AUDIT.md) is historical context. Its endpoint/player-count snapshots were not refreshed here. In particular, its old claim that the host update method always returns success no longer matches this baseline: `MainWindow.xaml.cs:3934-3975` returns `updateSucceeded`. Do not reopen that already-changed issue from the historical prose alone.
 
@@ -42,13 +51,13 @@ Priorities are work order, not a claim that a hypothetical failure happened:
 - **P1:** resolve or explicitly gate/document before claiming the affected lifecycle/capability works in alpha.
 - **P2:** follow-up hardening/diagnostics; retain a documented limitation if deferred.
 
-Findings marked **Source defect** follow directly from current code. **Qualification gap** means the required runtime observation is absent, not that the game failed. **Environment blocker** is not counted as a repository bug. All task IDs start **Open**; per-game qualification entries are separate from shared root-cause findings and must not be double-counted as independent bugs.
+Findings marked **Source defect** follow directly from current code. **Qualification gap** means the required runtime observation is absent, not that the game failed. **Environment blocker** is not counted as a repository bug. Task IDs remain **Open** except **ENV-01, now Resolved**; per-game qualification entries are separate from shared root-cause findings and must not be double-counted as independent bugs.
 
 ### Recommended claim order
 
 | Order | Work | Why it precedes broad live runs |
 |---|---|---|
-| 1 | ENV-01; HAR-01/02/03 | Obtain an executable baseline, select the intended console mode, bound whole operations and preflight the selected game's real requirements. |
+| 1 | ENV-01 (resolved); HAR-01/02/03 | Re-establish the executable baseline on each candidate, select the intended console mode, bound whole operations and preflight the selected game's real requirements. Credentials preflight still blocks the live rows. |
 | 2 | CORE-01; CUSTOM-01/02; ENG-07 | Remove known configuration/runtime/recovery-copy destruction risks before applying regeneration, update or fallback to valuable state. |
 | 3 | CUSTOM-03/12; CUSTOM-04; ENG-08 | Make shared build transitions, Bedrock pack ownership and runtime publication coherent and recoverable. |
 | 4 | HOST-01/02/03; STEAM-01/05/06 | Prevent false install success, hidden update retry, stuck startup, wrong prerequisite approval, ineffective shutdown and orphan/unverified processes. |
@@ -60,7 +69,7 @@ Several tasks touch the same files: CORE-01/HOST-01, CORE-02/03, and CUSTOM-02/0
 
 ## Test inventory and oracle review
 
-Four declared test methods expand to **61 expected executions** at this source baseline: 57 built-in live rows, two plugin live rows, one catalog test, and one local plugin-backup test. This is a source inventory, not a runtime discovery count.
+Four declared test methods expand to **61 cases**, now confirmed by the native run: 57 built-in live rows, two plugin live rows, one catalog test, and one local plugin-backup test. Only the two local cases passed; the 59 live rows were skipped before lifecycle operations.
 
 | Method in `BuiltInGameIntegrationTests.cs` | Cases | What the existing oracle actually verifies | Boundary still open |
 |---|---:|---|---|
@@ -85,9 +94,11 @@ Test-harness anti-pattern summary, separate from game defects and qualification 
 
 ### Environment blocker ENV-01 - restore an executable baseline
 
-**P0 / Environment blocker.** Resolve the repository-selected .NET 10 SDK in Visual Studio, restore the existing project dependencies, and rerun the two local integration methods above. The observed failure is SDK resolution; no deeper runner/configuration cause has been established. Do not upgrade the repository to the installed prerelease SDK as an audit shortcut.
+**Resolved on 24 October 2026.** The original `NETSDK1141` is cleared: installed stable .NET SDK **10.0.402** now resolves the existing `global.json` policy. The first retry reported `NETSDK1004`; `dotnet restore CdogsWindowsGSM.Tests\CdogsWindowsGSM.Tests.csproj` restored the existing dependencies. The next build exposed `MSB3027` because `CdogsWindowsGSM\CdogsWindowsGSM.csproj` hard-coded Debug `BaseOutputPath` to the unavailable `E:\CdogsWindowsGSM\bin\`.
 
-Acceptance: native project build succeeds; Test Explorer discovers nonzero tests; the catalog and local plugin-backup methods both execute and pass. Record actual counts, target, and commit. Only then schedule live games on disposable C-drive storage, one selected game at a time. Steam login alone does not repair this build gate.
+Commit `4ebcb51` removes that single machine-specific override instead of hard-coding another machine's path. MSBuild now evaluates `BaseOutputPath` as `bin\` and the Debug target under this checkout's **C:** drive. No SDK policy, package versions, game implementation, or test implementation was changed.
+
+Acceptance satisfied: native project build passes; Test Explorer discovers 103 tests; the catalog and local plugin-backup methods both pass. The separate saved 38-test local baseline also passes. See the evidence table for counts, target, source tree and artifacts. Recheck this baseline on a new implementation candidate. **HAR-03 remains Open:** the subsequent native live rows and selected TFC retry stopped at credentials preflight, so fixing the SDK/build path has not qualified a game.
 
 ### HAR-01 - test the console mode the host actually selects
 
@@ -153,7 +164,7 @@ These are source-to-observation gaps in the lifecycle suite. No mutation was exe
 
 Each row is an independent, open qualification work item. Shared finding IDs identify root causes once; completing one game does not close the same live checks for its siblings. The family ledgers below cover every factory entry and both plugin examples.
 
-All rows are **Open / source-reviewed / live Not run**. `A` means the adapter requests anonymous SteamCMD login; `C` means configured Steam account credentials are requested. Neither proves current entitlement. Evidence paths in these tables are relative to `CdogsWindowsGSM\` unless explicitly prefixed with another project. Runtime/native dependencies must be checked on a clean supported host, not inferred from a developer machine.
+All game/example work items remain **Open / source-reviewed / live Blocked at credentials preflight**; the native run skipped all 59 live rows. No live install/update/launch operation ran. The two local V2 examples' fixture round trips passed, which is not live qualification. `A` means the adapter requests anonymous SteamCMD login; `C` means configured Steam account credentials are requested. Neither proves current entitlement. Evidence paths in these tables are relative to `CdogsWindowsGSM\` unless explicitly prefixed with another project. Runtime/native dependencies must be checked on a clean supported host, not inferred from a developer machine.
 
 ### Source, GoldSrc, and Call of Duty - 20 built-ins
 
@@ -178,7 +189,7 @@ Common engine evidence: `GameServer\Engine\Source.cs:33-53,95-213,215-330`; `Gam
 | G-DMC / `DMC` | Deathmatch Classic Dedicated Server | Steam 90, A, mod `dmc`; identity 40 | S+B | ENG-03; check suspicious default `dcdm5` against the downloaded BSP inventory and prove the chosen map loads. Its absence was not demonstrated in this audit. | `GameServer\DMC.cs:5-8` |
 | G-HLOF / `HLOF` | Half-Life: Opposing Force Dedicated Server | Steam 90, A, mod `gearbox`; identity 50 | S+B | ENG-03; prove Opposing Force dependencies, `op4_bootcamp`, cfg selection and unique mapcycle. | `GameServer\HLOF.cs:5-8` |
 | G-RCC / `RCC` | Ricochet Dedicated Server | Steam 90, A, mod `ricochet`; identity 60 | S+B | ENG-03; prove `rc_arena`, Ricochet identity and mod content under its app-90 installation. Same app ID alone does not authorize sharing across different games. | `GameServer\RCC.cs:5-8`; `GameServer\Engine\GoldSource.cs:117-149,252-253` |
-| G-TFC / `TFC` | Team Fortress Classic Dedicated Server | Steam 90, A, mod `tfc`; identity 20 | S+B | Finish the outstanding SH-04 update/recovery evidence on a disposable pilot; ENG-03 still applies. Prove `dustbowl`, TFC identity and actual config/mapcycle consumption. Do not generalize the historical tester report. | `GameServer\TFC.cs:5-8`; `GameServer\Engine\GoldSource.cs:130-149` |
+| G-TFC / `TFC` | Team Fortress Classic Dedicated Server | Steam 90, A, mod `tfc`; identity 20 | S+B | Selected retry remains **Blocked** at the separate credentials-file gate before SteamCMD or game operations; see the saved TFC preflight artifact. After preflight is satisfied, finish the outstanding SH-04 update/recovery evidence on a disposable pilot; ENG-03 still applies. Prove `dustbowl`, TFC identity and actual config/mapcycle consumption. Do not generalize the historical tester report. | `GameServer\TFC.cs:5-8`; `GameServer\Engine\GoldSource.cs:130-149` |
 | G-COD1 / `COD1` | Call of Duty 1 Dedicated Server | Steam 2620, C; CoDMP 1.5 and required PK3s; optional verified fallback/MeatBots | S+B | ENG-06/07 and CORE-02/03: honor selected map, preserve fallback/mod recovery files, fix build/account parsing. Qualify stock and MeatBots separately with `fs_basepath`/`fs_homepath`; query is not implemented, so use a documented ready/client observation. | `GameServer\COD1.cs:15-39,74-85,117-142,218-322,371-400,506-529` |
 | G-COD4 / `COD4` | Call of Duty 4: Modern Warfare Dedicated Server (CoD4x) | Steam 7940, C; separately pinned CoD4x 21.2 and IWD/zone data | P | ENG-08 and CORE-03: preserve wrapper/stamp on failed licensed acquisition. Prove `+exec server.cfg` lookup, actual ready state, stdin `quit` in the default mode and nonembedded shutdown separately; query is not implemented. | `GameServer\COD4.cs:17-36,61-76,119-126,220-310,363-414` |
 
@@ -247,8 +258,8 @@ These selectors are example names from `V2PluginCases`, not their displayed game
 
 | Work ID / selector | Displayed game name / acquisition | Method capability versus actual host gate | Specific next work | Source evidence |
 |---|---|---|---|---|
-| P-GarrysModV2 / `GarrysModV2` | Garry's Mod Dedicated Server (V2 tutorial); Steam 4020, A, inherited Source runtime | Shared + config-only methods detected; **host UI remains private-only**. The suite directly exercises the shared provider as a qualification fixture. | Run local config/backup test after ENV-01; verify exact `garrysmod\cfg\server.cfg` and `garrysmod\mapcycle.txt` scopes. Then qualify provider runtime separately from UI gating, both cfg text and effective game settings, concurrent writes/updates and CORE-02/ENG-05 inherited behavior. Test repeated config creation with operator changes: this example unconditionally writes both files, unlike the preserving CS sample; define/reset policy explicitly before reusing it for existing instances. | `CdogsWindowsGSM-Plugin-Development\Examples\GarrysModV2.cs:23-63,65-133`; `CdogsWindowsGSM.Tests\BuiltInGameIntegrationTests.cs:457-558` |
-| P-CS16StandaloneV2 / `CS16StandaloneV2` | Counter-Strike 1.6 (standalone plugin tutorial); Steam 90, A, `cstrike`, identity 10 | Config-only methods detected; no shared-install method set; private-only | Verify exact `cstrike\server.cfg`/`cstrike\mapcycle.txt` scopes and preservation of existing files. Qualify actual mod-content imports, `de_dust2`, A2S readiness, window-message `quit`, and CORE-02/ENG-05. Its build methods already request app 90: do not incorrectly apply ENG-03's inherited GoldSrc client-ID bug to this standalone sample. | `CdogsWindowsGSM-Plugin-Development\Examples\CS16StandaloneV2.cs:14-41,48-118,120-246`; `CdogsWindowsGSM.Tests\BuiltInGameIntegrationTests.cs:384-393` |
+| P-GarrysModV2 / `GarrysModV2` | Garry's Mod Dedicated Server (V2 tutorial); Steam 4020, A, inherited Source runtime | Shared + config-only methods detected; **host UI remains private-only**. The suite directly exercises the shared provider as a qualification fixture. | Local host config/backup fixture **Passed**; live row remains **Blocked**. Still verify exact `garrysmod\cfg\server.cfg` and `garrysmod\mapcycle.txt` scopes under the full evidence contract. Qualify provider runtime separately from UI gating, both cfg text and effective game settings, concurrent writes/updates and CORE-02/ENG-05 inherited behavior. Test repeated config creation with operator changes: this example unconditionally writes both files, unlike the preserving CS sample; define/reset policy explicitly before reusing it for existing instances. | `CdogsWindowsGSM-Plugin-Development\Examples\GarrysModV2.cs:23-63,65-133`; `CdogsWindowsGSM.Tests\BuiltInGameIntegrationTests.cs:457-558` |
+| P-CS16StandaloneV2 / `CS16StandaloneV2` | Counter-Strike 1.6 (standalone plugin tutorial); Steam 90, A, `cstrike`, identity 10 | Config-only methods detected; no shared-install method set; private-only | Local host config/backup fixture **Passed**; live row remains **Blocked**. Still verify exact `cstrike\server.cfg`/`cstrike\mapcycle.txt` scopes and preservation of existing files under the full evidence contract. Qualify actual mod-content imports, `de_dust2`, A2S readiness, window-message `quit`, and CORE-02/ENG-05. Its build methods already request app 90: do not incorrectly apply ENG-03's inherited GoldSrc client-ID bug to this standalone sample. | `CdogsWindowsGSM-Plugin-Development\Examples\CS16StandaloneV2.cs:14-41,48-118,120-246`; `CdogsWindowsGSM.Tests\BuiltInGameIntegrationTests.cs:384-393` |
 
 ## Consolidated adapter work
 
@@ -454,7 +465,7 @@ Acceptance: retain sanitized versioned template fixtures, render names containin
 
 1. Claim one stable shared finding or game row on a **new implementation branch** from the chosen candidate. Record assignee/branch, status, and candidate commit in this report; do not silently mark a sibling game complete.
 2. Re-read the cited source at that commit. This report is anchored to the baseline above; verify whether a newer change already fixed the issue before editing. Prefer existing helpers/patterns over new per-game infrastructure.
-3. Resolve ENV-01 and the applicable HAR/HOST finding before using live results as release evidence. Prioritize preservation/rollback issues before spending bandwidth on the full catalog.
+3. Re-establish ENV-01's now-passing baseline on the implementation candidate and resolve the applicable HAR/HOST finding before using live results as release evidence. The latest live attempts remain blocked by HAR-03's credential prerequisite. Prioritize preservation/rollback issues before spending bandwidth on the full catalog.
 4. Test only licensed, disposable instances on C: or an explicitly available drive, outside the repository. Use a fresh run-specific subdirectory under `%LOCALAPPDATA%\CdogsWindowsGSM\GameIntegration`. Check disk space, game runtime, entitlements, auxiliary ports, and consent first. Do not read or commit real credentials, token-bearing configs, raw command lines, or Steam Guard codes.
 5. Run the smallest relevant existing unit tests, then the exact selected live row. Do not start `*` as a substitute for planning storage/prerequisites. Current `CDOGS_GAME_INTEGRATION_GAMES` expects exact `FullName` values, not class keys; plugin selectors are exactly `GarrysModV2` / `CS16StandaloneV2`. Confirm nonzero selected execution rather than accepting an inconclusive result.
 6. For each claimed feature attach sanitized evidence using the fields below. Keep large logs/TRX outside source control and link an approved artifact location; the checked-in ledger should contain concise results and hashes/versions, not game packages or private backups.

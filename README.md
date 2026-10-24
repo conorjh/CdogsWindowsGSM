@@ -137,7 +137,7 @@ New plugin authors can start with the [from-scratch tutorial without an engine b
 
 The [game integration alpha audit and AI handoff](docs/GAME-INTEGRATION-ALPHA-AUDIT.md) reviews all 57 built-ins and both V2 game examples, with source evidence, prioritized follow-up work, and per-game qualification requirements. Source review and skipped tests are not live qualification.
 
-Copy `CdogsWindowsGSM.Tests\steam-credentials.example.txt` to `CdogsWindowsGSM.Tests\steam-credentials.txt` and fill in `steamUser` and `steamPass` before running the live tests. The real credentials file is git-ignored. Use a dedicated Steam account with the required game entitlements: SteamCMD receives the credentials through its existing command-line login flow. Minecraft EULA prompts may also require confirmation during a run.
+If `CdogsWindowsGSM.Tests\steam-credentials.txt` does not exist, copy `CdogsWindowsGSM.Tests\steam-credentials.example.txt` to that path. Fill in `steamUser` and `steamPass` locally before running the live tests. The real credentials file is git-ignored; do not put its contents in chat or reports. Use a dedicated Steam account with the required game entitlements: SteamCMD receives the credentials through its existing command-line login flow. Signing into SteamCMD interactively does not replace this file; the current harness requires it for every live row, including anonymous and non-Steam games. Minecraft EULA prompts may also require confirmation during a run.
 
 From Windows PowerShell, run:
 
