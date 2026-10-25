@@ -1,18 +1,18 @@
 # Game integration alpha audit and AI handoff
 
-- Audit date: 24 October 2026.
+- Audit date: 24-25 October 2026.
 - Branch: `audit/alpha-game-integration-readiness`.
 - Source baseline: `42e07a9950203fb266358b01aff84f90d2df8b02` (`dev`). Line references below refer to that baseline, not a future implementation branch.
 - Resumption source tree: `4ebcb5121e54cee4a5825d2c63eff8f8de8ea029`, which includes the audit and the portable Debug-output fix. Game and test implementations are unchanged from the source baseline.
-- Live-run candidate: `8796277d0d42b5bd3a16a4db8fe65ef826d48655`. Both TFC attempts used the same existing Debug assemblies and unchanged test/adapter code; no fix was applied between attempts.
+- Live-run candidate: `f83c0766c5b137203fb3d011708e8e182c034d78`. Both TFC attempts and all 51 selected non-TFC invocations used the same existing Debug assemblies and unchanged game/test code; no product fix was applied.
 - Scope: all 57 built-ins selected by `BuiltInGameIntegrationTests.BuiltInGameCases`, both live V2 example cases, all four test methods in that class, and the host paths needed to interpret their results.
 - Deliverable: an audit/backlog with recorded execution evidence, not game fixes, support removal, or new capability enablement. The build-path correction is recorded under ENV-01. Existing user changes are outside this audit.
 
-Navigation: [live TFC evidence](#live-tfc-failure-evidence), [test inventory](#test-inventory-and-oracle-review), [harness/host tasks](#shared-harness-and-host-work), [qualification gaps](#qualification-gaps-not-demonstrated-game-failures), [every game](#game-by-game-ledger), [adapter tasks](#consolidated-adapter-work), [handoff and evidence](#handoff-workflow-and-evidence-contract).
+Navigation: [live TFC evidence](#live-tfc-failure-evidence), [remaining live rerun results](#remaining-live-rerun-results), [test inventory](#test-inventory-and-oracle-review), [harness/host tasks](#shared-harness-and-host-work), [qualification gaps](#qualification-gaps-not-demonstrated-game-failures), [every game](#game-by-game-ledger), [adapter tasks](#consolidated-adapter-work), [handoff and evidence](#handoff-workflow-and-evidence-contract).
 
 ## Read this first
 
-**No game is newly live-qualified by this report.** The SDK/build gate is resolved and the user's saved credentials file now passes TFC's preflight. **TFC failed both live attempts at the same 30-second shutdown timeout and required forced termination.** The remaining 56 built-ins and both plugin live examples have not been rerun since credentials were supplied; their previous native results were credential-preflight skips. Every game has a source review and a follow-up entry below; local fixture passes, selector exclusions and a started process are not live qualification.
+**No game is alpha-qualified by this report.** The SDK/build gate is resolved and the user's saved credentials file passes TFC's preflight. **TFC failed both live attempts at the same 30-second shutdown timeout and required forced termination.** All 58 other catalog rows now have an explicit result: 17 passed only the existing lifecycle smoke oracle, 32 failed, eight are blocked (seven were not run for explicit prerequisites; the selected Mindustry row failed because Java 17+ was unavailable), and Space Engineers aborted without a TRX. Every game has a source review and follow-up entry below; smoke passes, selector exclusions and a started process are not full alpha qualification.
 
 | Evidence | Result in this audit |
 |---|---|
@@ -23,20 +23,24 @@ Navigation: [live TFC evidence](#live-tfc-failure-evidence), [test inventory](#t
 | Initial selected TFC preflight, before credentials were supplied | **One intended live row, Blocked / Skipped**: `Fill in both steamUser and steamPass in steam-credentials.txt before enabling live game tests.` The method expanded to 57 rows: TFC stopped at credentials preflight and the other **56** were deliberately excluded by the exact game selector. Zero lifecycle operations, passes, or failures. A zero runner exit code with all rows skipped is not a successful live test. |
 | First TFC live attempt after the user saved credentials | **1 Failed, 0 Passed, 56 selector-excluded rows**; duration `00:04:11.7563750`. The suite completed shared binary install, normal update, validation update and config backup/restore, then entered launch. Shutdown remained alive beyond 30 seconds, so the harness force-terminated the process. |
 | Unchanged TFC live retry requested by the user | **1 Failed, 0 Passed, 56 selector-excluded rows**; duration `00:03:50.7706336`. The same stages completed and the exact same shutdown timeout recurred. Code, assembly hashes, selector, root and timeout policy were unchanged. |
-| Game install/update/launch qualification | TFC's shared lifecycle was attempted twice, but neither completed successfully. Ready/query state, save/restart integrity, actual console mode and concurrent-instance isolation are not qualified. Other games have not been rerun since credentials were supplied. No mutation experiments were applied. |
+| Remaining-game live rerun (56 built-ins plus two V2 examples) | **51 serial invocations; 50 TRXs with one selected row each; 17 Passed, 32 Failed, 8 Blocked, 1 Aborted.** Seven explicit prerequisite rows were not run; the selected Mindustry row failed on missing Java 17+; Space Engineers exited without writing a TRX. See the per-game table below. |
+| Game install/update/launch qualification | The existing install/update/validation/config/15-second launch/stop smoke oracle ran on 51 selected non-TFC rows, but Space Engineers has no result TRX and TFC failed twice at shutdown. Readiness/query state, save/restart integrity, supported console mode and concurrent-instance isolation remain unqualified. No mutation experiments were applied. |
 | SteamCMD setup requested during the audit | Official SteamCMD is installed on **C:** under `%LOCALAPPDATA%\CdogsWindowsGSM\GameIntegration\bin\steamcmd`; the user previously reported completing interactive login. That interactive process subsequently closed. The user-level `CDOGS_GAME_INTEGRATION_ROOT` remains set to the C-drive root. No credentials or Steam Guard codes were read into this report. |
 | Authentication boundary | The user filled and saved the git-ignored credentials file locally; TFC now passes the harness's credential parser. TFC requests **anonymous** SteamCMD login, so this does not prove account authentication, entitlements or licensed-game access. Interactive SteamCMD login still does not replace the file. No credential contents, raw login command lines or Guard codes are included here; do not extract secrets from a console, cache or process. |
 | Historical pilot | The [tester checklist](ALPHA-TESTER-CHECKLIST.md) records a tester-reported TFC shared-install pilot with update still open. It is not an independently reproduced result for this baseline or any other game. |
 
-Latest live coverage is **one distinct game, two failed executions, zero passing executions**. Each live invocation's 56 skipped rows were deliberate selector exclusions, not 56 additional attempted installs or observed game failures.
+All **59 distinct built-in/example IDs** now have a live attempt or an explicit prerequisite block: the 58 non-TFC rows in the results table and TFC (attempted twice, both failed). Seven non-TFC rows were blocked before a test invocation; Space Engineers was invoked but produced no TRX. Selector-excluded rows are not additional game attempts.
 
-Resumption target: `net10.0-windows10.0.19041`, Debug test assemblies on Windows `10.0.26200.0`. The tests exercise managed adapters, not the published application's UI. Sanitized result artifacts are retained locally outside the repository:
+Resumption target: `net10.0-windows10.0.19041`, Debug test assemblies on Windows `10.0.26200.0`. The tests exercise managed adapters, not the published application's UI. Raw TRXs and runner logs remain local outside the repository; the checked-in results below contain only summarized, sanitized fields. Do not share or commit raw logs without reviewing them for private data:
 
 - Local baseline: `%LOCALAPPDATA%\CdogsWindowsGSM\GameIntegration\audit-results\20261024-213634-sdk-resume\alpha-local-baseline.trx` (38 passing local tests).
 - Selected TFC preflight: `%LOCALAPPDATA%\CdogsWindowsGSM\GameIntegration\audit-results\20261024-214652-tfc-preflight\alpha-tfc-preflight.trx` (one credential-blocked row, 56 selector exclusions). The 59 skipped native live rows are a separate run, not the count in this artifact.
 - First TFC live failure: `%LOCALAPPDATA%\CdogsWindowsGSM\GameIntegration\audit-results\20261024-220129-tfc-live\alpha-tfc-live.trx` (one failed TFC execution, 56 selector exclusions).
 - Unchanged TFC retry failure: `%LOCALAPPDATA%\CdogsWindowsGSM\GameIntegration\audit-results\20261024-221820-tfc-retry\alpha-tfc-retry.trx` (one failed TFC execution, 56 selector exclusions). The first artifact was retained, not overwritten.
-- SHA-256 of assemblies used for the saved local baseline: `CdogsWindowsGSM.Tests.dll` = `7FDD748F072B8E08A4AB1C52E0952F28A3A04E6004FCD5EB77B5B916D8AB45A6`; `CdogsWindowsGSM.dll` = `1E708AF384D5867BCC5ECAD983F2458420180E6D5F1900F2E2501FAE1EA0144D`.
+- First remaining-game batch: `%LOCALAPPDATA%\CdogsWindowsGSM\GameIntegration\audit-results\20261024-remaining-games-live\summary.json` (preserves 31 selected TRXs; its runner stopped during NMRIH cleanup).
+- Completed remaining-game resume: `%LOCALAPPDATA%\CdogsWindowsGSM\GameIntegration\audit-results\20261025-remaining-games-resume\summary.json` (all 58 IDs, 51 invocations, 50 TRXs, and the Space Engineers no-TRX abort).
+- Delayed NMRIH cleanup confirmation: `%LOCALAPPDATA%\CdogsWindowsGSM\GameIntegration\audit-results\20261024-remaining-games-live\nmrih-cleanup-final.json` (the exact residual directory was removed after PID 7296 disappeared; no process was killed by name).
+- SHA-256 of assemblies used for the saved local baseline and all live runs: `CdogsWindowsGSM.Tests.dll` = `7FDD748F072B8E08A4AB1C52E0952F28A3A04E6004FCD5EB77B5B916D8AB45A6`; `CdogsWindowsGSM.dll` = `1E708AF384D5867BCC5ECAD983F2458420180E6D5F1900F2E2501FAE1EA0144D`.
 
 ### Live TFC failure evidence
 
@@ -61,6 +65,86 @@ dotnet test CdogsWindowsGSM.Tests\CdogsWindowsGSM.Tests.csproj --no-build --no-r
 ```
 
 The [21 October built-in audit](BUILTIN-GAME-SERVER-AUDIT.md) is historical context. Its endpoint/player-count snapshots were not refreshed here. In particular, its old claim that the host update method always returns success no longer matches this baseline: `MainWindow.xaml.cs:3934-3975` returns `updateSucceeded`. Do not reopen that already-changed issue from the historical prose alone.
+
+## Remaining live rerun results
+
+The frozen candidate was `f83c0766c5b137203fb3d011708e8e182c034d78`; both Debug assembly hashes are recorded above. The first C-drive, serial batch started at `2026-10-24T22:58:07Z` and stopped at `G-NMRIH` after 31 selected invocations. NMRIH failed its launch smoke window; harness cleanup then reported access denied for `datacache.dll`, so the runner stopped and marked only the 20 never-started rows for continuation. It did not classify those 20 as game failures. The residual NMRIH process/directory were handled separately: after the exact PID disappeared, the exact server directory was removed. The initial runner-failure summary and later cleanup confirmation are both retained locally.
+
+The continuation started at `2026-10-25T18:04:54Z` and completed at `2026-10-25T20:07:05Z`. It carried forward all 31 prior outcomes unchanged and invoked only the 20 previously unattempted, eligible rows, each in a fresh C-drive root. The final summary contains all 58 remaining IDs. Verification found 51 selected test invocations, 50 TRXs each with exactly one selected result and the expected selector exclusions, and one Space Engineers invocation with no TRX. Built-in TRXs contain 56 intentionally excluded rows; each plugin TRX contains one. Selector exclusions are not test attempts.
+
+| Final status for the 58 remaining IDs | Count | Interpretation |
+|---|---:|---|
+| SuitePassed | 17 | The selected row passed the existing install/update/validation/configuration/15-second launch/stop smoke oracle. This is not alpha qualification. |
+| Failed | 32 | The selected row failed; the phase and stable classification are in the game table below. |
+| Blocked | 8 | Seven were not invoked because required consent/configuration was absent; Mindustry's selected row failed because Java 17 or newer was unavailable. |
+| Aborted | 1 | Space Engineers (`G-SE`) returned process exit `0xC000013A` without a TRX. Cause is undetermined; this is not a pass or a demonstrated game failure. |
+
+The seven not-run prerequisites were explicit and were not bypassed: Minecraft Java EULA consent (`G-MC`, `G-PaperMC`, `G-ForgeMC`); Minecraft Bedrock EULA/privacy consent (`G-MCBE`); a CFX license key the harness cannot supply (`G-GTA5`, `G-RedM`); and an operator-configured SDK2013 mod/map (`G-SDK2013`). The additional Mindustry block is a runtime prerequisite failure, not a missing selector. No license key, EULA acceptance, mod, or map was fabricated.
+
+The table records nonzero Steam appmanifest build IDs observed while each case was running, when available. They are metadata observations, not a pinned candidate, proof of successful validation, or a qualification claim; `-` means no ID was captured. SuitePassed reflects only the existing test oracle described above. Every source-review/work item remains open until its additional readiness, effective-settings, recovery, save/restart, console-mode, and (where applicable) shared-isolation gates pass.
+
+| Work ID | Result | Phase / stable reason | Duration | Manifest build ID(s) observed |
+|---|---|---|---:|---|
+| G-ARKSE | Failed | Launch / ExitedDuringStartup | 00:36:29.7859215 | 21241282 |
+| G-AVORION | SuitePassed | Completed / ExistingLifecycleOraclePassed | 00:00:45.8608744 | 22295362 |
+| G-BT | Failed | Stop / ShutdownTimeout30Seconds | 00:01:18.4413728 | 23799137 |
+| G-BW | SuitePassed | Completed / ExistingLifecycleOraclePassed | 00:01:33.8812344 | 5059939 |
+| G-CE | Failed | Stop / ShutdownTimeout30Seconds | 00:03:51.5084824 | 25792439 |
+| G-COD1 | Failed | Install/configuration / TestAssertionFailed | 00:00:06.0857000 | - |
+| G-COD4 | SuitePassed | Completed / ExistingLifecycleOraclePassed | 00:03:12.1437737 | 2737681 |
+| G-CS | Failed | Stop / ShutdownTimeout30Seconds | 00:03:05.9957090 | 15961496 |
+| G-CSCZ | Failed | Stop / ShutdownTimeout30Seconds | 00:03:40.2125822 | 15961496 |
+| G-CSGO | Failed | Stop / ShutdownTimeout30Seconds | 00:06:48.2940687 | 12426148 |
+| G-CSS | SuitePassed | Completed / ExistingLifecycleOraclePassed | 00:01:10.1638572 | 25338297 |
+| G-DAYZ | Failed | Launch / ExitedDuringStartup | 00:01:31.5579236 | 25963285 |
+| G-DMC | Failed | Stop / ShutdownTimeout30Seconds | 00:02:51.3343168 | 15961496 |
+| G-DOD | Failed | Stop / ShutdownTimeout30Seconds | 00:04:12.5389002 | 15961496 |
+| G-DODS | Failed | Launch / ExitedDuringStartup | 00:01:10.7545843 | 25338204 |
+| G-ECO | SuitePassed | Completed / ExistingLifecycleOraclePassed | 00:01:55.3818304 | 25987282 |
+| G-EGS | Failed | Launch/stop / TestAssertionFailed | 00:05:07.1828248 | 25490402 |
+| G-ForgeMC | Blocked (not run) | Preflight / ExplicitMinecraftEulaConsentRequired | - | - |
+| G-GMOD | SuitePassed | Completed / ExistingLifecycleOraclePassed | 00:01:43.3947878 | 25375525 |
+| G-GTA5 | Blocked (not run) | Preflight / HarnessDoesNotSupplyCfxLicenseKey | - | - |
+| G-HEAT | Failed | Launch / ExitedDuringStartup | 00:03:35.8887898 | 6929872 |
+| G-HL2DM | Failed | Stop / ShutdownTimeout30Seconds | 00:02:39.7504722 | 24600426 |
+| G-HLOF | Failed | Stop / ShutdownTimeout30Seconds | 00:03:42.4947333 | 15961496 |
+| G-INS | Failed | Launch / ExitedDuringStartup | 00:02:43.7056673 | 20000984 |
+| G-INSS | SuitePassed | Completed / ExistingLifecycleOraclePassed | 00:02:15.0949270 | 25534773 |
+| G-L4D2 | Failed | Launch / ExitedDuringStartup | 00:06:03.4415656 | 23990100 |
+| G-MC | Blocked (not run) | Preflight / ExplicitMinecraftEulaConsentRequired | - | - |
+| G-MCBE | Blocked (not run) | Preflight / ExplicitMinecraftEulaAndPrivacyConsentRequired | - | - |
+| G-MCPE | Failed | Install/configuration / AdapterReportedError | 00:00:00.4659386 | - |
+| G-Mindustry | Blocked (selected failure) | Runtime prerequisites / JavaRuntimePrerequisite | 00:00:01.2309170 | - |
+| G-MORDHAU | Failed | Launch / ExitedDuringStartup | 00:01:49.3616866 | 16147292 |
+| G-NMRIH | Failed | Launch / ExitedDuringStartup | 00:03:03.3106665 | 24996675 |
+| G-OLOW | SuitePassed | Completed / ExistingLifecycleOraclePassed | 00:02:23.5270412 | 5113531 |
+| G-ONSET | Failed | Launch / ExitedDuringStartup | 00:00:49.0169784 | 8141104 |
+| G-OpenRA | Failed | Install/configuration / AdapterReportedError | 00:00:08.2740370 | - |
+| G-OpenTTD | Failed | Install/configuration / Http403 | 00:00:00.3677114 | - |
+| G-PaperMC | Blocked (not run) | Preflight / ExplicitMinecraftEulaConsentRequired | - | - |
+| G-PS | Failed | Launch / ExitedDuringStartup | 00:07:58.9196336 | 21989442 |
+| G-RCC | Failed | Stop / ShutdownTimeout30Seconds | 00:02:54.3115904 | 15961496 |
+| G-RCT2 | SuitePassed | Completed / ExistingLifecycleOraclePassed | 00:00:46.1697152 | - |
+| G-RedM | Blocked (not run) | Preflight / HarnessDoesNotSupplyCfxLicenseKey | - | - |
+| G-ROK | Failed | Launch/stop / TestAssertionFailed | 00:00:59.4161464 | 4088734 |
+| G-ROR2 | Failed | Install validation / InstallValidationFailed | 00:00:10.9787099 | 20243729 |
+| G-RUST | Failed | Stop / ShutdownTimeout30Seconds | 00:02:41.6412168 | 26139947 |
+| G-SCUM | Failed | Launch / StartReturnedNoProcess | 00:06:55.6751087 | 25803875 |
+| G-SDK2013 | Blocked (not run) | Preflight / SdkModAndMapNotConfigured | - | - |
+| G-SDTD | Failed | Stop / ShutdownTimeout30Seconds | 00:06:27.5305204 | 25661908 |
+| G-SE | Aborted (no TRX) | Test host / RunnerExitedWithoutTrx (`0xC000013A`) | 00:06:57.7096734 | 24675709 |
+| G-Soldat | Failed | Launch / ExitedDuringStartup | 00:00:26.7136501 | - |
+| G-SQ | SuitePassed | Completed / ExistingLifecycleOraclePassed | 00:11:29.7270869 | 26005357 |
+| G-SW | SuitePassed | Completed / ExistingLifecycleOraclePassed | 00:00:38.4533030 | 14768962 |
+| G-TF | SuitePassed | Completed / ExistingLifecycleOraclePassed | 00:01:17.6912234 | 3488796 |
+| G-TF2 | SuitePassed | Completed / ExistingLifecycleOraclePassed | 00:04:13.8337090 | 25995664 |
+| G-UNT | SuitePassed | Completed / ExistingLifecycleOraclePassed | 00:03:29.0442170 | 25613089 |
+| G-VTS | SuitePassed | Completed / ExistingLifecycleOraclePassed | 00:01:20.1757686 | - |
+| G-ZPS | Failed | Launch / ExitedDuringStartup | 00:02:05.8441239 | 20602753 |
+| P-CS16StandaloneV2 | SuitePassed | Completed / ExistingLifecycleOraclePassed | 00:02:37.8101860 | 15961496 |
+| P-GarrysModV2 | SuitePassed | Completed / ExistingLifecycleOraclePassed | 00:01:51.9361091 | 25375525 |
+
+After the continuation, verification found no live process under any owned case root, no residual server/backup/log directories, no active shared SteamCMD process, and no transient `userData.txt` copy. This is cleanup evidence only; it does not convert a failed or aborted test into a pass.
 
 ## Scope, terminology, and priorities
 
@@ -98,7 +182,7 @@ Several tasks touch the same files: CORE-01/HOST-01, CORE-02/03, and CUSTOM-02/0
 
 ## Test inventory and oracle review
 
-Four declared test methods expand to **61 cases**, now confirmed by the native run: 57 built-in live rows, two plugin live rows, one catalog test, and one local plugin-backup test. Only the two local cases passed; the 59 live rows were skipped before lifecycle operations.
+Four declared test methods expand to **61 cases**, confirmed by the native run: 57 built-in live rows, two plugin live rows, one catalog test, and one local plugin-backup test. In that initial pre-credentials native run, the two local cases passed and 59 live rows were skipped before lifecycle operations; the later selected live evidence is recorded in [the rerun table](#remaining-live-rerun-results).
 
 | Method in `BuiltInGameIntegrationTests.cs` | Cases | What the existing oracle actually verifies | Boundary still open |
 |---|---:|---|---|
@@ -193,7 +277,7 @@ These are source-to-observation gaps in the lifecycle suite. No mutation was exe
 
 Each row is an independent, open qualification work item. Shared finding IDs identify root causes once; completing one game does not close the same live checks for its siblings. The family ledgers below cover every factory entry and both plugin examples.
 
-All game/example qualification work items remain **Open / source-reviewed**. **G-TFC is live Failed in two attempts** at the same shutdown timeout; the remaining **56 built-ins and two plugin examples are Not rerun since credentials were supplied** (their earlier native results were credential-preflight skips). The two local V2 examples' fixture round trips passed, which is not live qualification. `A` means the adapter requests anonymous SteamCMD login; `C` means configured Steam account credentials are requested. Neither proves current entitlement. Evidence paths in these tables are relative to `CdogsWindowsGSM\` unless explicitly prefixed with another project. Runtime/native dependencies must be checked on a clean supported host, not inferred from a developer machine.
+All game/example qualification work items remain **Open / source-reviewed**. **G-TFC failed in two live attempts** at the same shutdown timeout. For the other 58 IDs, the live smoke outcomes are in the [rerun table](#remaining-live-rerun-results): 17 passed the existing oracle, 32 failed, eight are blocked, and Space Engineers aborted without a TRX. These outcomes do not close the per-game readiness, restart, recovery, or sharing work. The two local V2 examples' fixture round trips passed, which is not live qualification. `A` means the adapter requests anonymous SteamCMD login; `C` means configured Steam account credentials are requested. Neither proves current entitlement. Evidence paths in these tables are relative to `CdogsWindowsGSM\` unless explicitly prefixed with another project. Runtime/native dependencies must be checked on a clean supported host, not inferred from a developer machine.
 
 ### Source, GoldSrc, and Call of Duty - 20 built-ins
 
@@ -287,8 +371,8 @@ These selectors are example names from `V2PluginCases`, not their displayed game
 
 | Work ID / selector | Displayed game name / acquisition | Method capability versus actual host gate | Specific next work | Source evidence |
 |---|---|---|---|---|
-| P-GarrysModV2 / `GarrysModV2` | Garry's Mod Dedicated Server (V2 tutorial); Steam 4020, A, inherited Source runtime | Shared + config-only methods detected; **host UI remains private-only**. The suite directly exercises the shared provider as a qualification fixture. | Local host config/backup fixture **Passed**; live row **Not rerun since credentials were supplied**. Still verify exact `garrysmod\cfg\server.cfg` and `garrysmod\mapcycle.txt` scopes under the full evidence contract. Qualify provider runtime separately from UI gating, both cfg text and effective game settings, concurrent writes/updates and CORE-02/ENG-05 inherited behavior. Test repeated config creation with operator changes: this example unconditionally writes both files, unlike the preserving CS sample; define/reset policy explicitly before reusing it for existing instances. | `CdogsWindowsGSM-Plugin-Development\Examples\GarrysModV2.cs:23-63,65-133`; `CdogsWindowsGSM.Tests\BuiltInGameIntegrationTests.cs:457-558` |
-| P-CS16StandaloneV2 / `CS16StandaloneV2` | Counter-Strike 1.6 (standalone plugin tutorial); Steam 90, A, `cstrike`, identity 10 | Config-only methods detected; no shared-install method set; private-only | Local host config/backup fixture **Passed**; live row **Not rerun since credentials were supplied**. Still verify exact `cstrike\server.cfg`/`cstrike\mapcycle.txt` scopes and preservation of existing files under the full evidence contract. Qualify actual mod-content imports, `de_dust2`, A2S readiness, window-message `quit`, and CORE-02/ENG-05. Its build methods already request app 90: do not incorrectly apply ENG-03's inherited GoldSrc client-ID bug to this standalone sample. | `CdogsWindowsGSM-Plugin-Development\Examples\CS16StandaloneV2.cs:14-41,48-118,120-246`; `CdogsWindowsGSM.Tests\BuiltInGameIntegrationTests.cs:384-393` |
+| P-GarrysModV2 / `GarrysModV2` | Garry's Mod Dedicated Server (V2 tutorial); Steam 4020, A, inherited Source runtime | Shared + config-only methods detected; **host UI remains private-only**. The suite directly exercises the shared provider as a qualification fixture. | Local host config/backup fixture **Passed**; selected live row **SuitePassed** through the existing smoke oracle. Still verify exact `garrysmod\cfg\server.cfg` and `garrysmod\mapcycle.txt` scopes under the full evidence contract. Qualify provider runtime separately from UI gating, both cfg text and effective game settings, concurrent writes/updates and CORE-02/ENG-05 inherited behavior. Test repeated config creation with operator changes: this example unconditionally writes both files, unlike the preserving CS sample; define/reset policy explicitly before reusing it for existing instances. | `CdogsWindowsGSM-Plugin-Development\Examples\GarrysModV2.cs:23-63,65-133`; `CdogsWindowsGSM.Tests\BuiltInGameIntegrationTests.cs:457-558` |
+| P-CS16StandaloneV2 / `CS16StandaloneV2` | Counter-Strike 1.6 (standalone plugin tutorial); Steam 90, A, `cstrike`, identity 10 | Config-only methods detected; no shared-install method set; private-only | Local host config/backup fixture **Passed**; selected live row **SuitePassed** through the existing smoke oracle. Still verify exact `cstrike\server.cfg`/`cstrike\mapcycle.txt` scopes and preservation of existing files under the full evidence contract. Qualify actual mod-content imports, `de_dust2`, A2S readiness, window-message `quit`, and CORE-02/ENG-05. Its build methods already request app 90: do not incorrectly apply ENG-03's inherited GoldSrc client-ID bug to this standalone sample. | `CdogsWindowsGSM-Plugin-Development\Examples\CS16StandaloneV2.cs:14-41,48-118,120-246`; `CdogsWindowsGSM.Tests\BuiltInGameIntegrationTests.cs:384-393` |
 
 ## Consolidated adapter work
 
@@ -494,7 +578,7 @@ Acceptance: retain sanitized versioned template fixtures, render names containin
 
 1. Claim one stable shared finding or game row on a **new implementation branch** from the chosen candidate. Record assignee/branch, status, and candidate commit in this report; do not silently mark a sibling game complete.
 2. Re-read the cited source at that commit. This report is anchored to the baseline above; verify whether a newer change already fixed the issue before editing. Prefer existing helpers/patterns over new per-game infrastructure.
-3. Re-establish ENV-01's now-passing baseline on the implementation candidate and resolve the applicable HAR/HOST finding before using live results as release evidence. Credentials now let TFC execute, but both attempts fail at shutdown; investigate HAR-01/QUAL-01 before retrying or generalizing that result. Check HAR-03's real prerequisites for each next game. Prioritize preservation/rollback issues before spending bandwidth on the full catalog.
+3. Re-establish ENV-01's now-passing baseline on the implementation candidate and resolve the applicable HAR/HOST finding before using live results as release evidence. All eligible catalog smoke rows have now been invoked, but TFC failed twice at shutdown, 32 other selected rows failed, seven rows were not run for explicit prerequisites, Mindustry's selected row failed without Java 17+, and Space Engineers aborted without a TRX. Investigate HAR-01/QUAL-01 and the row-specific evidence before retrying failures or generalizing a family result. Prioritize preservation/rollback issues before alpha claims.
 4. Test only licensed, disposable instances on C: or an explicitly available drive, outside the repository. Use a fresh run-specific subdirectory under `%LOCALAPPDATA%\CdogsWindowsGSM\GameIntegration`. Check disk space, game runtime, entitlements, auxiliary ports, and consent first. Do not read or commit real credentials, token-bearing configs, raw command lines, or Steam Guard codes.
 5. Run the smallest relevant existing unit tests, then the exact selected live row. Do not start `*` as a substitute for planning storage/prerequisites. Current `CDOGS_GAME_INTEGRATION_GAMES` expects exact `FullName` values, not class keys; plugin selectors are exactly `GarrysModV2` / `CS16StandaloneV2`. Confirm nonzero selected execution rather than accepting an inconclusive result.
 6. For each claimed feature attach sanitized evidence using the fields below. Keep large logs/TRX outside source control and link an approved artifact location; the checked-in ledger should contain concise results and hashes/versions, not game packages or private backups.
