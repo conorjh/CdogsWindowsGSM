@@ -186,6 +186,7 @@ namespace WindowsGSM.GameServer.Engine
                             Arguments = param,
                             WindowStyle = ProcessWindowStyle.Minimized,
                             UseShellExecute = false,
+                            RedirectStandardInput = true,
                             RedirectStandardOutput = true,
                             RedirectStandardError = true
                         },
@@ -214,12 +215,35 @@ namespace WindowsGSM.GameServer.Engine
             }
         }
 
-        public async Task Stop(Process p)
+        public Task Stop(Process p)
         {
-            await Task.Run(() =>
+            if (p == null)
             {
-                Functions.ServerConsole.SendMessageToMainWindow(p.MainWindowHandle, "quit");
-            });
+                throw new ArgumentNullException(nameof(p));
+            }
+
+            if (p.HasExited)
+            {
+                return Task.CompletedTask;
+            }
+
+            if (Functions.ServerConsole.IsStandardInputRedirected(p))
+            {
+                p.StandardInput.WriteLine("quit");
+                p.StandardInput.Flush();
+            }
+            else
+            {
+                IntPtr mainWindow = p.MainWindowHandle;
+                if (!Functions.ServerConsole.HasUsableWindow(p, mainWindow))
+                {
+                    throw new InvalidOperationException("GoldSrc server has neither redirected standard input nor a usable console window.");
+                }
+
+                Functions.ServerConsole.SendMessageToMainWindow(mainWindow, "quit");
+            }
+
+            return Task.CompletedTask;
         }
 
         public async void CreateServerCFG()
