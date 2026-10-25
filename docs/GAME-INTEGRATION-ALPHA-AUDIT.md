@@ -1,12 +1,13 @@
 # Game integration alpha audit and AI handoff
 
 - Audit date: 24-25 October 2026.
-- Branch: `audit/alpha-game-integration-readiness`.
+- Original audit branch: `audit/alpha-game-integration-readiness`.
+- Latest implementation branch: `fix/goldsrc-graceful-shutdown`, commit `4c5eec740f689695d2279a9e5bbafa8a89f62f99`; this report's latest implementation-evidence update is commit `769863f511d4993814e91146156a1223940cf433`.
 - Source baseline: `42e07a9950203fb266358b01aff84f90d2df8b02` (`dev`). Line references below refer to that baseline, not a future implementation branch.
 - Resumption source tree: `4ebcb5121e54cee4a5825d2c63eff8f8de8ea029`, which includes the audit and the portable Debug-output fix. Game and test implementations are unchanged from the source baseline.
 - Live-run candidate: `f83c0766c5b137203fb3d011708e8e182c034d78`. Both TFC attempts and all 51 selected non-TFC invocations used the same existing Debug assemblies and unchanged game/test code; no product fix was applied.
 - Scope: all 57 built-ins selected by `BuiltInGameIntegrationTests.BuiltInGameCases`, both live V2 example cases, all four test methods in that class, and the host paths needed to interpret their results.
-- Deliverable: an audit/backlog with recorded execution evidence, not game fixes, support removal, or new capability enablement. The build-path correction is recorded under ENV-01. Existing user changes are outside this audit.
+- Deliverable: source audit/backlog with recorded original and follow-up execution evidence. The fixes listed below do not remove support or enable new capabilities; no unrelated game fixes were included. The build-path correction is recorded under ENV-01. Existing user changes are outside this audit.
 
 Navigation: [live TFC evidence](#live-tfc-failure-evidence), [remaining live rerun results](#remaining-live-rerun-results), [test inventory](#test-inventory-and-oracle-review), [harness/host tasks](#shared-harness-and-host-work), [qualification gaps](#qualification-gaps-not-demonstrated-game-failures), [every game](#game-by-game-ledger), [adapter tasks](#consolidated-adapter-work), [handoff and evidence](#handoff-workflow-and-evidence-contract).
 
@@ -32,6 +33,15 @@ Navigation: [live TFC evidence](#live-tfc-failure-evidence), [remaining live rer
 | Historical pilot | The [tester checklist](ALPHA-TESTER-CHECKLIST.md) records a tester-reported TFC shared-install pilot with update still open. It is not an independently reproduced result for this baseline or any other game. |
 
 All **59 distinct built-in/example IDs** have at least one live attempt or an explicit prerequisite block: the 58 non-TFC rows in the original results table and TFC. Seven non-TFC rows were blocked before a test invocation; Space Engineers was invoked but produced no TRX. The seven GoldSrc rows were subsequently retested and passed their configured-mode smoke checks; the two earlier TFC failures are preserved as historical evidence. Selector-excluded rows are not additional game attempts.
+
+### What has been fixed
+
+| Finding / change | Fix recorded on this branch | Evidence and remaining limit |
+|---|---|---|
+| HAR-01: integration test used a different console mode than configured | Before `Start`, the harness now applies `ServerConfig.EmbedConsole` to a public `AllowsEmbedConsole` field/property and asserts the effective value; it does not silently override read-only modes. | `BuiltInGameIntegrationTests.cs`; verified by seven GoldSrc live smoke passes with `EmbedConsole=false`. Live embedded-mode runs remain outstanding. |
+| GoldSrc shutdown command delivery | Embedded GoldSrc launches redirect stdin; `Stop` writes `quit` to redirected stdin, and uses the window message only when no stdin is redirected and a usable console window exists. Missing both channels now raises an error rather than appearing to stop successfully. | `GoldSource.cs`; two `GoldSourceStopTests` passed and all seven GoldSrc rows passed the configured non-embedded smoke. Readiness, save/restart, update recovery and shared isolation remain open. |
+
+These changes explain why the original GoldSrc timeouts in the initial results table are superseded for the configured non-embedded smoke mode only. They do not close per-game alpha qualification or resolve the historical non-GoldSrc failures.
 
 Resumption target: `net10.0-windows10.0.19041`, Debug test assemblies on Windows `10.0.26200.0`. The tests exercise managed adapters, not the published application's UI. Raw TRXs and runner logs remain local outside the repository; the checked-in results below contain only summarized, sanitized fields. Do not share or commit raw logs without reviewing them for private data:
 
