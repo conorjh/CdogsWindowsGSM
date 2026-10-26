@@ -63,6 +63,55 @@ public sealed class GoldSourceStopTests
     }
 
     [TestMethod]
+    public async Task SendConsoleKeystrokes_WritesCommandToTargetConsole()
+    {
+        string testRoot = Path.Combine(Path.GetTempPath(), "CdogsWindowsGSM.ConsoleInputTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(testRoot);
+        string scriptPath = Path.Combine(testRoot, "wait-for-console-input.cmd");
+        File.WriteAllText(scriptPath, "@echo off\r\nset /p command=\r\nif /i \"%command%\"==\"quit\" exit /b 0\r\nexit /b 1\r\n");
+
+        Process? process = null;
+        try
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "cmd.exe"),
+                UseShellExecute = false,
+                CreateNoWindow = false,
+                WindowStyle = ProcessWindowStyle.Minimized
+            };
+            startInfo.ArgumentList.Add("/d");
+            startInfo.ArgumentList.Add("/c");
+            startInfo.ArgumentList.Add(scriptPath);
+
+            process = Process.Start(startInfo)
+                ?? throw new InvalidOperationException("Could not start the console-input test process.");
+            ServerConsole.SendConsoleKeystrokes(process, "quit\r");
+            await process.WaitForExitAsync().WaitAsync(TimeSpan.FromSeconds(5));
+
+            Assert.AreEqual(0, process.ExitCode);
+        }
+        finally
+        {
+            if (process != null)
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                    process.WaitForExit();
+                }
+
+                process.Dispose();
+            }
+
+            if (Directory.Exists(testRoot))
+            {
+                Directory.Delete(testRoot, recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
     public void Stop_WithoutRedirectedInputOrUsableWindow_Throws()
     {
         using Process process = Process.Start(new ProcessStartInfo

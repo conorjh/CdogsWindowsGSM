@@ -1,9 +1,12 @@
 ﻿using System;
+using System.ComponentModel;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using Microsoft.Win32.SafeHandles;
 
 namespace WindowsGSM.Functions
 {
@@ -21,10 +24,64 @@ namespace WindowsGSM.Functions
         [DllImport("user32.dll")]
         private static extern bool IsWindow(IntPtr hWnd);
 
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool AttachConsole(uint processId);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern bool FreeConsole();
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern uint GetConsoleProcessList([Out] uint[] processList, uint processCount);
+
+        [DllImport("kernel32.dll", EntryPoint = "CreateFileW", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern SafeFileHandle CreateConsoleInputFile(
+            string fileName,
+            uint desiredAccess,
+            uint shareMode,
+            IntPtr securityAttributes,
+            uint creationDisposition,
+            uint flagsAndAttributes,
+            IntPtr templateFile);
+
+        [DllImport("kernel32.dll", EntryPoint = "WriteConsoleInputW", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern bool WriteConsoleInput(
+            SafeFileHandle consoleInput,
+            [In] ConsoleInputRecord[] inputRecords,
+            uint length,
+            out uint eventsWritten);
+
         private const int WM_KEYDOWN = 0x0100;
         private const int WM_CHAR = 0x0102;
         private const int WM_GETTEXT = 0x000D;
         private const int WM_GETTEXTLENGTH = 0x000E;
+        private const ushort KeyEvent = 0x0001;
+        private const uint GenericRead = 0x80000000;
+        private const uint GenericWrite = 0x40000000;
+        private const uint FileShareRead = 0x00000001;
+        private const uint FileShareWrite = 0x00000002;
+        private const uint OpenExisting = 3;
+        private const int ErrorAccessDenied = 5;
+        private static readonly object ConsoleInputLock = new object();
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct ConsoleInputRecord
+        {
+            public ushort EventType;
+            public ConsoleKeyEventRecord KeyEvent;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct ConsoleKeyEventRecord
+        {
+            [MarshalAs(UnmanagedType.Bool)]
+            public bool KeyDown;
+
+            public ushort RepeatCount;
+            public ushort VirtualKeyCode;
+            public ushort VirtualScanCode;
+            public char UnicodeChar;
+            public uint ControlKeyState;
+        }
 
         private const int MAX_LINE = 150;
         private readonly List<string> _consoleList = new List<string>();
@@ -34,6 +91,172 @@ namespace WindowsGSM.Functions
         public static bool IsStandardInputRedirected(Process process)
         {
             return GetStartInfoOrDefault(process).RedirectStandardInput;
+        }
+
+        public static void SendCommandToProcess(Process process, string command)
+        {
+            if (process == null)
+            {
+                throw new ArgumentNullException(nameof(process));
+            }
+
+            if (string.IsNullOrWhiteSpace(command))
+            {
+                throw new ArgumentException("A console command is required.", nameof(command));
+            }
+
+            if (process.HasExited)
+            {
+                return;
+            }
+
+            if (IsStandardInputRedirected(process))
+            {
+                process.StandardInput.WriteLine(command);
+                process.StandardInput.Flush();
+                return;
+            }
+
+            IntPtr mainWindow = process.MainWindowHandle;
+            if (!HasUsableWindow(process, mainWindow))
+            {
+                throw new InvalidOperationException("The server process has neither redirected standard input nor a usable console window.");
+            }
+
+            SendMessageToMainWindow(mainWindow, command);
+        }
+
+        public static void SendConsoleKeystrokes(Process process, string keystrokes)
+        {
+            if (process == null)
+            {
+                throw new ArgumentNullException(nameof(process));
+            }
+
+            if (string.IsNullOrEmpty(keystrokes))
+            {
+                throw new ArgumentException("Console keystrokes are required.", nameof(keystrokes));
+            }
+
+            if (process.HasExited)
+            {
+                return;
+            }
+
+            lock (ConsoleInputLock)
+            {
+                bool attachedToTargetConsole = AttachConsole((uint)process.Id);
+                if (!attachedToTargetConsole &&
+                    (Marshal.GetLastWin32Error() != ErrorAccessDenied || !IsProcessAttachedToCurrentConsole(process.Id)))
+                {
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not attach to the server process console.");
+                }
+
+                try
+                {
+                    using SafeFileHandle input = CreateConsoleInputFile(
+                        "CONIN$",
+                        GenericRead | GenericWrite,
+                        FileShareRead | FileShareWrite,
+                        IntPtr.Zero,
+                        OpenExisting,
+                        0,
+                        IntPtr.Zero);
+                    if (input.IsInvalid)
+                    {
+                        throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not open the server console input buffer.");
+                    }
+
+                    ConsoleInputRecord[] records = CreateConsoleInputRecords(keystrokes);
+                    if (!WriteConsoleInput(input, records, (uint)records.Length, out uint eventsWritten))
+                    {
+                        throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not write keystrokes to the server console input buffer.");
+                    }
+
+                    if (eventsWritten != records.Length)
+                    {
+                        throw new IOException($"Only {eventsWritten} of {records.Length} server console key events were written.");
+                    }
+                }
+                finally
+                {
+                    if (attachedToTargetConsole)
+                    {
+                        FreeConsole();
+                    }
+                }
+            }
+        }
+
+        private static bool IsProcessAttachedToCurrentConsole(int processId)
+        {
+            uint[] processIds = new uint[16];
+            uint processCount = GetConsoleProcessList(processIds, (uint)processIds.Length);
+            if (processCount == 0)
+            {
+                return false;
+            }
+
+            if (processCount > processIds.Length)
+            {
+                processIds = new uint[processCount];
+                processCount = GetConsoleProcessList(processIds, (uint)processIds.Length);
+            }
+
+            int count = (int)Math.Min(processCount, (uint)processIds.Length);
+            for (int i = 0; i < count; i++)
+            {
+                if (processIds[i] == (uint)processId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static ConsoleInputRecord[] CreateConsoleInputRecords(string keystrokes)
+        {
+            var records = new List<ConsoleInputRecord>(keystrokes.Length * 2);
+            for (int i = 0; i < keystrokes.Length; i++)
+            {
+                char character = keystrokes[i];
+                if (character == '\n' && i > 0 && keystrokes[i - 1] == '\r')
+                {
+                    continue;
+                }
+
+                ushort virtualKey = character switch
+                {
+                    '\r' or '\n' => 0x000D,
+                    '\t' => 0x0009,
+                    '\b' => 0x0008,
+                    _ => char.IsLetter(character) ? char.ToUpperInvariant(character) : character
+                };
+                char keyCharacter = character == '\n' ? '\r' : character;
+                records.Add(new ConsoleInputRecord
+                {
+                    EventType = KeyEvent,
+                    KeyEvent = new ConsoleKeyEventRecord
+                    {
+                        KeyDown = true,
+                        RepeatCount = 1,
+                        VirtualKeyCode = virtualKey,
+                        UnicodeChar = keyCharacter
+                    }
+                });
+                records.Add(new ConsoleInputRecord
+                {
+                    EventType = KeyEvent,
+                    KeyEvent = new ConsoleKeyEventRecord
+                    {
+                        RepeatCount = 1,
+                        VirtualKeyCode = virtualKey
+                    }
+                });
+            }
+
+            return records.ToArray();
         }
 
         public static bool IsStandardOutputRedirected(Process process)

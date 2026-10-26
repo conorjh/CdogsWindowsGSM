@@ -864,6 +864,7 @@ public sealed class BuiltInGameIntegrationTests
             }
             finally
             {
+                LogProcessStopDiagnostics(process, gameKey, instance.Config.EmbedConsole);
                 await StopServerAsync(instance.GameServer, gameKey, process);
             }
         }
@@ -899,6 +900,19 @@ public sealed class BuiltInGameIntegrationTests
         }
 
         Assert.AreEqual(embedConsole, (bool)field.GetValue(gameServer), $"'{gameKey}' did not use the configured console mode.");
+    }
+
+    private void LogProcessStopDiagnostics(Process process, string gameKey, bool embedConsole)
+    {
+        IntPtr mainWindow = process.MainWindowHandle;
+        ProcessStartInfo startInfo = process.StartInfo;
+        bool hasUsableWindow = ServerConsole.HasUsableWindow(process, mainWindow);
+        TestContext.WriteLine(
+            $"{gameKey}: stop diagnostics; embedConsole={embedConsole}, processId={process.Id}, " +
+            $"hasUsableWindow={hasUsableWindow}, createNoWindow={startInfo.CreateNoWindow}, " +
+            $"redirectStandardInput={startInfo.RedirectStandardInput}, " +
+            $"redirectStandardOutput={startInfo.RedirectStandardOutput}, " +
+            $"redirectStandardError={startInfo.RedirectStandardError}.");
     }
 
     private async Task StopServerAsync(object gameServer, string gameKey, Process process)
