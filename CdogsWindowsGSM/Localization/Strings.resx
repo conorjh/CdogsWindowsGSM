@@ -328,9 +328,6 @@
 	<data name="ScheduleCalendarWeek"><value>Week</value></data>
 	<data name="ScheduleCalendarMonth"><value>Month</value></data>
 	<data name="ScheduleCalendarMore"><value>More events</value></data>
-	<data name="ScheduleNoServerSelected"><value>Select a server or schedule to edit.</value></data>
-	<data name="ScheduleNoTaskSelected"><value>Add a scheduled task for this server to configure it.</value></data>
-	<data name="ScheduleInterruptedMessage"><value>The scheduled task was interrupted before completion; the occurrence will not be replayed.</value></data>
 	<data name="NavSharedInstallations"><value>Shared Installations</value></data>
   <data name="NavDiscordBot"><value>Discord Bot</value></data>
   <data name="NavPlugins"><value>Plugins</value></data>
@@ -406,7 +403,8 @@
 	<data name="ScheduleInvalidMessage"><value>Choose a valid time and schedule.</value></data>
   <data name="ScheduleSaved"><value>Schedule saved.</value></data>
   <data name="ScheduleSaveFailed"><value>Could not save the schedule: {0}</value></data>
-  <data name="ScheduleNoServerSelected"><value>Select a server to edit its backup schedule.</value></data>
+	<data name="ScheduleNoServerSelected"><value>Select a server or schedule to edit.</value></data>
+	<data name="ScheduleNoTaskSelected"><value>Add a scheduled task for this server to configure it.</value></data>
   <data name="ScheduleResultRunning"><value>Running</value></data>
   <data name="ScheduleResultCompleted"><value>Completed</value></data>
   <data name="ScheduleResultSkipped"><value>Skipped</value></data>
@@ -415,7 +413,7 @@
   <data name="ScheduleResultInterrupted"><value>Interrupted</value></data>
   <data name="ScheduleServerBusyMessage"><value>Skipped because the server is running or busy.</value></data>
   <data name="ScheduleMissedMessage"><value>Missed while WindowsGSM was closed or the machine was asleep; it will not be replayed.</value></data>
-  <data name="ScheduleInterruptedMessage"><value>The backup was interrupted before completion; the occurrence will not be replayed.</value></data>
+	<data name="ScheduleInterruptedMessage"><value>The scheduled task was interrupted before completion; the occurrence will not be replayed.</value></data>
   <data name="ScheduleBackupCompletedMessage"><value>Backup completed.</value></data>
   <data name="ScheduleBackupFailedMessage"><value>Backup failed; see the server log for details.</value></data>
   <data name="StatusUpdated"><value>Updated</value></data>
