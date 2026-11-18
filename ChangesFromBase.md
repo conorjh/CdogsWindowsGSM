@@ -3,14 +3,14 @@
 This document summarizes the product and code changes in CdogsWindowsGSM compared with the original [WindowsGSM project](https://github.com/WindowsGSM/WindowsGSM).
 
 - **Upstream comparison point:** `WindowsGSM/WindowsGSM` `upstream/master` at `3459bb6087b9ccf00d5179fe834aee4e5b3fad56` (26 December 2025).
-- **CdogsWindowsGSM snapshot:** local `dev`, based on commit `3b12956`, with the working-tree changes present for preview `2.0.0-preview.8` (24 October 2026).
+- **CdogsWindowsGSM snapshot:** local `dev`, based on commit `3b12956`, with the working-tree changes present for preview `2.0.0-preview.16` (24 October 2026).
 - **Scope:** functional and user-visible differences in the current checkout. This is not a line-by-line patch; it excludes restored package caches, generated build output, and session files. The original application project was renamed and migrated, so file-level diff counts overstate the amount of behavioral change.
 
 ## Fork identity and release flow
 
 - The application is branded and packaged as **CdogsWindowsGSM**, with its own README, release notes, version metadata, and attribution. The original WindowsGSM copyright is retained, and third-party notices are included.
 - In-app update checks target releases from `conorjh/CdogsWindowsGSM`, rather than directing users to upstream WindowsGSM releases. The repository includes a Windows build workflow and a companion updater executable.
-- The current app/updater version is `2.0.0-preview.8` on the .NET 10 target. This identifies the local preview build; it does not by itself mean a GitHub Release has been published.
+- The current app/updater version is `2.0.0-preview.16` on the .NET 10 target. This identifies the local preview build; it does not by itself mean a GitHub Release has been published.
 
 ## WindowsGSM capabilities retained
 
