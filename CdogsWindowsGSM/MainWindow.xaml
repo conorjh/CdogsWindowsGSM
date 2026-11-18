@@ -645,27 +645,56 @@
             <Grid Margin="10">
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
                     <RowDefinition Height="*"/>
                     <RowDefinition Height="Auto"/>
                 </Grid.RowDefinitions>
                 <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10">
-                    <Label Content="{loc:Loc Key=BackupSchedules}" FontSize="22" FontWeight="SemiBold" Padding="0"/>
+                    <Label Content="{loc:Loc Key=ScheduleTitle}" FontSize="22" FontWeight="SemiBold" Padding="0"/>
                     <Label x:Name="label_BackupScheduleTimeZone" VerticalAlignment="Center" Margin="16,0,0,0"/>
                 </StackPanel>
-                <DataGrid x:Name="BackupScheduleGrid" AutomationProperties.Name="{loc:Loc Key=BackupSchedules}" Grid.Row="1" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" SelectionChanged="BackupScheduleGrid_SelectionChanged">
-                    <DataGrid.Columns>
-                        <DataGridTextColumn Header="{loc:Loc Key=ColumnServerName}" Binding="{Binding ServerName}" Width="2*"/>
-                        <DataGridTextColumn Header="{loc:Loc Key=ScheduleGame}" Binding="{Binding Game}" Width="*"/>
-                        <DataGridTextColumn Header="{loc:Loc Key=ScheduleBackupType}" Binding="{Binding BackupTypeDisplay}" Width="*"/>
-                        <DataGridCheckBoxColumn Header="{loc:Loc Key=ScheduleEnabled}" Binding="{Binding Enabled, Mode=OneWay}" Width="Auto"/>
-                        <DataGridTextColumn Header="{loc:Loc Key=ScheduleSummary}" Binding="{Binding ScheduleDescription}" Width="2*"/>
-                        <DataGridTextColumn Header="{loc:Loc Key=ScheduleNextRun}" Binding="{Binding NextRun}" Width="2*"/>
-                        <DataGridTextColumn Header="{loc:Loc Key=ScheduleLastAttempt}" Binding="{Binding LastAttempt}" Width="2*"/>
-                        <DataGridTextColumn Header="{loc:Loc Key=ScheduleLastResult}" Binding="{Binding LastResult}" Width="*"/>
-                        <DataGridTextColumn Header="{loc:Loc Key=ScheduleResultDetails}" Binding="{Binding LastResultMessage}" Width="3*"/>
-                    </DataGrid.Columns>
-                </DataGrid>
-                <Grid Grid.Row="2" Margin="0,10,0,0">
+                <Grid Grid.Row="1" Margin="0,0,0,8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*"/>
+                        <ColumnDefinition Width="Auto"/>
+                    </Grid.ColumnDefinitions>
+                    <StackPanel Grid.Column="0" Orientation="Horizontal">
+                        <Button Content="{loc:Loc Key=ScheduleCalendarPrevious}" Padding="8,4" Click="ScheduleCalendarPrevious_Click"/>
+                        <Button Content="{loc:Loc Key=ScheduleCalendarToday}" Margin="4,0" Padding="8,4" Click="ScheduleCalendarToday_Click"/>
+                        <Button Content="{loc:Loc Key=ScheduleCalendarNext}" Padding="8,4" Click="ScheduleCalendarNext_Click"/>
+                        <TextBlock x:Name="label_ScheduleCalendarRange" VerticalAlignment="Center" Margin="12,0"/>
+                        <ComboBox x:Name="comboBox_ScheduleCalendarView" Width="110" SelectedValuePath="Tag" SelectionChanged="ScheduleCalendarView_SelectionChanged" VerticalContentAlignment="Center">
+                            <ComboBoxItem Content="{loc:Loc Key=ScheduleCalendarDay}" Tag="Day"/>
+                            <ComboBoxItem Content="{loc:Loc Key=ScheduleCalendarWeek}" Tag="Week"/>
+                            <ComboBoxItem Content="{loc:Loc Key=ScheduleCalendarMonth}" Tag="Month"/>
+                        </ComboBox>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                        <Button Content="{loc:Loc Key=ScheduleAdd}" Padding="12,4" Click="BackupScheduleAdd_Click"/>
+                        <Button x:Name="button_DeleteScheduledTask" Content="{loc:Loc Key=ScheduleRemove}" Margin="6,0,0,0" Padding="12,4" IsEnabled="False" Click="BackupScheduleDelete_Click"/>
+                    </StackPanel>
+                </Grid>
+                <TabControl Grid.Row="2">
+                    <TabItem Header="{loc:Loc Key=ScheduleCalendarTab}">
+                        <Grid x:Name="ScheduleCalendarGrid" Margin="2"/>
+                    </TabItem>
+                    <TabItem Header="{loc:Loc Key=ScheduleListTab}">
+                        <DataGrid x:Name="BackupScheduleGrid" AutomationProperties.Name="{loc:Loc Key=ScheduleTitle}" AutoGenerateColumns="False" IsReadOnly="True" CanUserAddRows="False" SelectionChanged="BackupScheduleGrid_SelectionChanged">
+                            <DataGrid.Columns>
+                                <DataGridTextColumn Header="{loc:Loc Key=ColumnServerName}" Binding="{Binding ServerName}" Width="2*"/>
+                                <DataGridTextColumn Header="{loc:Loc Key=ScheduleGame}" Binding="{Binding Game}" Width="*"/>
+                                <DataGridTextColumn Header="{loc:Loc Key=ScheduleTask}" Binding="{Binding ScheduledTaskDisplay}" Width="*"/>
+                                <DataGridCheckBoxColumn Header="{loc:Loc Key=ScheduleEnabled}" Binding="{Binding Enabled, Mode=OneWay}" Width="Auto"/>
+                                <DataGridTextColumn Header="{loc:Loc Key=ScheduleSummary}" Binding="{Binding ScheduleDescription}" Width="2*"/>
+                                <DataGridTextColumn Header="{loc:Loc Key=ScheduleNextRun}" Binding="{Binding NextRun}" Width="2*"/>
+                                <DataGridTextColumn Header="{loc:Loc Key=ScheduleLastAttempt}" Binding="{Binding LastAttempt}" Width="2*"/>
+                                <DataGridTextColumn Header="{loc:Loc Key=ScheduleLastResult}" Binding="{Binding LastResult}" Width="*"/>
+                                <DataGridTextColumn Header="{loc:Loc Key=ScheduleResultDetails}" Binding="{Binding LastResultMessage}" Width="3*"/>
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </TabItem>
+                </TabControl>
+                <Grid Grid.Row="3" Margin="0,10,0,0">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="2*"/>
@@ -674,6 +703,7 @@
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
                     <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
                         <RowDefinition Height="Auto"/>
@@ -693,7 +723,7 @@
                     </ComboBox>
                     <Label x:Name="label_BackupScheduleTime" Grid.Row="1" Grid.Column="2" Content="{loc:Loc Key=ScheduleTime}" Target="{Binding ElementName=textBox_BackupScheduleTime}" VerticalAlignment="Center"/>
                     <TextBox x:Name="textBox_BackupScheduleTime" Grid.Row="1" Grid.Column="3" MaxLength="5" VerticalContentAlignment="Center" TextChanged="BackupScheduleTime_TextChanged" LostFocus="BackupScheduleTime_LostFocus"/>
-                    <Button x:Name="button_RunBackupNow" Grid.Row="1" Grid.Column="4" Content="{loc:Loc Key=ScheduleRunNow}" Margin="8,0,0,0" Padding="12,4" Click="Button_RunBackupNow_Click"/>
+                    <Button x:Name="button_RunScheduledTaskNow" Grid.Row="1" Grid.Column="4" Content="{loc:Loc Key=ScheduleRunNow}" Margin="8,0,0,0" Padding="12,4" Click="Button_RunScheduledTaskNow_Click"/>
                     <Label x:Name="label_BackupScheduleDay" Grid.Row="2" Grid.Column="0" Content="{loc:Loc Key=ScheduleDayOfWeek}" Target="{Binding ElementName=comboBox_BackupScheduleDay}" VerticalAlignment="Center" Visibility="Collapsed"/>
                     <ComboBox x:Name="comboBox_BackupScheduleDay" Grid.Row="2" Grid.Column="1" SelectedValuePath="Tag" SelectionChanged="BackupScheduleDay_SelectionChanged" VerticalContentAlignment="Center" Visibility="Collapsed">
                         <ComboBoxItem Content="{loc:Loc Key=ScheduleSunday}" Tag="0"/>
@@ -704,14 +734,20 @@
                         <ComboBoxItem Content="{loc:Loc Key=ScheduleFriday}" Tag="5"/>
                         <ComboBoxItem Content="{loc:Loc Key=ScheduleSaturday}" Tag="6"/>
                     </ComboBox>
-                    <Label Grid.Row="3" Grid.Column="0" Content="{loc:Loc Key=ScheduleBackupType}" Target="{Binding ElementName=comboBox_BackupScheduleType}"/>
-                    <ComboBox x:Name="comboBox_BackupScheduleType" Grid.Row="3" Grid.Column="1" SelectedValuePath="Tag" SelectionChanged="BackupScheduleType_SelectionChanged" VerticalContentAlignment="Center">
+                    <Label Grid.Row="3" Grid.Column="0" Content="{loc:Loc Key=ScheduleAction}" Target="{Binding ElementName=comboBox_ScheduledAction}"/>
+                    <ComboBox x:Name="comboBox_ScheduledAction" Grid.Row="3" Grid.Column="1" SelectedValuePath="Tag" SelectionChanged="ScheduledAction_SelectionChanged" VerticalContentAlignment="Center">
+                        <ComboBoxItem Content="{loc:Loc Key=ScheduleBackup}" Tag="Backup"/>
+                        <ComboBoxItem Content="{loc:Loc Key=ScheduleUpdate}" Tag="Update"/>
+                        <ComboBoxItem Content="{loc:Loc Key=ScheduleRestart}" Tag="Restart"/>
+                    </ComboBox>
+                    <Label x:Name="label_BackupScheduleType" Grid.Row="4" Grid.Column="0" Content="{loc:Loc Key=ScheduleBackupType}" Target="{Binding ElementName=comboBox_BackupScheduleType}"/>
+                    <ComboBox x:Name="comboBox_BackupScheduleType" Grid.Row="4" Grid.Column="1" SelectedValuePath="Tag" SelectionChanged="BackupScheduleType_SelectionChanged" VerticalContentAlignment="Center">
                         <ComboBoxItem Content="{loc:Loc Key=BackupTypeFullServer}" Tag="FullServer"/>
                         <ComboBoxItem Content="{loc:Loc Key=BackupTypeConfiguration}" Tag="Configuration"/>
                     </ComboBox>
-                    <TextBlock x:Name="label_BackupScheduleStorage" Grid.Row="4" Grid.Column="0" Grid.ColumnSpan="5" TextWrapping="Wrap" Margin="0,6,0,0"/>
-                    <TextBlock x:Name="label_BackupScheduleHint" Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="2" TextWrapping="Wrap" Margin="0,6,10,0"/>
-                    <TextBlock x:Name="label_BackupScheduleStatus" AutomationProperties.LiveSetting="Polite" Grid.Row="5" Grid.Column="2" Grid.ColumnSpan="3" TextWrapping="Wrap" Margin="10,6,0,0"/>
+                    <TextBlock x:Name="label_BackupScheduleStorage" Grid.Row="5" Grid.Column="0" Grid.ColumnSpan="5" TextWrapping="Wrap" Margin="0,6,0,0"/>
+                    <TextBlock x:Name="label_BackupScheduleHint" Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="2" TextWrapping="Wrap" Margin="0,6,10,0"/>
+                    <TextBlock x:Name="label_BackupScheduleStatus" AutomationProperties.LiveSetting="Polite" Grid.Row="6" Grid.Column="2" Grid.ColumnSpan="3" TextWrapping="Wrap" Margin="10,6,0,0"/>
                 </Grid>
             </Grid>
         </DockPanel>

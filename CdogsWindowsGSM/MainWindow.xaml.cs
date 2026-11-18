@@ -2754,12 +2754,15 @@ namespace WindowsGSM
                     label_BackupScheduleServer.Text = string.Empty;
                     textBox_BackupScheduleTime.Text = string.Empty;
                     comboBox_BackupScheduleFrequency.SelectedValue = null;
+                    comboBox_ScheduledAction.SelectedValue = null;
+                    comboBox_ScheduledAction.IsEnabled = false;
                     comboBox_BackupScheduleType.SelectedValue = null;
                     comboBox_BackupScheduleType.IsEnabled = false;
                     comboBox_BackupScheduleDay.SelectedValue = null;
                     switch_BackupScheduleEnabled.IsOn = false;
                     switch_BackupScheduleEnabled.IsEnabled = false;
-                    button_RunBackupNow.IsEnabled = false;
+                    button_RunScheduledTaskNow.IsEnabled = false;
+                    button_DeleteScheduledTask.IsEnabled = false;
                     label_BackupScheduleStorage.Text = string.Empty;
                     label_BackupScheduleStatus.Text = string.Empty;
                     UpdateBackupScheduleEditor();
@@ -2767,11 +2770,41 @@ namespace WindowsGSM
                 }
 
                 label_BackupScheduleServer.Text = row.ServerName;
+                if (string.IsNullOrWhiteSpace(row.ScheduleId))
+                {
+                    textBox_BackupScheduleTime.Text = string.Empty;
+                    comboBox_BackupScheduleFrequency.SelectedValue = null;
+                    comboBox_ScheduledAction.SelectedValue = null;
+                    comboBox_BackupScheduleType.SelectedValue = null;
+                    comboBox_BackupScheduleDay.SelectedValue = null;
+                    switch_BackupScheduleEnabled.IsOn = false;
+                    switch_BackupScheduleEnabled.IsEnabled = false;
+                    button_RunScheduledTaskNow.IsEnabled = false;
+                    button_DeleteScheduledTask.IsEnabled = false;
+                    label_BackupScheduleStorage.Text = string.Empty;
+                    SetAccessibleLiveText(
+                        label_BackupScheduleStatus,
+                        string.IsNullOrWhiteSpace(row.ConfigurationError)
+                            ? LocalizationManager.Get("ScheduleNoTaskSelected")
+                            : row.ConfigurationError);
+                    UpdateBackupScheduleEditor();
+                    return;
+                }
+
                 switch_BackupScheduleEnabled.IsOn = row.Enabled;
+                comboBox_ScheduledAction.SelectedValue = row.ScheduledAction;
                 comboBox_BackupScheduleType.SelectedValue = row.BackupType;
                 bool configurationAvailable = string.IsNullOrEmpty(row.ConfigurationError);
                 switch_BackupScheduleEnabled.IsEnabled = configurationAvailable;
-                button_RunBackupNow.IsEnabled = configurationAvailable;
+                comboBox_ScheduledAction.IsEnabled = configurationAvailable;
+                button_RunScheduledTaskNow.IsEnabled = configurationAvailable;
+                button_RunScheduledTaskNow.Content = LocalizationManager.Get(row.ScheduledAction switch
+                {
+                    BackupScheduleConfig.ScheduledActionUpdate => "ScheduleRunUpdateNow",
+                    BackupScheduleConfig.ScheduledActionRestart => "ScheduleRunRestartNow",
+                    _ => "ScheduleRunNow"
+                });
+                button_DeleteScheduledTask.IsEnabled = configurationAvailable;
                 label_BackupScheduleStorage.Text = row.BackupStorage;
                 SetAccessibleLiveText(label_BackupScheduleStatus, row.LastResultMessage);
 
@@ -2804,6 +2837,13 @@ namespace WindowsGSM
         }
 
         private void BackupScheduleType_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_isLoadingBackupScheduleEditor) { return; }
+            UpdateBackupScheduleEditor();
+            SaveBackupScheduleFromEditor();
+        }
+
+        private void ScheduledAction_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_isLoadingBackupScheduleEditor) { return; }
             UpdateBackupScheduleEditor();
@@ -2844,35 +2884,106 @@ namespace WindowsGSM
             if (row != null && SaveBackupScheduleFromEditor(refreshGrid: false))
             {
                 _backupScheduleTimeChanged = false;
-                RefreshBackupSchedules(row.ServerId);
+                RefreshBackupSchedules(row.ServerId, row.ScheduleId);
             }
+        }
+
+        private void BackupScheduleAdd_Click(object sender, RoutedEventArgs e)
+        {
+            BackupScheduleRow selectedRow = BackupScheduleGrid.SelectedItem as BackupScheduleRow;
+            ServerTable server = selectedRow == null
+                ? ServerGrid.SelectedItem as ServerTable
+                : FindServerTable(selectedRow.ServerId);
+            if (server == null)
+            {
+                SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleNoServerSelected"));
+                return;
+            }
+
+            if (!TryLoadBackupSchedule(server.ID, out BackupScheduleConfig config, out string error))
+            {
+                SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(LocalizationManager.Get("ScheduleSaveFailed"), error));
+                return;
+            }
+
+            var task = new BackupScheduleTaskConfig();
+            config.Tasks.Add(task);
+            if (!TrySaveBackupSchedule(server.ID, config, out error))
+            {
+                SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(LocalizationManager.Get("ScheduleSaveFailed"), error));
+                return;
+            }
+
+            RefreshBackupSchedules(server.ID, task.Id);
+            SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleSaved"));
+        }
+
+        private void BackupScheduleDelete_Click(object sender, RoutedEventArgs e)
+        {
+            BackupScheduleRow row = BackupScheduleGrid.SelectedItem as BackupScheduleRow;
+            if (row == null || string.IsNullOrWhiteSpace(row.ScheduleId)) { return; }
+
+            string confirmation = string.Format(
+                CultureInfo.CurrentCulture,
+                LocalizationManager.Get("ScheduleDeleteConfirmation"),
+                row.ServerName);
+            if (MessageBox.Show(confirmation, LocalizationManager.Get("ConfirmationTitle"), MessageBoxButton.YesNo, MessageBoxImage.Question) != MessageBoxResult.Yes)
+            {
+                return;
+            }
+
+            if (!TryLoadBackupSchedule(row.ServerId, out BackupScheduleConfig config, out string error))
+            {
+                SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(LocalizationManager.Get("ScheduleSaveFailed"), error));
+                return;
+            }
+
+            config.Tasks.RemoveAll(task => string.Equals(task.Id, row.ScheduleId, StringComparison.OrdinalIgnoreCase));
+            if (!TrySaveBackupSchedule(row.ServerId, config, out error))
+            {
+                SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(LocalizationManager.Get("ScheduleSaveFailed"), error));
+                return;
+            }
+
+            RefreshBackupSchedules(row.ServerId);
+            SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleSaved"));
         }
 
         private void UpdateBackupScheduleEditor()
         {
-            if (comboBox_BackupScheduleFrequency == null || comboBox_BackupScheduleType == null || label_BackupScheduleTime == null || label_BackupScheduleDay == null)
+            if (comboBox_BackupScheduleFrequency == null || comboBox_ScheduledAction == null || comboBox_BackupScheduleType == null || label_BackupScheduleTime == null || label_BackupScheduleDay == null)
             {
                 return;
             }
 
             BackupScheduleRow row = BackupScheduleGrid.SelectedItem as BackupScheduleRow;
-            if (row == null)
+            if (row == null || string.IsNullOrWhiteSpace(row.ScheduleId))
             {
                 label_BackupScheduleTime.Visibility = Visibility.Collapsed;
                 textBox_BackupScheduleTime.Visibility = Visibility.Collapsed;
                 label_BackupScheduleDay.Visibility = Visibility.Collapsed;
                 comboBox_BackupScheduleDay.Visibility = Visibility.Collapsed;
                 comboBox_BackupScheduleFrequency.IsEnabled = false;
+                comboBox_ScheduledAction.IsEnabled = false;
                 comboBox_BackupScheduleType.IsEnabled = false;
+                label_BackupScheduleType.Visibility = Visibility.Collapsed;
+                comboBox_BackupScheduleType.Visibility = Visibility.Collapsed;
                 textBox_BackupScheduleTime.IsEnabled = false;
                 comboBox_BackupScheduleDay.IsEnabled = false;
-                label_BackupScheduleHint.Text = LocalizationManager.Get("ScheduleNoServerSelected");
+                button_DeleteScheduledTask.IsEnabled = false;
+                label_BackupScheduleHint.Text = row == null
+                    ? LocalizationManager.Get("ScheduleNoServerSelected")
+                    : string.IsNullOrWhiteSpace(row.ConfigurationError)
+                        ? LocalizationManager.Get("ScheduleNoTaskSelected")
+                        : row.ConfigurationError;
                 return;
             }
 
             bool configurationAvailable = string.IsNullOrEmpty(row.ConfigurationError);
             string frequency = comboBox_BackupScheduleFrequency.SelectedValue as string;
+            string scheduledAction = comboBox_ScheduledAction.SelectedValue as string;
             string backupType = comboBox_BackupScheduleType.SelectedValue as string;
+            bool backupAction = scheduledAction == BackupScheduleConfig.ScheduledActionBackup;
             ComboBoxItem configurationTypeItem = comboBox_BackupScheduleType.Items.OfType<ComboBoxItem>()
                 .FirstOrDefault(item => item.Tag as string == BackupScheduleConfig.BackupTypeConfiguration);
             if (configurationTypeItem != null)
@@ -2887,12 +2998,19 @@ namespace WindowsGSM
             label_BackupScheduleDay.Visibility = weekly ? Visibility.Visible : Visibility.Collapsed;
             comboBox_BackupScheduleDay.Visibility = weekly ? Visibility.Visible : Visibility.Collapsed;
             comboBox_BackupScheduleFrequency.IsEnabled = configurationAvailable;
-            comboBox_BackupScheduleType.IsEnabled = configurationAvailable;
+            comboBox_ScheduledAction.IsEnabled = configurationAvailable;
+            label_BackupScheduleType.Visibility = backupAction ? Visibility.Visible : Visibility.Collapsed;
+            comboBox_BackupScheduleType.Visibility = backupAction ? Visibility.Visible : Visibility.Collapsed;
+            comboBox_BackupScheduleType.IsEnabled = configurationAvailable && backupAction;
             textBox_BackupScheduleTime.IsEnabled = configurationAvailable && simpleSchedule;
             comboBox_BackupScheduleDay.IsEnabled = configurationAvailable && weekly;
             label_BackupScheduleHint.Text = !configurationAvailable
                 ? row.ConfigurationError
-                : backupType == BackupScheduleConfig.BackupTypeConfiguration
+                : scheduledAction == BackupScheduleConfig.ScheduledActionUpdate
+                    ? LocalizationManager.Get("ScheduleUpdateHint")
+                    : scheduledAction == BackupScheduleConfig.ScheduledActionRestart
+                        ? LocalizationManager.Get("ScheduleRestartHint")
+                        : backupType == BackupScheduleConfig.BackupTypeConfiguration
                     ? row.SupportsConfigurationBackup
                         ? LocalizationManager.Get("ScheduleConfigurationBackupHint")
                         : LocalizationManager.Get("ConfigurationBackupUnsupported")
@@ -2906,10 +3024,12 @@ namespace WindowsGSM
             if (_isLoadingBackupScheduleEditor) { return false; }
 
             BackupScheduleRow row = BackupScheduleGrid.SelectedItem as BackupScheduleRow;
-            if (row == null || !string.IsNullOrEmpty(row.ConfigurationError)) { return false; }
+            if (row == null || string.IsNullOrWhiteSpace(row.ScheduleId) || !string.IsNullOrEmpty(row.ConfigurationError)) { return false; }
 
-            string backupType = comboBox_BackupScheduleType.SelectedValue as string;
-            if (backupType != BackupScheduleConfig.BackupTypeFullServer && backupType != BackupScheduleConfig.BackupTypeConfiguration)
+            string scheduledAction = comboBox_ScheduledAction.SelectedValue as string;
+            if (scheduledAction != BackupScheduleConfig.ScheduledActionBackup &&
+                scheduledAction != BackupScheduleConfig.ScheduledActionUpdate &&
+                scheduledAction != BackupScheduleConfig.ScheduledActionRestart)
             {
                 if (reportValidationErrors)
                 {
@@ -2917,7 +3037,19 @@ namespace WindowsGSM
                 }
                 return false;
             }
-            if (backupType == BackupScheduleConfig.BackupTypeConfiguration && !row.SupportsConfigurationBackup)
+
+            string backupType = comboBox_BackupScheduleType.SelectedValue as string;
+            if (scheduledAction == BackupScheduleConfig.ScheduledActionBackup &&
+                backupType != BackupScheduleConfig.BackupTypeFullServer && backupType != BackupScheduleConfig.BackupTypeConfiguration)
+            {
+                if (reportValidationErrors)
+                {
+                    SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleInvalidMessage"));
+                }
+                return false;
+            }
+            if (scheduledAction == BackupScheduleConfig.ScheduledActionBackup &&
+                backupType == BackupScheduleConfig.BackupTypeConfiguration && !row.SupportsConfigurationBackup)
             {
                 if (reportValidationErrors)
                 {
@@ -2980,10 +3112,28 @@ namespace WindowsGSM
                 return false;
             }
 
-            config.CronExpression = expression;
-            config.Enabled = switch_BackupScheduleEnabled.IsOn;
-            config.BackupType = backupType;
-            config.LastEvaluatedAt = DateTime.Now;
+            BackupScheduleTaskConfig task = config.Tasks.FirstOrDefault(item => string.Equals(item.Id, row.ScheduleId, StringComparison.OrdinalIgnoreCase));
+            if (task == null)
+            {
+                SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleInvalidMessage"));
+                return false;
+            }
+
+            task.CronExpression = expression;
+            task.Enabled = switch_BackupScheduleEnabled.IsOn;
+            if (task.ScheduledAction != scheduledAction)
+            {
+                task.LastAttemptedOccurrence = null;
+                task.LastAttemptedAt = null;
+                task.LastResult = string.Empty;
+                task.LastResultMessage = string.Empty;
+            }
+            task.ScheduledAction = scheduledAction;
+            if (scheduledAction == BackupScheduleConfig.ScheduledActionBackup)
+            {
+                task.BackupType = backupType;
+            }
+            task.LastEvaluatedAt = DateTime.Now;
             if (!TrySaveBackupSchedule(row.ServerId, config, out error))
             {
                 SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(LocalizationManager.Get("ScheduleSaveFailed"), error));
@@ -2994,15 +3144,15 @@ namespace WindowsGSM
             if (refreshGrid)
             {
                 _backupScheduleTimeChanged = false;
-                RefreshBackupSchedules(row.ServerId);
+                RefreshBackupSchedules(row.ServerId, row.ScheduleId);
             }
             return true;
         }
 
-        private async void Button_RunBackupNow_Click(object sender, RoutedEventArgs e)
+        private async void Button_RunScheduledTaskNow_Click(object sender, RoutedEventArgs e)
         {
             BackupScheduleRow row = BackupScheduleGrid.SelectedItem as BackupScheduleRow;
-            if (row == null) { return; }
+            if (row == null || string.IsNullOrWhiteSpace(row.ScheduleId)) { return; }
 
             ServerTable server = FindServerTable(row.ServerId);
             if (server == null)
@@ -3017,85 +3167,226 @@ namespace WindowsGSM
                 return;
             }
 
-            if (config.BackupType == BackupScheduleConfig.BackupTypeConfiguration && !row.SupportsConfigurationBackup)
+            BackupScheduleTaskConfig task = config.Tasks.FirstOrDefault(item => string.Equals(item.Id, row.ScheduleId, StringComparison.OrdinalIgnoreCase));
+            if (task == null)
+            {
+                SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleInvalidMessage"));
+                return;
+            }
+
+            if (task.ScheduledAction == BackupScheduleConfig.ScheduledActionBackup &&
+                task.BackupType == BackupScheduleConfig.BackupTypeConfiguration && !row.SupportsConfigurationBackup)
             {
                 SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ConfigurationBackupUnsupported"));
                 return;
             }
 
-            if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped)
+            if (!IsScheduledActionAvailable(server, task))
             {
-                config.LastAttemptedAt = DateTime.Now;
-                config.LastResult = BackupScheduleConfig.ResultSkipped;
-                config.LastResultMessage = BackupScheduleConfig.MessageServerBusy;
-                if (!TrySaveBackupSchedule(server.ID, config, out string saveError))
-                {
-                    SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(LocalizationManager.Get("ScheduleSaveFailed"), saveError));
-                    return;
-                }
-
-                Log(server.ID, $"[NOTICE] {LocalizationManager.Get("ScheduleServerBusyMessage")}");
-                RefreshBackupSchedules(server.ID);
+                await MarkScheduledActionSkipped(server, config, task);
                 return;
             }
 
-            MessageBoxResult result = System.Windows.MessageBox.Show(GetBackupConfirmationMessage(server, config.BackupType), LocalizationManager.Get("ConfirmationTitle"), MessageBoxButton.YesNo, MessageBoxImage.Question);
+            string confirmation = task.ScheduledAction switch
+            {
+                BackupScheduleConfig.ScheduledActionUpdate => string.Format(CultureInfo.CurrentCulture, LocalizationManager.Get("ScheduleUpdateConfirmation"), server.Name),
+                BackupScheduleConfig.ScheduledActionRestart => string.Format(CultureInfo.CurrentCulture, LocalizationManager.Get("ScheduleRestartConfirmation"), server.Name),
+                _ => GetBackupConfirmationMessage(server, task.BackupType)
+            };
+            MessageBoxResult result = System.Windows.MessageBox.Show(confirmation, LocalizationManager.Get("ConfirmationTitle"), MessageBoxButton.YesNo, MessageBoxImage.Question);
             if (result != MessageBoxResult.Yes) { return; }
 
-            await RunBackupScheduleNow(server, config);
+            await RunScheduledTaskNow(server, config, task);
         }
 
-        private async Task RunBackupScheduleNow(ServerTable server, BackupScheduleConfig config)
+        private bool IsScheduledActionAvailable(ServerTable server, BackupScheduleTaskConfig task)
         {
-            if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped)
+            ServerMetadata metadata = GetServerMetadata(server.ID);
+            if (metadata == null)
             {
-                config.LastAttemptedAt = DateTime.Now;
-                config.LastResult = BackupScheduleConfig.ResultSkipped;
-                config.LastResultMessage = BackupScheduleConfig.MessageServerBusy;
-                if (!TrySaveBackupSchedule(server.ID, config, out string saveError))
-                {
-                    SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(LocalizationManager.Get("ScheduleSaveFailed"), saveError));
-                    return;
-                }
+                return false;
+            }
 
-                Log(server.ID, $"[NOTICE] {LocalizationManager.Get("ScheduleServerBusyMessage")}");
-                RefreshBackupSchedules(server.ID);
+            switch (task.ScheduledAction)
+            {
+                case BackupScheduleConfig.ScheduledActionUpdate:
+                    return metadata.ServerStatus == ServerStatus.Stopped || metadata.ServerStatus == ServerStatus.Started;
+                case BackupScheduleConfig.ScheduledActionRestart:
+                    return metadata.ServerStatus == ServerStatus.Started;
+                case BackupScheduleConfig.ScheduledActionBackup:
+                    return metadata.ServerStatus == ServerStatus.Stopped;
+                default:
+                    return false;
+            }
+        }
+
+        private async Task MarkScheduledActionSkipped(ServerTable server, BackupScheduleConfig config, BackupScheduleTaskConfig task)
+        {
+            task.LastAttemptedAt = DateTime.Now;
+            task.LastResult = BackupScheduleConfig.ResultSkipped;
+            task.LastResultMessage = BackupScheduleConfig.MessageServerBusy;
+            if (!TrySaveBackupSchedule(server.ID, config, out string saveError))
+            {
+                SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(LocalizationManager.Get("ScheduleSaveFailed"), saveError));
                 return;
             }
 
-            config.LastAttemptedAt = DateTime.Now;
-            config.LastResult = BackupScheduleConfig.ResultRunning;
-            config.LastResultMessage = string.Empty;
+            Log(server.ID, $"[NOTICE] {LocalizationManager.Get("ScheduleServerBusyMessage")}");
+            RefreshBackupSchedules(server.ID, task.Id);
+            await Task.CompletedTask;
+        }
+
+        private async Task RunScheduledTaskNow(ServerTable server, BackupScheduleConfig config, BackupScheduleTaskConfig task)
+        {
+            if (!IsScheduledActionAvailable(server, task))
+            {
+                await MarkScheduledActionSkipped(server, config, task);
+                return;
+            }
+
+            task.LastAttemptedAt = DateTime.Now;
+            task.LastResult = BackupScheduleConfig.ResultRunning;
+            task.LastResultMessage = string.Empty;
             if (!TrySaveBackupSchedule(server.ID, config, out string error))
             {
                 SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(LocalizationManager.Get("ScheduleSaveFailed"), error));
                 return;
             }
 
-            bool completed = await GameServer_Backup(server, " | Run from Schedules", config.BackupType);
-            config.LastAttemptedAt = DateTime.Now;
-            config.LastResult = completed ? BackupScheduleConfig.ResultCompleted : BackupScheduleConfig.ResultFailed;
-            config.LastResultMessage = completed ? BackupScheduleConfig.MessageCompleted : BackupScheduleConfig.MessageFailed;
-            bool saved = TrySaveBackupSchedule(server.ID, config, out string resultSaveError);
-            RefreshBackupSchedules(server.ID);
+            bool completed = await ExecuteScheduledActionSafely(server, task, " | Run from Schedules");
+            task.LastAttemptedAt = DateTime.Now;
+            task.LastResult = completed ? BackupScheduleConfig.ResultCompleted : BackupScheduleConfig.ResultFailed;
+            task.LastResultMessage = GetScheduledActionResultMessage(task.ScheduledAction, completed);
+            bool saved = TrySaveBackupScheduleTaskResult(server.ID, task, out string resultSaveError);
+            RefreshBackupSchedules(server.ID, task.Id);
             if (!saved)
             {
                 SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(LocalizationManager.Get("ScheduleSaveFailed"), resultSaveError));
             }
         }
 
-        private void RefreshBackupSchedules(string selectedServerId = null)
+        private async Task<bool> ExecuteScheduledActionSafely(ServerTable server, BackupScheduleTaskConfig task, string notes)
+        {
+            try
+            {
+                if (task.ScheduledAction == BackupScheduleConfig.ScheduledActionUpdate)
+                {
+                    return await GameServer_ScheduledUpdate(server, notes);
+                }
+
+                if (task.ScheduledAction == BackupScheduleConfig.ScheduledActionBackup)
+                {
+                    return await GameServer_Backup(server, notes, task.BackupType);
+                }
+
+                if (task.ScheduledAction == BackupScheduleConfig.ScheduledActionRestart)
+                {
+                    Process previousProcess = GetServerMetadata(server.ID)?.Process;
+                    await GameServer_Restart(server);
+                    ServerMetadata restartedMetadata = GetServerMetadata(server.ID);
+                    return restartedMetadata?.ServerStatus == ServerStatus.Started &&
+                        restartedMetadata.Process != null &&
+                        !restartedMetadata.Process.HasExited &&
+                        !ReferenceEquals(previousProcess, restartedMetadata.Process);
+                }
+
+                throw new InvalidDataException($"Unsupported scheduled action: {task.ScheduledAction}.");
+            }
+            catch (Exception exception) when (IsExpectedScheduledActionException(exception))
+            {
+                Log(server.ID, $"[ERROR] Scheduled {task.ScheduledAction.ToLowerInvariant()} failed: {exception.Message}");
+                return false;
+            }
+        }
+
+        private static bool IsExpectedScheduledActionException(Exception exception)
+        {
+            return exception is IOException ||
+                exception is UnauthorizedAccessException ||
+                exception is InvalidOperationException ||
+                exception is ArgumentException ||
+                exception is FormatException ||
+                exception is NotSupportedException ||
+                exception is OperationCanceledException ||
+                exception is TimeoutException ||
+                exception is System.ComponentModel.Win32Exception ||
+                exception is System.Net.Http.HttpRequestException ||
+                exception is System.Net.WebException ||
+                exception is Newtonsoft.Json.JsonException ||
+                exception is System.Text.Json.JsonException ||
+                exception is System.Security.SecurityException;
+        }
+
+        private static string GetScheduledActionResultMessage(string scheduledAction, bool completed)
+        {
+            if (scheduledAction == BackupScheduleConfig.ScheduledActionUpdate)
+            {
+                return completed
+                    ? BackupScheduleConfig.MessageUpdateCompleted
+                    : BackupScheduleConfig.MessageUpdateFailed;
+            }
+            if (scheduledAction == BackupScheduleConfig.ScheduledActionRestart)
+            {
+                return completed
+                    ? BackupScheduleConfig.MessageRestartCompleted
+                    : BackupScheduleConfig.MessageRestartFailed;
+            }
+
+            return completed ? BackupScheduleConfig.MessageCompleted : BackupScheduleConfig.MessageFailed;
+        }
+
+        private async Task<bool> GameServer_ScheduledUpdate(ServerTable server, string notes)
+        {
+            ServerMetadata metadata = GetServerMetadata(server.ID);
+            if (metadata == null)
+            {
+                return false;
+            }
+
+            bool restartAfterUpdate = metadata.ServerStatus == ServerStatus.Started;
+            if (!restartAfterUpdate && metadata.ServerStatus != ServerStatus.Stopped)
+            {
+                return false;
+            }
+
+            if (restartAfterUpdate)
+            {
+                await GameServer_Stop(server);
+                if (metadata.ServerStatus != ServerStatus.Stopped)
+                {
+                    return false;
+                }
+            }
+
+            bool updateSucceeded;
+            try
+            {
+                updateSucceeded = await GameServer_Update(server, notes);
+            }
+            finally
+            {
+                if (restartAfterUpdate && metadata.ServerStatus == ServerStatus.Stopped)
+                {
+                    await GameServer_Start(server, " | Restart after scheduled update", runStartActions: false);
+                }
+            }
+
+            return updateSucceeded && (!restartAfterUpdate || metadata.ServerStatus == ServerStatus.Started);
+        }
+
+        private void RefreshBackupSchedules(string selectedServerId = null, string selectedScheduleId = null)
         {
             var rows = new List<BackupScheduleRow>();
             foreach (ServerTable server in ServerGroups_GetAllServerRows())
             {
-                string backupStorage = GetBackupScheduleStorage(server.ID);
                 if (!TryLoadBackupSchedule(server.ID, out BackupScheduleConfig config, out string error))
                 {
                     rows.Add(new BackupScheduleRow(
                         server.ID,
+                        null,
                         server.Name,
                         server.Game,
+                        BackupScheduleConfig.ScheduledActionBackup,
                         BackupScheduleConfig.BackupTypeFullServer,
                         IsConfigurationBackupSupported(server.Game),
                         false,
@@ -3106,50 +3397,303 @@ namespace WindowsGSM
                         LocalizationManager.Get("ScheduleConfigError"),
                         error,
                         error,
-                        backupStorage));
+                        GetBackupScheduleStorage(server.ID)));
                     continue;
                 }
 
-                CrontabSchedule schedule = CrontabSchedule.TryParse(config.CronExpression);
-                DateTime nextOccurrence = default(DateTime);
-                bool validSchedule = schedule != null && TryGetNextBackupOccurrence(schedule, DateTime.Now, out nextOccurrence);
-                string nextRun = !config.Enabled
-                    ? LocalizationManager.Get("ScheduleDisabled")
-                    : validSchedule
-                        ? nextOccurrence.ToString("g")
-                        : LocalizationManager.Get("ScheduleInvalid");
-                string result = GetBackupScheduleResult(config.LastResult);
-                string message = GetBackupScheduleMessage(config.LastResultMessage);
-                if (config.Enabled && !validSchedule)
+                if (config.Tasks.Count == 0)
                 {
-                    result = LocalizationManager.Get("ScheduleInvalid");
-                    message = LocalizationManager.Get("ScheduleInvalidMessage");
+                    rows.Add(new BackupScheduleRow(
+                        server.ID,
+                        null,
+                        server.Name,
+                        server.Game,
+                        BackupScheduleConfig.ScheduledActionBackup,
+                        BackupScheduleConfig.BackupTypeFullServer,
+                        IsConfigurationBackupSupported(server.Game),
+                        false,
+                        string.Empty,
+                        LocalizationManager.Get("ScheduleNoTaskSelected"),
+                        LocalizationManager.Get("ScheduleDisabled"),
+                        string.Empty,
+                        LocalizationManager.Get("ScheduleNoRuns"),
+                        string.Empty,
+                        string.Empty,
+                        string.Empty));
                 }
-                else if (string.IsNullOrWhiteSpace(result))
+                else
                 {
-                    result = LocalizationManager.Get("ScheduleNoRuns");
-                }
+                    foreach (BackupScheduleTaskConfig task in config.Tasks)
+                    {
+                        CrontabSchedule schedule = CrontabSchedule.TryParse(task.CronExpression);
+                        DateTime nextOccurrence = default(DateTime);
+                        bool validSchedule = schedule != null && TryGetNextBackupOccurrence(schedule, DateTime.Now, out nextOccurrence);
+                        string nextRun = !task.Enabled
+                            ? LocalizationManager.Get("ScheduleDisabled")
+                            : validSchedule
+                                ? nextOccurrence.ToString("g")
+                                : LocalizationManager.Get("ScheduleInvalid");
+                        string result = GetBackupScheduleResult(task.LastResult);
+                        string message = GetBackupScheduleMessage(task.LastResultMessage);
+                        if (task.Enabled && !validSchedule)
+                        {
+                            result = LocalizationManager.Get("ScheduleInvalid");
+                            message = LocalizationManager.Get("ScheduleInvalidMessage");
+                        }
+                        else if (string.IsNullOrWhiteSpace(result))
+                        {
+                            result = LocalizationManager.Get("ScheduleNoRuns");
+                        }
 
-                rows.Add(new BackupScheduleRow(
-                    server.ID,
-                    server.Name,
-                    server.Game,
-                    config.BackupType,
-                    IsConfigurationBackupSupported(server.Game),
-                    config.Enabled,
-                    config.CronExpression,
-                    GetBackupScheduleDescription(config.CronExpression),
-                    nextRun,
-                    config.LastAttemptedAt?.ToString("g") ?? string.Empty,
-                    result,
-                    message,
-                    string.Empty,
-                    backupStorage));
+                        rows.Add(new BackupScheduleRow(
+                            server.ID,
+                            task.Id,
+                            server.Name,
+                            server.Game,
+                            task.ScheduledAction,
+                            task.BackupType,
+                            IsConfigurationBackupSupported(server.Game),
+                            task.Enabled,
+                            task.CronExpression,
+                            GetBackupScheduleDescription(task.CronExpression),
+                            nextRun,
+                            task.LastAttemptedAt?.ToString("g") ?? string.Empty,
+                            result,
+                            message,
+                            string.Empty,
+                            task.ScheduledAction == BackupScheduleConfig.ScheduledActionBackup ? GetBackupScheduleStorage(server.ID) : string.Empty));
+                    }
+                }
             }
 
             label_BackupScheduleTimeZone.Content = string.Format(LocalizationManager.Get("ScheduleLocalTimeZone"), TimeZoneInfo.Local.DisplayName);
             BackupScheduleGrid.ItemsSource = rows;
-            BackupScheduleGrid.SelectedItem = rows.FirstOrDefault(row => row.ServerId == selectedServerId) ?? rows.FirstOrDefault();
+            BackupScheduleGrid.SelectedItem = rows.FirstOrDefault(row =>
+                    string.Equals(row.ServerId, selectedServerId, StringComparison.OrdinalIgnoreCase) &&
+                    string.Equals(row.ScheduleId, selectedScheduleId, StringComparison.OrdinalIgnoreCase))
+                ?? rows.FirstOrDefault(row => string.Equals(row.ServerId, selectedServerId, StringComparison.OrdinalIgnoreCase))
+                ?? rows.FirstOrDefault();
+
+            if (comboBox_ScheduleCalendarView.SelectedValue == null)
+            {
+                comboBox_ScheduleCalendarView.SelectedValue = "Month";
+            }
+            RenderBackupScheduleCalendar();
+        }
+
+        private void ScheduleCalendarView_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            string view = comboBox_ScheduleCalendarView.SelectedValue as string;
+            if (Enum.TryParse(view, ignoreCase: true, out BackupScheduleCalendarView selectedView))
+            {
+                _backupScheduleCalendarView = selectedView;
+                RenderBackupScheduleCalendar();
+            }
+        }
+
+        private void ScheduleCalendarPrevious_Click(object sender, RoutedEventArgs e)
+        {
+            _backupScheduleCalendarDate = _backupScheduleCalendarView switch
+            {
+                BackupScheduleCalendarView.Day => _backupScheduleCalendarDate.AddDays(-1),
+                BackupScheduleCalendarView.Week => _backupScheduleCalendarDate.AddDays(-7),
+                _ => _backupScheduleCalendarDate.AddMonths(-1)
+            };
+            RenderBackupScheduleCalendar();
+        }
+
+        private void ScheduleCalendarNext_Click(object sender, RoutedEventArgs e)
+        {
+            _backupScheduleCalendarDate = _backupScheduleCalendarView switch
+            {
+                BackupScheduleCalendarView.Day => _backupScheduleCalendarDate.AddDays(1),
+                BackupScheduleCalendarView.Week => _backupScheduleCalendarDate.AddDays(7),
+                _ => _backupScheduleCalendarDate.AddMonths(1)
+            };
+            RenderBackupScheduleCalendar();
+        }
+
+        private void ScheduleCalendarToday_Click(object sender, RoutedEventArgs e)
+        {
+            _backupScheduleCalendarDate = DateTime.Today;
+            RenderBackupScheduleCalendar();
+        }
+
+        private void ScheduleCalendarEvent_Click(object sender, RoutedEventArgs e)
+        {
+            if (sender is System.Windows.Controls.Button button && button.Tag is BackupScheduleRow row)
+            {
+                BackupScheduleGrid.SelectedItem = row;
+                BackupScheduleGrid.ScrollIntoView(row);
+                RenderBackupScheduleCalendar();
+            }
+        }
+
+        private void RenderBackupScheduleCalendar()
+        {
+            if (ScheduleCalendarGrid == null || BackupScheduleGrid == null)
+            {
+                return;
+            }
+
+            ScheduleCalendarGrid.Children.Clear();
+            ScheduleCalendarGrid.ColumnDefinitions.Clear();
+            ScheduleCalendarGrid.RowDefinitions.Clear();
+
+            DateTime periodStart = BackupScheduleCalendar.GetPeriodStart(_backupScheduleCalendarDate, _backupScheduleCalendarView);
+            int dayCount = BackupScheduleCalendar.GetPeriodDayCount(_backupScheduleCalendarView);
+            bool monthView = _backupScheduleCalendarView == BackupScheduleCalendarView.Month;
+            int columnCount = _backupScheduleCalendarView == BackupScheduleCalendarView.Day ? 1 : 7;
+            for (int column = 0; column < columnCount; column++)
+            {
+                ScheduleCalendarGrid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            }
+
+            if (monthView)
+            {
+                ScheduleCalendarGrid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+                for (int column = 0; column < 7; column++)
+                {
+                    int dayOfWeekIndex = ((int)CultureInfo.CurrentCulture.DateTimeFormat.FirstDayOfWeek + column) % 7;
+                    var weekday = new TextBlock
+                    {
+                        Text = CultureInfo.CurrentCulture.DateTimeFormat.AbbreviatedDayNames[dayOfWeekIndex],
+                        HorizontalAlignment = System.Windows.HorizontalAlignment.Center,
+                        Margin = new Thickness(2, 4, 2, 4),
+                        FontWeight = FontWeights.SemiBold
+                    };
+                    Grid.SetRow(weekday, 0);
+                    Grid.SetColumn(weekday, column);
+                    ScheduleCalendarGrid.Children.Add(weekday);
+                }
+            }
+
+            int contentRows = monthView ? 6 : 1;
+            for (int row = 0; row < contentRows; row++)
+            {
+                ScheduleCalendarGrid.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
+            }
+
+            label_ScheduleCalendarRange.Text = _backupScheduleCalendarView switch
+            {
+                BackupScheduleCalendarView.Day => _backupScheduleCalendarDate.ToString("D", CultureInfo.CurrentCulture),
+                BackupScheduleCalendarView.Week => string.Format(
+                    CultureInfo.CurrentCulture,
+                    "{0:d} - {1:d}",
+                    periodStart,
+                    periodStart.AddDays(6)),
+                _ => _backupScheduleCalendarDate.ToString("Y", CultureInfo.CurrentCulture)
+            };
+
+            IEnumerable<BackupScheduleRow> scheduledRows = (BackupScheduleGrid.ItemsSource as IEnumerable<BackupScheduleRow>)
+                ?? Enumerable.Empty<BackupScheduleRow>();
+            BackupScheduleRow selectedRow = BackupScheduleGrid.SelectedItem as BackupScheduleRow;
+            for (int dayIndex = 0; dayIndex < dayCount; dayIndex++)
+            {
+                DateTime date = periodStart.AddDays(dayIndex);
+                int column = _backupScheduleCalendarView == BackupScheduleCalendarView.Day ? 0 : dayIndex % 7;
+                int rowIndex = monthView ? 1 + dayIndex / 7 : 0;
+                var cellContent = new StackPanel();
+                string dayHeading = monthView
+                    ? date.Day.ToString(CultureInfo.CurrentCulture)
+                    : date.ToString(_backupScheduleCalendarView == BackupScheduleCalendarView.Day ? "D" : "ddd, d MMMM yyyy", CultureInfo.CurrentCulture);
+                cellContent.Children.Add(new TextBlock
+                {
+                    Text = dayHeading,
+                    Margin = new Thickness(2, 0, 2, 3),
+                    FontWeight = FontWeights.SemiBold
+                });
+
+                foreach (BackupScheduleRow scheduleRow in scheduledRows.Where(item => item.Enabled && !string.IsNullOrWhiteSpace(item.ScheduleId)))
+                {
+                    var task = new BackupScheduleTaskConfig
+                    {
+                        Id = scheduleRow.ScheduleId,
+                        Enabled = scheduleRow.Enabled,
+                        CronExpression = scheduleRow.CronExpression,
+                        ScheduledAction = scheduleRow.ScheduledAction,
+                        BackupType = scheduleRow.BackupType
+                    };
+                    IReadOnlyList<DateTime> occurrences = BackupScheduleCalendar.GetOccurrences(task, date, maximumCount: 6);
+                    foreach (DateTime occurrence in occurrences.Take(5))
+                    {
+                        string eventText = string.Format(
+                            CultureInfo.CurrentCulture,
+                            "{0}  {1}: {2}",
+                            occurrence.ToString("t", CultureInfo.CurrentCulture),
+                            scheduleRow.ServerName,
+                            scheduleRow.ScheduledTaskDisplay);
+                        var eventButton = new System.Windows.Controls.Button
+                        {
+                            Content = new TextBlock { Text = eventText, TextWrapping = TextWrapping.Wrap },
+                            HorizontalContentAlignment = System.Windows.HorizontalAlignment.Left,
+                            Padding = new Thickness(3, 1, 3, 1),
+                            Margin = new Thickness(0, 1, 0, 1),
+                            Background = scheduleRow.ScheduledAction switch
+                            {
+                                BackupScheduleConfig.ScheduledActionUpdate => Brushes.PeachPuff,
+                                BackupScheduleConfig.ScheduledActionRestart => Brushes.LightGreen,
+                                _ => Brushes.LightSteelBlue
+                            },
+                            ToolTip = string.Format(CultureInfo.CurrentCulture, "{0:g} - {1} ({2})", occurrence, scheduleRow.ServerName, scheduleRow.Game),
+                            Tag = scheduleRow
+                        };
+                        AutomationProperties.SetName(eventButton, eventText);
+                        eventButton.Click += ScheduleCalendarEvent_Click;
+                        cellContent.Children.Add(eventButton);
+                    }
+
+                    if (occurrences.Count > 5)
+                    {
+                        cellContent.Children.Add(new TextBlock
+                        {
+                            Text = LocalizationManager.Get("ScheduleCalendarMore"),
+                            Margin = new Thickness(2, 1, 2, 1),
+                            FontStyle = FontStyles.Italic
+                        });
+                    }
+                }
+
+                var cell = new Border
+                {
+                    BorderBrush = date.Date == _backupScheduleCalendarDate.Date ? Brushes.SteelBlue : SystemColors.ControlDarkBrush,
+                    BorderThickness = date.Date == _backupScheduleCalendarDate.Date ? new Thickness(2) : new Thickness(1),
+                    Background = monthView && date.Month != _backupScheduleCalendarDate.Month ? SystemColors.ControlBrush : SystemColors.WindowBrush,
+                    Padding = new Thickness(3),
+                    Margin = new Thickness(1),
+                    Tag = date,
+                    Child = new ScrollViewer
+                    {
+                        VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+                        HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+                        Content = cellContent
+                    }
+                };
+                cell.MouseLeftButtonUp += ScheduleCalendarCell_MouseLeftButtonUp;
+                if (selectedRow != null && !string.IsNullOrWhiteSpace(selectedRow.ScheduleId) &&
+                    BackupScheduleCalendar.GetOccurrences(new BackupScheduleTaskConfig
+                    {
+                        Enabled = selectedRow.Enabled,
+                        CronExpression = selectedRow.CronExpression
+                    }, date, maximumCount: 1).Count > 0)
+                {
+                    cell.BorderBrush = Brushes.SteelBlue;
+                }
+
+                Grid.SetRow(cell, rowIndex);
+                Grid.SetColumn(cell, column);
+                ScheduleCalendarGrid.Children.Add(cell);
+            }
+        }
+
+        private void ScheduleCalendarCell_MouseLeftButtonUp(object sender, MouseButtonEventArgs e)
+        {
+            if (sender is Border border && border.Tag is DateTime selectedDate)
+            {
+                _backupScheduleCalendarDate = selectedDate;
+                RenderBackupScheduleCalendar();
+                e.Handled = true;
+            }
         }
 
         private static string GetBackupScheduleDescription(string expression)
@@ -3249,6 +3793,10 @@ namespace WindowsGSM
                 case BackupScheduleConfig.MessageInterrupted: return LocalizationManager.Get("ScheduleInterruptedMessage");
                 case BackupScheduleConfig.MessageCompleted: return LocalizationManager.Get("ScheduleBackupCompletedMessage");
                 case BackupScheduleConfig.MessageFailed: return LocalizationManager.Get("ScheduleBackupFailedMessage");
+                case BackupScheduleConfig.MessageUpdateCompleted: return LocalizationManager.Get("ScheduleUpdateCompletedMessage");
+                case BackupScheduleConfig.MessageUpdateFailed: return LocalizationManager.Get("ScheduleUpdateFailedMessage");
+                case BackupScheduleConfig.MessageRestartCompleted: return LocalizationManager.Get("ScheduleRestartCompletedMessage");
+                case BackupScheduleConfig.MessageRestartFailed: return LocalizationManager.Get("ScheduleRestartFailedMessage");
                 default: return message ?? string.Empty;
             }
         }
@@ -3276,6 +3824,13 @@ namespace WindowsGSM
                 return false;
             }
             catch (Newtonsoft.Json.JsonException e)
+            {
+                Log(serverId, $"[ERROR] Backup schedule configuration could not be read: {e.Message}");
+                config = null;
+                error = e.Message;
+                return false;
+            }
+            catch (InvalidDataException e)
             {
                 Log(serverId, $"[ERROR] Backup schedule configuration could not be read: {e.Message}");
                 config = null;
@@ -3317,12 +3872,42 @@ namespace WindowsGSM
                 error = e.Message;
                 return false;
             }
+            catch (InvalidDataException e)
+            {
+                Log(serverId, $"[ERROR] Backup schedule configuration could not be saved: {e.Message}");
+                error = e.Message;
+                return false;
+            }
             catch (ArgumentException e)
             {
                 Log(serverId, $"[ERROR] Backup schedule configuration could not be saved: {e.Message}");
                 error = e.Message;
                 return false;
             }
+        }
+
+        private bool TrySaveBackupScheduleTaskResult(string serverId, BackupScheduleTaskConfig completedTask, out string error)
+        {
+            if (!TryLoadBackupSchedule(serverId, out BackupScheduleConfig currentConfig, out error))
+            {
+                return false;
+            }
+
+            BackupScheduleTaskConfig currentTask = currentConfig.Tasks.FirstOrDefault(task =>
+                string.Equals(task.Id, completedTask.Id, StringComparison.OrdinalIgnoreCase));
+            if (currentTask == null)
+            {
+                error = "The scheduled task was removed before its result could be saved.";
+                Log(serverId, $"[NOTICE] {error}");
+                return false;
+            }
+
+            currentTask.LastEvaluatedAt = completedTask.LastEvaluatedAt;
+            currentTask.LastAttemptedOccurrence = completedTask.LastAttemptedOccurrence;
+            currentTask.LastAttemptedAt = completedTask.LastAttemptedAt;
+            currentTask.LastResult = completedTask.LastResult;
+            currentTask.LastResultMessage = completedTask.LastResultMessage;
+            return TrySaveBackupSchedule(serverId, currentConfig, out error);
         }
 
         private ServerTable FindServerTable(string serverId)
@@ -4927,77 +5512,100 @@ namespace WindowsGSM
                 foreach (ServerTable server in ServerGroups_GetAllServerRows())
                 {
                     if (!TryLoadBackupSchedule(server.ID, out BackupScheduleConfig config, out _)) { continue; }
+                    List<string> taskIds = config.Tasks.Select(task => task.Id).ToList();
 
-                    ServerMetadata metadata = GetServerMetadata(server.ID);
-                    if (config.LastResult == BackupScheduleConfig.ResultRunning)
+                    foreach (string taskId in taskIds)
                     {
-                        if (metadata != null && metadata.ServerStatus == ServerStatus.Backuping) { continue; }
+                        if (!TryLoadBackupSchedule(server.ID, out config, out _)) { continue; }
+                        BackupScheduleTaskConfig task = config.Tasks.FirstOrDefault(item => string.Equals(item.Id, taskId, StringComparison.OrdinalIgnoreCase));
+                        if (task == null) { continue; }
 
-                        config.LastResult = BackupScheduleConfig.ResultInterrupted;
-                        config.LastResultMessage = BackupScheduleConfig.MessageInterrupted;
-                        config.LastEvaluatedAt = now;
+                        ServerMetadata metadata = GetServerMetadata(server.ID);
+                        if (task.LastResult == BackupScheduleConfig.ResultRunning)
+                        {
+                            if (metadata != null && (
+                                metadata.ServerStatus == ServerStatus.Backuping ||
+                                metadata.ServerStatus == ServerStatus.Updating ||
+                                metadata.ServerStatus == ServerStatus.Stopping ||
+                                metadata.ServerStatus == ServerStatus.Starting ||
+                                metadata.ServerStatus == ServerStatus.Restarting))
+                            {
+                                continue;
+                            }
+
+                            task.LastResult = BackupScheduleConfig.ResultInterrupted;
+                            task.LastResultMessage = BackupScheduleConfig.MessageInterrupted;
+                            task.LastEvaluatedAt = now;
+                            if (!TrySaveBackupSchedule(server.ID, config, out _)) { continue; }
+                        }
+
+                        if (!task.Enabled) { continue; }
+
+                        CrontabSchedule schedule = CrontabSchedule.TryParse(task.CronExpression);
+                        if (schedule == null) { continue; }
+
+                        DateTime baseline = task.LastEvaluatedAt ?? _backupScheduleStartedAt;
+                        if (task.LastAttemptedOccurrence.HasValue && task.LastAttemptedOccurrence.Value > baseline)
+                        {
+                            baseline = task.LastAttemptedOccurrence.Value;
+                        }
+                        if (baseline >= now) { continue; }
+
+                        List<DateTime> dueOccurrences = schedule.GetNextOccurrences(baseline, now).Take(2).ToList();
+                        if (dueOccurrences.Count == 0) { continue; }
+
+                        DateTime scheduledOccurrence = dueOccurrences[0];
+                        bool missed = scheduledOccurrence <= _backupScheduleStartedAt ||
+                            dueOccurrences.Count > 1 ||
+                            now - previousTick > TimeSpan.FromMinutes(2) ||
+                            now - scheduledOccurrence > TimeSpan.FromMinutes(1);
+
+                        task.LastEvaluatedAt = now;
+                        task.LastAttemptedOccurrence = scheduledOccurrence;
+                        task.LastAttemptedAt = now;
+                        if (missed)
+                        {
+                            task.LastResult = BackupScheduleConfig.ResultMissed;
+                            task.LastResultMessage = BackupScheduleConfig.MessageMissed;
+                            if (TrySaveBackupSchedule(server.ID, config, out _))
+                            {
+                                Log(server.ID, $"[NOTICE] {LocalizationManager.Get("ScheduleMissedMessage")}");
+                            }
+                            if (hMenu_Schedules.Visibility == Visibility.Visible) { RefreshBackupSchedules(server.ID, task.Id); }
+                            continue;
+                        }
+
+                        if (!IsScheduledActionAvailable(server, task))
+                        {
+                            task.LastResult = BackupScheduleConfig.ResultSkipped;
+                            task.LastResultMessage = BackupScheduleConfig.MessageServerBusy;
+                            if (TrySaveBackupSchedule(server.ID, config, out _))
+                            {
+                                Log(server.ID, $"[NOTICE] {LocalizationManager.Get("ScheduleServerBusyMessage")}");
+                            }
+                            if (hMenu_Schedules.Visibility == Visibility.Visible) { RefreshBackupSchedules(server.ID, task.Id); }
+                            continue;
+                        }
+
+                        task.LastResult = BackupScheduleConfig.ResultRunning;
+                        task.LastResultMessage = string.Empty;
                         if (!TrySaveBackupSchedule(server.ID, config, out _)) { continue; }
-                    }
 
-                    if (!config.Enabled) { continue; }
-
-                    CrontabSchedule schedule = CrontabSchedule.TryParse(config.CronExpression);
-                    if (schedule == null) { continue; }
-
-                    DateTime baseline = config.LastEvaluatedAt ?? _backupScheduleStartedAt;
-                    if (config.LastAttemptedOccurrence.HasValue && config.LastAttemptedOccurrence.Value > baseline)
-                    {
-                        baseline = config.LastAttemptedOccurrence.Value;
-                    }
-                    if (baseline >= now) { continue; }
-
-                    List<DateTime> dueOccurrences = schedule.GetNextOccurrences(baseline, now).Take(2).ToList();
-                    if (dueOccurrences.Count == 0) { continue; }
-
-                    DateTime scheduledOccurrence = dueOccurrences[0];
-                    bool missed = scheduledOccurrence <= _backupScheduleStartedAt ||
-                        dueOccurrences.Count > 1 ||
-                        now - previousTick > TimeSpan.FromMinutes(2) ||
-                        now - scheduledOccurrence > TimeSpan.FromMinutes(1);
-
-                    config.LastEvaluatedAt = now;
-                    config.LastAttemptedOccurrence = scheduledOccurrence;
-                    config.LastAttemptedAt = now;
-                    if (missed)
-                    {
-                        config.LastResult = BackupScheduleConfig.ResultMissed;
-                        config.LastResultMessage = BackupScheduleConfig.MessageMissed;
-                        if (TrySaveBackupSchedule(server.ID, config, out _))
+                        string actionNotes = task.ScheduledAction switch
                         {
-                            Log(server.ID, $"[NOTICE] {LocalizationManager.Get("ScheduleMissedMessage")}");
-                        }
-                        if (hMenu_Schedules.Visibility == Visibility.Visible) { RefreshBackupSchedules(server.ID); }
-                        continue;
+                            BackupScheduleConfig.ScheduledActionUpdate => " | Scheduled update",
+                            BackupScheduleConfig.ScheduledActionRestart => " | Scheduled restart",
+                            _ => " | Scheduled backup"
+                        };
+                        bool completed = await ExecuteScheduledActionSafely(server, task, actionNotes);
+                        task.LastEvaluatedAt = DateTime.Now;
+                        task.LastAttemptedAt = DateTime.Now;
+                        task.LastResult = completed ? BackupScheduleConfig.ResultCompleted : BackupScheduleConfig.ResultFailed;
+                        task.LastResultMessage = GetScheduledActionResultMessage(task.ScheduledAction, completed);
+                        TrySaveBackupScheduleTaskResult(server.ID, task, out _);
+                        if (hMenu_Schedules.Visibility == Visibility.Visible) { RefreshBackupSchedules(server.ID, task.Id); }
                     }
 
-                    if (metadata == null || metadata.ServerStatus != ServerStatus.Stopped)
-                    {
-                        config.LastResult = BackupScheduleConfig.ResultSkipped;
-                        config.LastResultMessage = BackupScheduleConfig.MessageServerBusy;
-                        if (TrySaveBackupSchedule(server.ID, config, out _))
-                        {
-                            Log(server.ID, $"[NOTICE] {LocalizationManager.Get("ScheduleServerBusyMessage")}");
-                        }
-                        if (hMenu_Schedules.Visibility == Visibility.Visible) { RefreshBackupSchedules(server.ID); }
-                        continue;
-                    }
-
-                    config.LastResult = BackupScheduleConfig.ResultRunning;
-                    config.LastResultMessage = string.Empty;
-                    if (!TrySaveBackupSchedule(server.ID, config, out _)) { continue; }
-
-                    bool completed = await GameServer_Backup(server, " | Scheduled backup", config.BackupType);
-                    config.LastEvaluatedAt = DateTime.Now;
-                    config.LastAttemptedAt = DateTime.Now;
-                    config.LastResult = completed ? BackupScheduleConfig.ResultCompleted : BackupScheduleConfig.ResultFailed;
-                    config.LastResultMessage = completed ? BackupScheduleConfig.MessageCompleted : BackupScheduleConfig.MessageFailed;
-                    TrySaveBackupSchedule(server.ID, config, out _);
-                    if (hMenu_Schedules.Visibility == Visibility.Visible) { RefreshBackupSchedules(server.ID); }
                 }
             }
             finally
