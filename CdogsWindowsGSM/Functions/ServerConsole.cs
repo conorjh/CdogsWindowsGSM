@@ -3,10 +3,13 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows.Forms;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Win32.SafeHandles;
+using System.Runtime.CompilerServices;
 
 namespace WindowsGSM.Functions
 {
@@ -26,6 +29,9 @@ namespace WindowsGSM.Functions
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool AttachConsole(uint processId);
+
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr GetConsoleWindow();
 
         [DllImport("kernel32.dll", SetLastError = true)]
         private static extern bool FreeConsole();
@@ -50,6 +56,31 @@ namespace WindowsGSM.Functions
             uint length,
             out uint eventsWritten);
 
+        [DllImport("kernel32.dll", EntryPoint = "CreateProcessW", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CreateProcess(
+            string applicationName,
+            StringBuilder commandLine,
+            IntPtr processAttributes,
+            IntPtr threadAttributes,
+            [MarshalAs(UnmanagedType.Bool)] bool inheritHandles,
+            uint creationFlags,
+            IntPtr environment,
+            string currentDirectory,
+            ref StartupInfo startupInfo,
+            out ProcessInformation processInformation);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CloseHandle(IntPtr handle);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool TerminateProcess(IntPtr process, uint exitCode);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
+
         private const int WM_KEYDOWN = 0x0100;
         private const int WM_CHAR = 0x0102;
         private const int WM_GETTEXT = 0x000D;
@@ -61,7 +92,59 @@ namespace WindowsGSM.Functions
         private const uint FileShareWrite = 0x00000002;
         private const uint OpenExisting = 3;
         private const int ErrorAccessDenied = 5;
+        private const int ErrorInvalidHandle = 6;
+        private const int ErrorInvalidParameter = 87;
+        private const uint CreateNewConsole = 0x00000010;
+        private const uint StartfUseShowWindow = 0x00000001;
+        private const uint WaitObject0 = 0x00000000;
+        private static readonly uint Infinite = uint.MaxValue;
         private static readonly object ConsoleInputLock = new object();
+        private static readonly ConditionalWeakTable<Process, ProcessRuntimeMetadata> ProcessMetadataByProcess = new ConditionalWeakTable<Process, ProcessRuntimeMetadata>();
+
+        private sealed class ProcessRuntimeMetadata
+        {
+            public ProcessStartInfo StartInfo { get; }
+            public bool IsConsoleProcess { get; set; }
+            public IntPtr ConsoleWindowHandle { get; set; }
+
+            public ProcessRuntimeMetadata(ProcessStartInfo startInfo, bool isConsoleProcess)
+            {
+                StartInfo = startInfo;
+                IsConsoleProcess = isConsoleProcess;
+            }
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct StartupInfo
+        {
+            public uint Size;
+            public string Reserved;
+            public string Desktop;
+            public string Title;
+            public uint X;
+            public uint Y;
+            public uint XSize;
+            public uint YSize;
+            public uint XCountChars;
+            public uint YCountChars;
+            public uint FillAttribute;
+            public uint Flags;
+            public ushort ShowWindow;
+            public ushort ReservedCount;
+            public IntPtr ReservedInfo;
+            public IntPtr StandardInput;
+            public IntPtr StandardOutput;
+            public IntPtr StandardError;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ProcessInformation
+        {
+            public IntPtr Process;
+            public IntPtr Thread;
+            public uint ProcessId;
+            public uint ThreadId;
+        }
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         private struct ConsoleInputRecord
@@ -93,6 +176,89 @@ namespace WindowsGSM.Functions
             return GetStartInfoOrDefault(process).RedirectStandardInput;
         }
 
+        public static bool HasProcessStartInfo(Process process)
+        {
+            if (process == null)
+            {
+                return false;
+            }
+
+            if (ProcessMetadataByProcess.TryGetValue(process, out ProcessRuntimeMetadata metadata) && metadata.StartInfo != null)
+            {
+                return true;
+            }
+
+            try
+            {
+                _ = process.StartInfo;
+                return true;
+            }
+            catch (InvalidOperationException)
+            {
+                return false;
+            }
+        }
+
+        public static bool IsConsoleProcess(Process process)
+        {
+            return process != null &&
+                ProcessMetadataByProcess.TryGetValue(process, out ProcessRuntimeMetadata metadata) &&
+                metadata.IsConsoleProcess;
+        }
+
+        public static IntPtr GetMainWindowHandle(Process process)
+        {
+            if (process == null)
+            {
+                return IntPtr.Zero;
+            }
+
+            try
+            {
+                if (process.HasExited) { return IntPtr.Zero; }
+            }
+            catch (InvalidOperationException)
+            {
+                return IntPtr.Zero;
+            }
+
+            IntPtr mainWindow;
+            try
+            {
+                mainWindow = process.MainWindowHandle;
+            }
+            catch (InvalidOperationException)
+            {
+                return IntPtr.Zero;
+            }
+            if (mainWindow != IntPtr.Zero && IsWindow(mainWindow))
+            {
+                if (ProcessMetadataByProcess.TryGetValue(process, out ProcessRuntimeMetadata existingMetadata))
+                {
+                    existingMetadata.ConsoleWindowHandle = mainWindow;
+                }
+
+                return mainWindow;
+            }
+
+            if (ProcessMetadataByProcess.TryGetValue(process, out ProcessRuntimeMetadata metadata) &&
+                metadata.ConsoleWindowHandle != IntPtr.Zero && IsWindow(metadata.ConsoleWindowHandle))
+            {
+                return metadata.ConsoleWindowHandle;
+            }
+
+            IntPtr consoleWindow = GetConsoleWindowForProcess(process);
+            if (consoleWindow == IntPtr.Zero || !IsWindow(consoleWindow))
+            {
+                return IntPtr.Zero;
+            }
+
+            metadata = ProcessMetadataByProcess.GetValue(process, _ => new ProcessRuntimeMetadata(null, isConsoleProcess: true));
+            metadata.IsConsoleProcess = true;
+            metadata.ConsoleWindowHandle = consoleWindow;
+            return consoleWindow;
+        }
+
         public static void SendCommandToProcess(Process process, string command)
         {
             if (process == null)
@@ -117,10 +283,25 @@ namespace WindowsGSM.Functions
                 return;
             }
 
-            IntPtr mainWindow = process.MainWindowHandle;
+            if (IsConsoleProcess(process))
+            {
+                SendConsoleKeystrokes(process, command + "\r");
+                return;
+            }
+
+            IntPtr mainWindow = GetMainWindowHandle(process);
             if (!HasUsableWindow(process, mainWindow))
             {
-                throw new InvalidOperationException("The server process has neither redirected standard input nor a usable console window.");
+                try
+                {
+                    SendConsoleKeystrokes(process, command + "\r");
+                }
+                catch (Win32Exception exception)
+                {
+                    throw new InvalidOperationException("The server process has no usable window or attachable console input.", exception);
+                }
+
+                return;
             }
 
             SendMessageToMainWindow(mainWindow, command);
@@ -146,10 +327,44 @@ namespace WindowsGSM.Functions
             lock (ConsoleInputLock)
             {
                 bool attachedToTargetConsole = AttachConsole((uint)process.Id);
-                if (!attachedToTargetConsole &&
-                    (Marshal.GetLastWin32Error() != ErrorAccessDenied || !IsProcessAttachedToCurrentConsole(process.Id)))
+                uint restoreConsoleProcessId = 0;
+                if (!attachedToTargetConsole)
                 {
-                    throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not attach to the server process console.");
+                    int attachError = Marshal.GetLastWin32Error();
+                    uint[] currentConsoleProcessIds = GetCurrentConsoleProcessIds();
+                    bool targetAlreadySharesConsole = Array.IndexOf(currentConsoleProcessIds, (uint)process.Id) >= 0;
+                    if (targetAlreadySharesConsole)
+                    {
+                        attachedToTargetConsole = false;
+                    }
+                    else if (attachError == ErrorAccessDenied && currentConsoleProcessIds.Length > 0)
+                    {
+                        int currentProcessId = Process.GetCurrentProcess().Id;
+                        restoreConsoleProcessId = currentConsoleProcessIds.FirstOrDefault(processId =>
+                            processId != (uint)currentProcessId && processId != (uint)process.Id);
+
+                        if (!FreeConsole())
+                        {
+                            throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not detach from the current console.");
+                        }
+
+                        attachedToTargetConsole = AttachConsole((uint)process.Id);
+                        if (!attachedToTargetConsole)
+                        {
+                            int targetAttachError = Marshal.GetLastWin32Error();
+                            if (restoreConsoleProcessId != 0 && !AttachConsole(restoreConsoleProcessId))
+                            {
+                                throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not restore the original console after a failed server-console attach.");
+                            }
+
+                            restoreConsoleProcessId = 0;
+                            throw new Win32Exception(targetAttachError, "Could not attach to the server process console.");
+                        }
+                    }
+                    else
+                    {
+                        throw new Win32Exception(attachError, "Could not attach to the server process console.");
+                    }
                 }
 
                 try
@@ -184,35 +399,205 @@ namespace WindowsGSM.Functions
                     {
                         FreeConsole();
                     }
+
+                    if (restoreConsoleProcessId != 0 && !AttachConsole(restoreConsoleProcessId))
+                    {
+                        throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not restore the original console after sending server input.");
+                    }
                 }
             }
         }
 
-        private static bool IsProcessAttachedToCurrentConsole(int processId)
+        public static Process StartInNewConsole(ProcessStartInfo startInfo)
+        {
+            if (startInfo == null)
+            {
+                throw new ArgumentNullException(nameof(startInfo));
+            }
+
+            if (string.IsNullOrWhiteSpace(startInfo.FileName))
+            {
+                throw new ArgumentException("An executable path is required.", nameof(startInfo));
+            }
+
+            if (startInfo.UseShellExecute || startInfo.CreateNoWindow || startInfo.RedirectStandardInput ||
+                startInfo.RedirectStandardOutput || startInfo.RedirectStandardError)
+            {
+                throw new ArgumentException("A new console requires shell execution and standard-stream redirection to be disabled.", nameof(startInfo));
+            }
+
+            var commandLine = new StringBuilder("\"" + startInfo.FileName + "\"");
+            if (!string.IsNullOrWhiteSpace(startInfo.Arguments))
+            {
+                commandLine.Append(' ').Append(startInfo.Arguments);
+            }
+
+            var startupInfo = new StartupInfo
+            {
+                Size = (uint)Marshal.SizeOf<StartupInfo>(),
+                Flags = StartfUseShowWindow,
+                ShowWindow = (ushort)startInfo.WindowStyle
+            };
+            string workingDirectory = string.IsNullOrWhiteSpace(startInfo.WorkingDirectory)
+                ? Environment.CurrentDirectory
+                : startInfo.WorkingDirectory;
+
+            if (!CreateProcess(
+                startInfo.FileName,
+                commandLine,
+                IntPtr.Zero,
+                IntPtr.Zero,
+                inheritHandles: false,
+                CreateNewConsole,
+                IntPtr.Zero,
+                workingDirectory,
+                ref startupInfo,
+                out ProcessInformation processInformation))
+            {
+                throw new Win32Exception(Marshal.GetLastWin32Error(), $"Could not start '{startInfo.FileName}' in a new console.");
+            }
+
+            try
+            {
+                Process process = Process.GetProcessById((int)processInformation.ProcessId);
+                ProcessMetadataByProcess.Add(process, new ProcessRuntimeMetadata(startInfo, isConsoleProcess: true));
+                process.EnableRaisingEvents = true;
+                return process;
+            }
+            catch (ArgumentException exception)
+            {
+                if (WaitForSingleObject(processInformation.Process, 0) != WaitObject0)
+                {
+                    TerminateProcess(processInformation.Process, 1);
+                    WaitForSingleObject(processInformation.Process, 10_000);
+                }
+
+                throw new InvalidOperationException("The new-console process could not be attached to a Process handle.", exception);
+            }
+            finally
+            {
+                CloseHandle(processInformation.Thread);
+                CloseHandle(processInformation.Process);
+            }
+        }
+
+        private static uint[] GetCurrentConsoleProcessIds()
         {
             uint[] processIds = new uint[16];
             uint processCount = GetConsoleProcessList(processIds, (uint)processIds.Length);
             if (processCount == 0)
             {
-                return false;
+                return Array.Empty<uint>();
             }
 
             if (processCount > processIds.Length)
             {
-                processIds = new uint[processCount];
+                processIds = new uint[(int)processCount];
                 processCount = GetConsoleProcessList(processIds, (uint)processIds.Length);
             }
 
-            int count = (int)Math.Min(processCount, (uint)processIds.Length);
-            for (int i = 0; i < count; i++)
+            Array.Resize(ref processIds, (int)Math.Min(processCount, (uint)processIds.Length));
+            return processIds;
+        }
+
+        private static IntPtr GetConsoleWindowForProcess(Process process)
+        {
+            lock (ConsoleInputLock)
             {
-                if (processIds[i] == (uint)processId)
+                uint targetProcessId;
+                try
                 {
-                    return true;
+                    targetProcessId = (uint)process.Id;
+                }
+                catch (InvalidOperationException)
+                {
+                    return IntPtr.Zero;
+                }
+                bool attachedToTargetConsole = AttachConsole(targetProcessId);
+                uint restoreConsoleProcessId = 0;
+                if (!attachedToTargetConsole)
+                {
+                    int attachError = Marshal.GetLastWin32Error();
+                    uint[] currentConsoleProcessIds = GetCurrentConsoleProcessIds();
+                    bool targetAlreadySharesConsole = Array.IndexOf(currentConsoleProcessIds, targetProcessId) >= 0;
+                    if (targetAlreadySharesConsole)
+                    {
+                        attachedToTargetConsole = false;
+                    }
+                    else if (attachError == ErrorAccessDenied && currentConsoleProcessIds.Length > 0)
+                    {
+                        int currentProcessId = Process.GetCurrentProcess().Id;
+                        restoreConsoleProcessId = currentConsoleProcessIds.FirstOrDefault(processId =>
+                            processId != (uint)currentProcessId && processId != targetProcessId);
+                        if (restoreConsoleProcessId == 0)
+                        {
+                            return IntPtr.Zero;
+                        }
+
+                        if (!FreeConsole())
+                        {
+                            throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not detach from the current console to inspect the server console window.");
+                        }
+
+                        attachedToTargetConsole = AttachConsole(targetProcessId);
+                        if (!attachedToTargetConsole)
+                        {
+                            int targetAttachError = Marshal.GetLastWin32Error();
+                            if (!AttachConsole(restoreConsoleProcessId))
+                            {
+                                throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not restore the original console after inspecting the server console window.");
+                            }
+
+                            restoreConsoleProcessId = 0;
+                            if (targetAttachError == ErrorAccessDenied ||
+                                targetAttachError == ErrorInvalidHandle ||
+                                targetAttachError == ErrorInvalidParameter)
+                            {
+                                return IntPtr.Zero;
+                            }
+
+                            throw new Win32Exception(targetAttachError, "Could not attach to the server console to retrieve its window handle.");
+                        }
+                    }
+                    else if (attachError == ErrorAccessDenied ||
+                        attachError == ErrorInvalidHandle ||
+                        attachError == ErrorInvalidParameter)
+                    {
+                        return IntPtr.Zero;
+                    }
+                    else
+                    {
+                        throw new Win32Exception(attachError, "Could not attach to the server console to retrieve its window handle.");
+                    }
+                }
+
+                try
+                {
+                    IntPtr consoleWindow = GetConsoleWindow();
+                    ProcessRuntimeMetadata metadata = ProcessMetadataByProcess.GetValue(
+                        process,
+                        _ => new ProcessRuntimeMetadata(null, isConsoleProcess: true));
+                    metadata.IsConsoleProcess = true;
+                    if (consoleWindow != IntPtr.Zero)
+                    {
+                        metadata.ConsoleWindowHandle = consoleWindow;
+                    }
+
+                    return consoleWindow;
+                }
+                finally
+                {
+                    if (attachedToTargetConsole && !FreeConsole())
+                    {
+                        throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not detach from the server console after retrieving its window handle.");
+                    }
+
+                    if (restoreConsoleProcessId != 0 && !AttachConsole(restoreConsoleProcessId))
+                    {
+                        throw new Win32Exception(Marshal.GetLastWin32Error(), "Could not restore the original console after retrieving the server console window handle.");
+                    }
                 }
             }
-
-            return false;
         }
 
         private static ConsoleInputRecord[] CreateConsoleInputRecords(string keystrokes)
@@ -264,6 +649,16 @@ namespace WindowsGSM.Functions
             return GetStartInfoOrDefault(process).RedirectStandardOutput;
         }
 
+        public static bool IsStandardErrorRedirected(Process process)
+        {
+            return GetStartInfoOrDefault(process).RedirectStandardError;
+        }
+
+        public static string GetWorkingDirectory(Process process)
+        {
+            return GetStartInfoOrDefault(process).WorkingDirectory;
+        }
+
         public static bool IsCreatedWithoutWindow(Process process)
         {
             return GetStartInfoOrDefault(process).CreateNoWindow;
@@ -276,7 +671,7 @@ namespace WindowsGSM.Functions
                 return false;
             }
 
-            IntPtr processWindow = process.MainWindowHandle;
+            IntPtr processWindow = GetMainWindowHandle(process);
             return processWindow == IntPtr.Zero || processWindow == window;
         }
 
@@ -293,6 +688,11 @@ namespace WindowsGSM.Functions
             }
             catch (InvalidOperationException)
             {
+                if (ProcessMetadataByProcess.TryGetValue(process, out ProcessRuntimeMetadata metadata) && metadata.StartInfo != null)
+                {
+                    return metadata.StartInfo;
+                }
+
                 // .NET Framework exposed a default StartInfo for processes attached by PID.
                 return new ProcessStartInfo();
             }
@@ -330,6 +730,22 @@ namespace WindowsGSM.Functions
                     catch
                     {
                         //ignore
+                    }
+                }
+                else if (IsConsoleProcess(process))
+                {
+                    try
+                    {
+                        SendConsoleKeystrokes(process, text + "\r");
+                        Add(text);
+                    }
+                    catch (Win32Exception exception)
+                    {
+                        Add($"[ERROR] Could not send command to the server console: {exception.Message}");
+                    }
+                    catch (IOException exception)
+                    {
+                        Add($"[ERROR] Could not send command to the server console: {exception.Message}");
                     }
                 }
                 else if (HasUsableWindow(process, mainWindow))

@@ -398,7 +398,7 @@ namespace WindowsGSM
                         IntPtr cachedWindow = ServerCache.GetWindowsIntPtr(server.ID);
                         if (!Functions.ServerConsole.HasUsableWindow(p, cachedWindow))
                         {
-                            cachedWindow = p.MainWindowHandle;
+                            cachedWindow = Functions.ServerConsole.GetMainWindowHandle(p);
                         }
                         metadata.MainWindow = Functions.ServerConsole.HasUsableWindow(p, cachedWindow) ? cachedWindow : IntPtr.Zero;
                         metadata.ServerStatus = ServerStatus.Started;
@@ -1348,7 +1348,13 @@ namespace WindowsGSM
                     ServerMetadata metadata = GetServerMetadata(row.ID);
                     Process p = metadata.Process;
                     bool processRunning = p != null && !p.HasExited;
-                    bool hasConsoleWindow = processRunning && Functions.ServerConsole.HasUsableWindow(p, metadata.MainWindow);
+                    IntPtr consoleWindow = metadata.MainWindow;
+                    if (processRunning && consoleWindow == IntPtr.Zero)
+                    {
+                        consoleWindow = Functions.ServerConsole.GetMainWindowHandle(p);
+                        metadata.MainWindow = consoleWindow;
+                    }
+                    bool hasConsoleWindow = processRunning && Functions.ServerConsole.HasUsableWindow(p, consoleWindow);
                     bool standardInputRedirected = processRunning && Functions.ServerConsole.IsStandardInputRedirected(p);
                     button_Console.IsEnabled = processRunning && hasConsoleWindow
                         && !Functions.ServerConsole.IsCreatedWithoutWindow(p)
@@ -1356,7 +1362,10 @@ namespace WindowsGSM
                     button_Update.IsEnabled = false;
                     button_Backup.IsEnabled = false;
 
-                    bool canSendConsoleCommand = processRunning && (standardInputRedirected || hasConsoleWindow);
+                    bool canSendConsoleCommand = processRunning && (
+                        standardInputRedirected ||
+                        hasConsoleWindow ||
+                        Functions.ServerConsole.IsConsoleProcess(p));
                     textbox_servercommand.IsEnabled = canSendConsoleCommand;
                     button_servercommand.IsEnabled = canSendConsoleCommand;
                 }
@@ -2296,6 +2305,10 @@ namespace WindowsGSM
 
             ServerMetadata metadata = GetServerMetadata(server.ID);
             Process p = metadata.Process;
+            if (p != null && !p.HasExited && metadata.MainWindow == IntPtr.Zero)
+            {
+                metadata.MainWindow = Functions.ServerConsole.GetMainWindowHandle(p);
+            }
             if (p == null || p.HasExited || Functions.ServerConsole.IsCreatedWithoutWindow(p)
                 || Functions.ServerConsole.IsStandardOutputRedirected(p)
                 || !Functions.ServerConsole.HasUsableWindow(p, metadata.MainWindow)) { return; }
@@ -3545,47 +3558,42 @@ namespace WindowsGSM
             }
 
             _serverMetadata[int.Parse(server.ID)].Process = p;
+            metadata.MainWindow = IntPtr.Zero;
             metadata.ProcessStartInfoAvailable = HasProcessStartInfo(p);
-            if (!metadata.ProcessStartInfoAvailable)
-            {
-                Log(server.ID, "[NOTICE] The server process was attached by PID. Console controls are unavailable until the server is restarted from WindowsGSM.");
-            }
             Process startedProcess = p;
             p.Exited += (sender, e) => OnGameServerExited(server, startedProcess);
 
-            if (metadata.ProcessStartInfoAvailable)
+            if (!Functions.ServerConsole.IsCreatedWithoutWindow(p))
             {
-                await Task.Run(() =>
+                for (int attempt = 0; attempt < 50 && !p.HasExited; attempt++)
                 {
+                    IntPtr consoleWindow;
                     try
                     {
-                        if (!p.StartInfo.CreateNoWindow)
-                        {
-                            while (!p.HasExited && !ShowWindow(p.MainWindowHandle, WindowShowStyle.Minimize))
-                            {
-                                //Debug.WriteLine("Try Setting ShowMinNoActivate Console Window");
-                            }
-
-                            Debug.WriteLine("Set ShowMinNoActivate Console Window");
-
-                            //Save MainWindow
-                            _serverMetadata[int.Parse(server.ID)].MainWindow = p.MainWindowHandle;
-                        }
-
-                        //Fix for Factorio - The WaitForInputIdle never returns my guess is because Factorio is built
-                        //  without a message loop seems to work fine with this commented out
-                        //p.WaitForInputIdle();
-
-                        if (!p.StartInfo.CreateNoWindow)
-                        {
-                            ShowWindow(p.MainWindowHandle, WindowShowStyle.Hide);
-                        }
+                        consoleWindow = Functions.ServerConsole.GetMainWindowHandle(p);
                     }
-                    catch
+                    catch (System.ComponentModel.Win32Exception exception)
                     {
-                        Debug.WriteLine("No Window require to hide");
+                        Log(server.ID, $"[NOTICE] Could not discover the server console window: {exception.Message}");
+                        break;
                     }
-                });
+
+                    if (consoleWindow != IntPtr.Zero && Functions.ServerConsole.HasUsableWindow(p, consoleWindow))
+                    {
+                        ShowWindow(consoleWindow, WindowShowStyle.Minimize);
+                        metadata.MainWindow = consoleWindow;
+                        ShowWindow(consoleWindow, WindowShowStyle.Hide);
+                        break;
+                    }
+
+                    await Task.Delay(100);
+                }
+            }
+
+            if (metadata.MainWindow == IntPtr.Zero &&
+                (Functions.ServerConsole.IsConsoleProcess(p) || !metadata.ProcessStartInfoAvailable))
+            {
+                Log(server.ID, "[NOTICE] The server process has no discoverable console window in this session; console visibility controls are unavailable.");
             }
 
             //An error may occur on ShowWindow if not adding this
@@ -3625,9 +3633,12 @@ namespace WindowsGSM
             ServerCache.SaveProcessName(server.ID, p.ProcessName);
             ServerCache.SaveWindowsIntPtr(server.ID, GetServerMetadata(server.ID).MainWindow);
 
-            SetWindowText(p.MainWindowHandle, server.Name);
-
-            ShowWindow(p.MainWindowHandle, WindowShowStyle.Hide);
+            IntPtr serverWindow = GetServerMetadata(server.ID).MainWindow;
+            if (serverWindow != IntPtr.Zero)
+            {
+                SetWindowText(serverWindow, server.Name);
+                ShowWindow(serverWindow, WindowShowStyle.Hide);
+            }
 
             StartAutoUpdateCheck(server);
 
@@ -3648,15 +3659,7 @@ namespace WindowsGSM
 
         private static bool HasProcessStartInfo(Process process)
         {
-            try
-            {
-                _ = process.StartInfo;
-                return true;
-            }
-            catch (InvalidOperationException)
-            {
-                return false;
-            }
+            return Functions.ServerConsole.HasProcessStartInfo(process);
         }
 
         private async Task<bool> Server_BeginStop(ServerTable server, Process p)
@@ -5355,6 +5358,7 @@ namespace WindowsGSM
             Process p = metadata.Process;
             if (p == null || p.HasExited) { return; }
             if (!Functions.ServerConsole.IsStandardInputRedirected(p)
+                && !Functions.ServerConsole.IsConsoleProcess(p)
                 && !Functions.ServerConsole.HasUsableWindow(p, metadata.MainWindow)) { return; }
 
             metadata.ServerConsole.Input(p, command, metadata.MainWindow);
