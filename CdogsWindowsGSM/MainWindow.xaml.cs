@@ -5085,6 +5085,8 @@ namespace WindowsGSM
                 return;
             }
 
+            LogConfiguredA2SQueryPortConflicts(server, gameServer);
+
             // Save the process of game server
             Process p = metadata.Process;
             if (p == null)
@@ -5106,7 +5108,6 @@ namespace WindowsGSM
             RefreshServerHealth(server);
 
             dynamic query = queryMethod;
-            int queryPort = resolvedQueryPort.Value;
 
             // Query server every 5 seconds
             while (IsCurrentServerProcess(server.ID, p))
@@ -5117,6 +5118,15 @@ namespace WindowsGSM
                     break;
                 }
 
+                int? queryPort = GetHealthQueryPort(server, gameServer, metadata);
+                if (!queryPort.HasValue)
+                {
+                    metadata.QuerySupported = false;
+                    metadata.QueryInProgress = false;
+                    RefreshServerHealth(server);
+                    return;
+                }
+
                 DateTime attemptAt = DateTime.Now;
                 metadata.QueryInProgress = true;
                 RefreshServerHealth(server);
@@ -5125,7 +5135,7 @@ namespace WindowsGSM
                 string queryError = null;
                 try
                 {
-                    query.SetAddressPort(server.IP, queryPort);
+                    query.SetAddressPort(server.IP, queryPort.Value);
                     players = await query.GetPlayersAndMaxPlayers();
                 }
                 catch (Exception e) when (IsExpectedServerQueryException(e))
