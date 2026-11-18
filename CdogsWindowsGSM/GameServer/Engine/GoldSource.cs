@@ -127,6 +127,16 @@ namespace WindowsGSM.GameServer.Engine
                     }
                 }
 
+                List<string> mapRotation = GetMapRotation();
+                string startMap = mapRotation.Count > 0 ? mapRotation[0] : serverData.ServerMap;
+                string mapDirectory = Path.Combine(binaryRoot, Game, "maps");
+                if (!string.IsNullOrWhiteSpace(startMap) && !File.Exists(Path.Combine(mapDirectory, startMap + ".bsp")))
+                {
+                    Error = $"Configured map '{startMap}' is missing from '{mapDirectory}'. Verify the {Game} game-content files (Steam AppID {AppId}) are installed.";
+                    sharedLease?.Dispose();
+                    return null;
+                }
+
                 StringBuilder sb = new StringBuilder();
                 sb.Append($"-console -game {Game}");
                 sb.Append(string.IsNullOrWhiteSpace(serverData.ServerIP) ? string.Empty : $" +ip {serverData.ServerIP}");
