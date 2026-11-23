@@ -1,383 +1,182 @@
 ﻿using System;
-using System.Threading.Tasks;
-using System.Diagnostics;
 using System.IO;
-using System.Windows;
+using System.Linq;
 using System.Net;
+using System.Security.Cryptography;
+using System.Threading.Tasks;
+using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using System.Text.RegularExpressions;
 using WindowsGSM.Functions;
-using WindowsGSM.Localization;
 
 namespace WindowsGSM.GameServer
 {
-    class MC
+    class MC : Engine.MinecraftJava
     {
-        private readonly Functions.ServerConfig _serverData;
-
-        public string Error;
-        public string Notice;
-
+        private const string VersionManifestUrl = "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json";
         public const string FullName = "Minecraft: Java Edition Server";
-        public string StartPath = string.Empty;
-        public bool AllowsEmbedConsole = true;
-        public int PortIncrements = 1;
-        public dynamic QueryMethod = new Query.UT3();
+        protected override string GameName => FullName;
+        protected override string BuildVersion(string build) => build;
+        protected override string LaunchArguments => "-jar server.jar";
+        protected override bool HasServer(string directory) => File.Exists(Path.Combine(directory, "server.jar"));
 
-        public string Port = "25565";
-        public string QueryPort = "25565";
-        public string Defaultmap = "world";
-        public string Maxplayers = "20";
-        public string Additional = "-Xmx1024M -Xms1024M";
-
-        public MC(Functions.ServerConfig serverData)
+        public MC(ServerConfig serverData) : base(serverData)
         {
-            _serverData = serverData;
+            Additional = "-Xmx1024M -Xms1024M";
         }
 
-        public async void CreateServerCFG()
+        public override async void CreateServerCFG()
         {
             //Create server.properties
-            string configPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "server.properties");
+            string configPath = ServerPath.GetServersServerFiles(ServerData.ServerID, "server.properties");
             if (await Functions.Github.DownloadGameServerConfig(configPath, FullName))
             {
                 string configText = File.ReadAllText(configPath);
-                configText = configText.Replace("{{serverPort}}", _serverData.ServerPort);
+                configText = configText.Replace("{{serverPort}}", ServerData.ServerPort);
                 configText = configText.Replace("{{maxplayers}}", Maxplayers);
-                configText = configText.Replace("{{rconPort}}", (int.Parse(_serverData.ServerPort) + 10).ToString());
-                configText = configText.Replace("{{serverIP}}", _serverData.ServerIP);
+                configText = configText.Replace("{{rconPort}}", (int.Parse(ServerData.ServerPort) + 10).ToString());
+                configText = configText.Replace("{{serverIP}}", ServerData.ServerIP);
                 configText = configText.Replace("{{defaultmap}}", Defaultmap);
-                configText = configText.Replace("{{rcon_password}}", _serverData.GetRCONPassword());
-                configText = configText.Replace("{{serverName}}", _serverData.ServerName);
+                configText = configText.Replace("{{rcon_password}}", ServerData.GetRCONPassword());
+                configText = configText.Replace("{{serverName}}", ServerData.ServerName);
                 File.WriteAllText(configPath, configText);
             }
         }
 
-        public async Task<Process> Start()
+        protected override async Task InstallBuild(string build)
         {
-            string javaPath = JavaHelper.FindJavaExecutableAbsolutePath();
-            if (javaPath.Length == 0)
+            Directory.CreateDirectory(ServerDirectory);
+            using (WebClient webClient = CreateClient())
             {
-                Error = "Java is not installed";
-                return null;
-            }
-
-            string workingDir = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID);
-
-            string serverJarPath = Path.Combine(workingDir, "server.jar");
-            if (!File.Exists(serverJarPath))
-            {
-                Error = $"server.jar not found ({serverJarPath})";
-                return null;
-            }
-
-            string configPath = Path.Combine(workingDir, "server.properties");
-            if (!File.Exists(configPath))
-            {
-                Notice = $"server.properties not found ({configPath}). Generated a new one.";
-            }
-
-            WindowsFirewall firewall = new WindowsFirewall("java.exe", javaPath);
-            if (!await firewall.IsRuleExist())
-            {
-                await firewall.AddRule();
-            }
-
-            Process p;
-            if (!AllowsEmbedConsole)
-            {
-                p = new Process
+                JObject manifest = JObject.Parse(await webClient.DownloadStringTaskAsync(VersionManifestUrl));
+                JToken version = manifest["versions"]?.FirstOrDefault(
+                    candidate => string.Equals((string)candidate["id"], build, StringComparison.Ordinal));
+                if (version == null)
                 {
-                    StartInfo =
-                    {
-                        WorkingDirectory = workingDir,
-                        FileName = javaPath,
-                        Arguments = $"{_serverData.ServerParam} -jar server.jar nogui",
-                        WindowStyle = ProcessWindowStyle.Minimized,
-                        UseShellExecute = false
-                    },
-                    EnableRaisingEvents = true
-                };
-                p.Start();
-            }
-            else
-            {
-                p = new Process
-                {
-                    StartInfo =
-                    {
-                        WorkingDirectory = workingDir,
-                        FileName = javaPath,
-                        Arguments = $"{_serverData.ServerParam} -jar server.jar nogui",
-                        WindowStyle = ProcessWindowStyle.Minimized,
-                        CreateNoWindow = true,
-                        UseShellExecute = false,
-                        RedirectStandardInput = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true
-                    },
-                    EnableRaisingEvents = true
-                };
-                var serverConsole = new Functions.ServerConsole(_serverData.ServerID);
-                p.OutputDataReceived += serverConsole.AddOutput;
-                p.ErrorDataReceived += serverConsole.AddOutput;
-                p.Start();
-                p.BeginOutputReadLine();
-                p.BeginErrorReadLine();
-            }
-
-            return p;
-        }
-
-        public async Task Stop(Process p)
-        {
-            await Task.Run(() =>
-            {
-                if (Functions.ServerConsole.IsStandardInputRedirected(p))
-                {
-                    p.StandardInput.WriteLine("stop");
-                }
-                else
-                {
-                    Functions.ServerConsole.SendMessageToMainWindow(p.MainWindowHandle, "stop");
-                }
-            });
-        }
-
-        public async Task<Process> Install()
-        {
-            //EULA
-            MessageBoxResult result = MessageBox.Show(LocalizationManager.Get("MinecraftJavaLegacyEulaPrompt"), LocalizationManager.Get("MinecraftEulaTitle"), MessageBoxButton.YesNo, MessageBoxImage.Question);
-            if (result != MessageBoxResult.Yes)
-            {
-                Error = LocalizationManager.Get("MinecraftEulaDeclined");
-                return null;
-            }
-
-            //Install JAVA if not installed
-            if (!JavaHelper.IsJREInstalled())
-            {
-                //Java
-                result = MessageBox.Show(LocalizationManager.Get("JavaInstallPrompt"), LocalizationManager.Get("ConfirmationTitle"), MessageBoxButton.YesNo, MessageBoxImage.Question);
-                if (result != MessageBoxResult.Yes)
-                {
-                    Error = LocalizationManager.Get("JavaNotInstalled");
-                    return null;
+                    throw new InvalidDataException($"Minecraft release {build} was not found in Mojang's version manifest.");
                 }
 
-                JavaHelper.JREDownloadTaskResult taskResult = await JavaHelper.DownloadJREToServer(_serverData.ServerID);
-                if (!taskResult.installed)
+                string metadataUrl = (string)version["url"];
+                if (string.IsNullOrWhiteSpace(metadataUrl))
                 {
-                    Error = taskResult.error;
-                    return null;
+                    throw new InvalidDataException($"Mojang's version manifest did not provide metadata for Minecraft {build}.");
                 }
-            }
 
-            try
-            {
-                using (WebClient webClient = new WebClient())
+                JObject metadata = JObject.Parse(await webClient.DownloadStringTaskAsync(metadataUrl));
+                JObject serverDownload = metadata["downloads"]?["server"] as JObject;
+                if (serverDownload == null)
                 {
-                    const string manifestUrl = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
-                    string versionJson = await webClient.DownloadStringTaskAsync(manifestUrl);
-                    string latesetVersion = JObject.Parse(versionJson)["latest"]["release"].ToString();
-                    var versionObject = JObject.Parse(versionJson)["versions"];
-                    string packageUrl = null;
-
-                    foreach (var obj in versionObject)
-                    {
-                        if (obj["id"].ToString() == latesetVersion)
-                        {
-                            packageUrl = obj["url"].ToString();
-                            break;
-                        }
-                    }
-
-                    if (packageUrl == null)
-                    {
-                        Error = $"Fail to fetch packageUrl from {manifestUrl}";
-                        return null;
-                    }
-
-                    //packageUrl example: https://launchermeta.mojang.com/v1/packages/6876d19c096de56d1aa2cf434ec6b0e66e0aba00/1.15.json
-                    var packageJson = await webClient.DownloadStringTaskAsync(packageUrl);
-
-                    //serverJarUrl example: https://launcher.mojang.com/v1/objects/e9f105b3c5c7e85c7b445249a93362a22f62442d/server.jar
-                    string serverJarUrl = JObject.Parse(packageJson)["downloads"]["server"]["url"].ToString();
-                    await webClient.DownloadFileTaskAsync(serverJarUrl, Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "server.jar"));
-
-                    //Create eula.txt
-                    string eulaPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "eula.txt");
-                    File.Create(eulaPath).Dispose();
-
-                    using (TextWriter textwriter = new StreamWriter(eulaPath))
-                    {
-                        textwriter.WriteLine("#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).");
-                        textwriter.WriteLine("#Generated by WindowsGSM.exe");
-                        textwriter.WriteLine("eula=true");
-                    }
+                    throw new InvalidDataException($"Mojang did not provide a server JAR for Minecraft {build}.");
                 }
-            }
-            catch
-            {
-                Error = $"Fail to install {FullName}";
-                return null;
-            }
 
-            return null;
-        }
-
-        public async Task<Process> Update()
-        {
-            //Install JAVA if not installed
-            if (!JavaHelper.IsJREInstalled())
-            {
-                JavaHelper.JREDownloadTaskResult taskResult = await JavaHelper.DownloadJREToServer(_serverData.ServerID);
-                if (!taskResult.installed)
+                string downloadUrl = (string)serverDownload["url"];
+                string expectedSha1 = (string)serverDownload["sha1"];
+                if (string.IsNullOrWhiteSpace(downloadUrl)
+                    || !Regex.IsMatch(expectedSha1 ?? string.Empty, @"^[0-9a-f]{40}$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant))
                 {
-                    Error = taskResult.error;
-                    return null;
+                    throw new InvalidDataException($"Mojang's metadata for Minecraft {build} is missing the server JAR URL or SHA-1 checksum.");
                 }
-            }
 
-            string serverJarPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "server.jar");
-            if (File.Exists(serverJarPath))
-            {
+                string serverJarPath = Path.Combine(ServerDirectory, "server.jar");
+                string stagedPath = serverJarPath + ".download";
                 try
                 {
-                    File.Delete(serverJarPath);
-                }
-                catch
-                {
-                    Error = "Fail to delete server.jar";
-                    return null;
-                }
-            }
-
-            try
-            {
-                using (WebClient webClient = new WebClient())
-                {
-                    const string manifestUrl = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
-                    string versionJson = webClient.DownloadString(manifestUrl);
-                    string latesetVersion = JObject.Parse(versionJson)["latest"]["release"].ToString();
-                    var versionObject = JObject.Parse(versionJson)["versions"];
-                    string packageUrl = null;
-
-                    foreach (var obj in versionObject)
+                    await webClient.DownloadFileTaskAsync(downloadUrl, stagedPath);
+                    using (SHA1 sha1 = SHA1.Create())
+                    using (FileStream stream = File.OpenRead(stagedPath))
                     {
-                        if (obj["id"].ToString() == latesetVersion)
+                        string actualSha1 = BitConverter.ToString(sha1.ComputeHash(stream)).Replace("-", string.Empty);
+                        if (!actualSha1.Equals(expectedSha1, StringComparison.OrdinalIgnoreCase))
                         {
-                            packageUrl = obj["url"].ToString();
-                            break;
+                            throw new InvalidDataException($"Minecraft {build} server JAR failed its SHA-1 checksum.");
                         }
                     }
 
-                    if (packageUrl == null)
-                    {
-                        Error = $"Fail to fetch packageUrl from {manifestUrl}";
-                        return null;
-                    }
-
-                    //packageUrl example: https://launchermeta.mojang.com/v1/packages/6876d19c096de56d1aa2cf434ec6b0e66e0aba00/1.15.json
-                    var packageJson = webClient.DownloadString(packageUrl);
-
-                    //serverJarUrl example: https://launcher.mojang.com/v1/objects/e9f105b3c5c7e85c7b445249a93362a22f62442d/server.jar
-                    string serverJarUrl = JObject.Parse(packageJson)["downloads"]["server"]["url"].ToString();
-                    await webClient.DownloadFileTaskAsync(serverJarUrl, Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "server.jar"));
-
-                    //Create eula.txt
-                    string eulaPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "eula.txt");
-                    File.Create(eulaPath).Dispose();
-
-                    using (TextWriter textwriter = new StreamWriter(eulaPath))
-                    {
-                        textwriter.WriteLine("#By changing the setting below to TRUE you are indicating your agreement to our EULA (https://account.mojang.com/documents/minecraft_eula).");
-                        textwriter.WriteLine("#Generated by WindowsGSM.exe");
-                        textwriter.WriteLine("eula=true");
-                    }
+                    File.Move(stagedPath, serverJarPath, overwrite: true);
+                }
+                finally
+                {
+                    if (File.Exists(stagedPath)) File.Delete(stagedPath);
                 }
             }
-            catch
+        }
+
+        public override string GetLocalBuild()
+        {
+            string installedBuild = ReadInstalledBuild();
+            if (!string.IsNullOrWhiteSpace(installedBuild))
             {
-                Error = $"Fail to install {FullName}";
-                return null;
+                return installedBuild;
             }
 
-            return null;
-        }
-
-        public bool IsInstallValid()
-        {
-            string jarFile = "server.jar";
-            string jarPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, jarFile);
-
-            return File.Exists(jarPath);
-        }
-
-        public bool IsImportValid(string path)
-        {
-            string jarFile = "server.jar";
-            string jarPath = Path.Combine(path, jarFile);
-
-            Error = $"Invalid Path! Fail to find {jarFile}";
-            return File.Exists(jarPath);
-        }
-
-        public string GetLocalBuild()
-        {
-            string logFile = "latest.log";
-            string logPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "logs", logFile);
+            string logPath = ServerPath.GetServersServerFiles(ServerData.ServerID, "logs", "latest.log");
 
             if (!File.Exists(logPath))
             {
-                Error = $"{logFile} is missing.";
+                Error = "Minecraft latest.log is missing and no installed build metadata is available.";
                 return string.Empty;
             }
 
-            FileStream fileStream = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
-            StreamReader streamReader = new StreamReader(fileStream);
-
-            while (!streamReader.EndOfStream)
-            {
-                string line = streamReader.ReadLine();
-                if (line.Contains("] [Server thread/INFO]: Starting minecraft server version"))
-                {
-                    Regex regex = new Regex("\\d+\\.\\d+\\.\\d+");
-                    return regex.Match(line).Value;
-                }
-            }
-
-            streamReader.Close();
-            fileStream.Close();
-
-            Error = $"Fail to get local build";
-            return string.Empty;
-        }
-
-        public async Task<string> GetRemoteBuild()
-        {
             try
             {
-                using (WebClient webClient = new WebClient())
+                using (FileStream fileStream = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                using (StreamReader streamReader = new StreamReader(fileStream))
                 {
-                    string remoteUrl = "https://launchermeta.mojang.com/mc/game/version_manifest.json";
-                    string html = await webClient.DownloadStringTaskAsync(remoteUrl);
-
-                    Regex regex = new Regex("\"latest\":.{\"release\":.\"(.*?)\"");
-                    var matches = regex.Matches(html);
-
-                    if (matches.Count == 1 && matches[0].Groups.Count == 2)
+                    while (!streamReader.EndOfStream)
                     {
-                        return matches[0].Groups[1].Value;
+                        string line = streamReader.ReadLine();
+                        Match versionMatch = Regex.Match(line, @"Starting minecraft server version (\d+(?:\.\d+)+)");
+                        if (versionMatch.Success)
+                        {
+                            return versionMatch.Groups[1].Value;
+                        }
                     }
                 }
             }
-            catch
+            catch (IOException exception)
             {
-                //ignore
+                Error = $"Failed to read Minecraft latest.log: {exception.Message}";
+                return string.Empty;
+            }
+            catch (UnauthorizedAccessException exception)
+            {
+                Error = $"Failed to read Minecraft latest.log: {exception.Message}";
+                return string.Empty;
             }
 
-            Error = $"Fail to get remote build";
+            Error = "Could not determine the installed Minecraft release from build metadata or latest.log.";
+            return string.Empty;
+        }
+
+        public override async Task<string> GetRemoteBuild()
+        {
+            try
+            {
+                using (WebClient webClient = CreateClient())
+                {
+                    JObject manifest = JObject.Parse(await webClient.DownloadStringTaskAsync(VersionManifestUrl));
+                    string release = (string)manifest["latest"]?["release"];
+                    if (!string.IsNullOrWhiteSpace(release))
+                    {
+                        return release;
+                    }
+
+                    throw new InvalidDataException("Mojang's version manifest does not contain a latest release.");
+                }
+            }
+            catch (WebException exception)
+            {
+                Error = $"Failed to download the Minecraft version manifest: {exception.Message}";
+            }
+            catch (JsonException exception)
+            {
+                Error = $"Failed to parse the Minecraft version manifest: {exception.Message}";
+            }
+            catch (InvalidDataException exception)
+            {
+                Error = exception.Message;
+            }
+
             return string.Empty;
         }
     }

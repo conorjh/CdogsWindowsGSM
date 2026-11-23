@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
@@ -57,6 +58,25 @@ namespace WindowsGSM.GameServer
 
         public async Task<Process> Start()
         {
+            Error = string.Empty;
+            string serverFilesPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID);
+            string executablePath = Path.Combine(serverFilesPath, StartPath);
+            if (!File.Exists(executablePath))
+            {
+                Error = $"{Path.GetFileName(executablePath)} not found ({executablePath})";
+                return null;
+            }
+
+            try
+            {
+                await Functions.LegacyDirectXRuntime.EnsureInstalledAsync(serverFilesPath);
+            }
+            catch (InvalidOperationException exception)
+            {
+                Error = exception.Message;
+                return null;
+            }
+
             string configPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, @"PostScriptum\ServerConfig", "Server.cfg");
             if (!File.Exists(configPath))
             {
@@ -72,45 +92,46 @@ namespace WindowsGSM.GameServer
             sb.Append(string.IsNullOrWhiteSpace(_serverData.ServerParam) ? string.Empty : $" {_serverData.ServerParam}");
             string param = sb.ToString();
 
-            Process p;
-            if (!AllowsEmbedConsole)
+            var startInfo = new ProcessStartInfo
             {
-                p = new Process
-                {
-                    StartInfo =
-                    {
-                        WorkingDirectory = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID),
-                        FileName = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, StartPath),
-                        Arguments = param,
-                        WindowStyle = ProcessWindowStyle.Minimized,
-                        UseShellExecute = false
-                    },
-                    EnableRaisingEvents = true
-                };
-                p.Start();
+                WorkingDirectory = serverFilesPath,
+                FileName = executablePath,
+                Arguments = param,
+                WindowStyle = ProcessWindowStyle.Minimized,
+                UseShellExecute = false
+            };
+            startInfo.EnvironmentVariables["PATH"] = Functions.ProcessEnvironment.PrependPathDirectories(
+                serverFilesPath,
+                Environment.GetEnvironmentVariable("PATH"),
+                @"Engine\Binaries\ThirdParty\PhysX3\Win64\VS2015",
+                @"Engine\Binaries\ThirdParty\NVIDIA\NVaftermath\Win64",
+                @"Engine\Binaries\ThirdParty\Vorbis\Win64\VS2015",
+                @"Engine\Plugins\Runtime\Nvidia\Ansel\Binaries\ThirdParty",
+                @"PostScriptum\Plugins\OffworldCore\ThirdParty\DiscordRPC\Source\ThirdParty\DiscordRpcLibrary\Win64",
+                @"PostScriptum\Plugins\ThirdParty\Sentry\Binaries\Win64");
+            if (AllowsEmbedConsole)
+            {
+                startInfo.CreateNoWindow = true;
+                startInfo.RedirectStandardInput = true;
+                startInfo.RedirectStandardOutput = true;
+                startInfo.RedirectStandardError = true;
             }
-            else
+
+            var p = new Process
             {
-                p = new Process
-                {
-                    StartInfo =
-                    {
-                        WorkingDirectory = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID),
-                        FileName = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, StartPath),
-                        Arguments = param,
-                        WindowStyle = ProcessWindowStyle.Minimized,
-                        CreateNoWindow = true,
-                        UseShellExecute = false,
-                        RedirectStandardInput = true,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true
-                    },
-                    EnableRaisingEvents = true
-                };
+                StartInfo = startInfo,
+                EnableRaisingEvents = true
+            };
+            if (AllowsEmbedConsole)
+            {
                 var serverConsole = new Functions.ServerConsole(_serverData.ServerID);
                 p.OutputDataReceived += serverConsole.AddOutput;
                 p.ErrorDataReceived += serverConsole.AddOutput;
-                p.Start();
+            }
+
+            p.Start();
+            if (AllowsEmbedConsole)
+            {
                 p.BeginOutputReadLine();
                 p.BeginErrorReadLine();
             }
@@ -120,17 +141,31 @@ namespace WindowsGSM.GameServer
 
         public async Task Stop(Process p)
         {
-            await Task.Run(() =>
+            if (p == null || p.HasExited)
             {
-                if (Functions.ServerConsole.IsCreatedWithoutWindow(p))
+                return;
+            }
+
+            if (Functions.ServerConsole.HasUsableWindow(p, p.MainWindowHandle))
+            {
+                p.CloseMainWindow();
+                await Task.Delay(TimeSpan.FromSeconds(5));
+                if (p.HasExited)
                 {
-                    p.Kill();
+                    return;
                 }
-                else
-                {
-                    p.CloseMainWindow();
-                }
-            });
+            }
+
+            try
+            {
+                p.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException) when (p.HasExited)
+            {
+                return;
+            }
+
+            await p.WaitForExitAsync();
         }
 
         public async Task<Process> Install()

@@ -2,7 +2,7 @@
 
 Use this checklist to review the accessibility implementation in the running application. It is a manual acceptance aid, not a certification or a claim of WCAG conformance.
 
-**Recommended build:** `2.0.0-preview.7` or the newer build under review.
+**Recommended build:** `2.0.0-beta1` or the newer build under review.
 **Test safely:** Use a disposable/test server and non-production data for start, stop, restart, install, import, backup, restore, and delete workflows. Do not perform destructive tests on production servers.
 
 ## Test record

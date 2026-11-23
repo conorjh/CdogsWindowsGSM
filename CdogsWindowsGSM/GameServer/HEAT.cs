@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using System.Diagnostics;
 using System.IO;
 
@@ -71,7 +72,7 @@ namespace WindowsGSM.GameServer
                     FileName = serverPath,
                     Arguments = param,
                     WindowStyle = ProcessWindowStyle.Minimized,
-                    UseShellExecute = false
+                    UseShellExecute = true
                 },
                 EnableRaisingEvents = true
             };
@@ -82,11 +83,31 @@ namespace WindowsGSM.GameServer
 
         public async Task Stop(Process p)
         {
-            await Task.Run(() =>
+            if (p == null || p.HasExited)
+            {
+                return;
+            }
+
+            if (Functions.ServerConsole.HasUsableWindow(p, p.MainWindowHandle))
             {
                 Functions.ServerConsole.SendMessageToMainWindow(p.MainWindowHandle, "/shutdown");
-                Task.Delay(5000); //Wait 5 second for auto close
-            });
+                await Task.Delay(5000);
+                if (p.HasExited)
+                {
+                    return;
+                }
+            }
+
+            try
+            {
+                p.Kill(entireProcessTree: true);
+            }
+            catch (InvalidOperationException) when (p.HasExited)
+            {
+                return;
+            }
+
+            await p.WaitForExitAsync();
         }
 
         public async Task<Process> Install()

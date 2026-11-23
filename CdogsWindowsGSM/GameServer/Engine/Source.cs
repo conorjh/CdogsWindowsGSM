@@ -32,6 +32,7 @@ namespace WindowsGSM.GameServer.Engine
 
         public string StartPath = "srcds.exe";
         public bool AllowsEmbedConsole = true;
+        public virtual bool UseConsoleArgument { get { return true; } }
         public int PortIncrements = 1;
         public dynamic QueryMethod = new Query.A2S();
 
@@ -102,6 +103,7 @@ namespace WindowsGSM.GameServer.Engine
                 }
 
                 string instanceRoot = Functions.ServerPath.GetServersServerFiles(serverData.ServerID);
+                string workingDirectory = UsesSharedInstallation ? instanceRoot : binaryRoot;
                 string configPath = Functions.ServerPath.GetServersServerFiles(serverData.ServerID, Game, "cfg/server.cfg");
                 if (!File.Exists(configPath))
                 {
@@ -115,7 +117,10 @@ namespace WindowsGSM.GameServer.Engine
                 }
 
                 StringBuilder sb = new StringBuilder();
-                sb.Append("-console");
+                if (UseConsoleArgument)
+                {
+                    sb.Append("-console");
+                }
                 if (!string.IsNullOrWhiteSpace(Game))
                 {
                     string gameArgument = UsesSharedInstallation ? $"\"{Path.Combine(binaryRoot, Game)}\"" : Game;
@@ -139,7 +144,7 @@ namespace WindowsGSM.GameServer.Engine
                 }
                 string startMap = mapRotation.Count > 0 ? mapRotation[0] : serverData.ServerMap;
                 sb.Append(string.IsNullOrWhiteSpace(startMap) ? string.Empty : $" +map {startMap}");
-                string param = sb.ToString();
+                string param = sb.ToString().TrimStart();
 
                 Process p;
                 if (!AllowsEmbedConsole)
@@ -148,7 +153,7 @@ namespace WindowsGSM.GameServer.Engine
                     {
                         StartInfo =
                         {
-                            WorkingDirectory = UsesSharedInstallation ? instanceRoot : Environment.CurrentDirectory,
+                            WorkingDirectory = workingDirectory,
                             FileName = srcdsPath,
                             Arguments = param,
                             WindowStyle = ProcessWindowStyle.Minimized,
@@ -169,7 +174,7 @@ namespace WindowsGSM.GameServer.Engine
                     {
                         StartInfo =
                         {
-                            WorkingDirectory = UsesSharedInstallation ? instanceRoot : Environment.CurrentDirectory,
+                            WorkingDirectory = workingDirectory,
                             FileName = srcdsPath,
                             Arguments = param,
                             WindowStyle = ProcessWindowStyle.Minimized,
@@ -206,8 +211,29 @@ namespace WindowsGSM.GameServer.Engine
 
         public async Task Stop(Process p)
         {
+            if (p == null)
+            {
+                throw new ArgumentNullException(nameof(p));
+            }
+
             await Task.Run(() =>
             {
+                if (!UseConsoleArgument)
+                {
+                    if (!p.HasExited)
+                    {
+                        try
+                        {
+                            p.Kill(entireProcessTree: true);
+                        }
+                        catch (InvalidOperationException) when (p.HasExited)
+                        {
+                        }
+                    }
+
+                    return;
+                }
+
                 Functions.ServerConsole.SendMessageToMainWindow(p.MainWindowHandle, "quit");
             });
         }
@@ -226,27 +252,44 @@ namespace WindowsGSM.GameServer.Engine
             }
         }
 
-        public async Task<bool> InstallConfigOnly()
+        public virtual async Task<bool> InstallConfigOnly()
         {
             Error = string.Empty;
             string configPath = Functions.ServerPath.GetServersServerFiles(serverData.ServerID, Game, "cfg/server.cfg");
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(configPath));
-                if (!await Functions.Github.DownloadGameServerConfig(configPath, serverData.ServerGame))
+                if (string.IsNullOrWhiteSpace(Game))
                 {
-                    Error = $"Could not download {serverData.ServerGame} server.cfg.";
-                    return false;
+                    if (!File.Exists(configPath))
+                    {
+                        string defaultConfig = $"hostname \"{EscapeServerConfigValue(serverData.ServerName)}\"{Environment.NewLine}" +
+                            $"rcon_password \"{EscapeServerConfigValue(serverData.GetRCONPassword())}\"{Environment.NewLine}" +
+                            "sv_lan 0" + Environment.NewLine;
+                        File.WriteAllText(configPath, defaultConfig);
+                    }
                 }
-                if (!File.Exists(MapCyclePath))
+                else
                 {
-                    File.WriteAllText(MapCyclePath, string.Empty);
+                    Functions.GameServerConfigDownloadResult downloadResult = await Functions.Github.DownloadGameServerConfigAsync(
+                        configPath,
+                        serverData.ServerGame).ConfigureAwait(false);
+                    if (!downloadResult.Succeeded)
+                    {
+                        Error = $"Could not download {serverData.ServerGame} server.cfg: {downloadResult.ErrorMessage}";
+                        return false;
+                    }
+
+                    if (!downloadResult.ExistingFilePreserved)
+                    {
+                        string configText = File.ReadAllText(configPath);
+                        configText = configText.Replace("{{hostname}}", serverData.ServerName);
+                        configText = configText.Replace("{{rcon_password}}", serverData.GetRCONPassword());
+                        File.WriteAllText(configPath, configText);
+                    }
                 }
 
-                string configText = File.ReadAllText(configPath);
-                configText = configText.Replace("{{hostname}}", serverData.ServerName);
-                configText = configText.Replace("{{rcon_password}}", serverData.GetRCONPassword());
-                File.WriteAllText(configPath, configText);
+                if (!File.Exists(MapCyclePath)) File.WriteAllText(MapCyclePath, string.Empty);
                 if (!string.IsNullOrWhiteSpace(serverData.ServerParam))
                 {
                     serverData.ServerParam = serverData.ServerParam.Replace("{{clientport}}", GetClientPort());
@@ -259,6 +302,11 @@ namespace WindowsGSM.GameServer.Engine
                 Error = $"Failed to create {serverData.ServerGame} server.cfg: {exception.Message}";
                 return false;
             }
+        }
+
+        private static string EscapeServerConfigValue(string value)
+        {
+            return (value ?? string.Empty).Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\r", " ").Replace("\n", " ");
         }
 
         private string GetClientPort()

@@ -99,6 +99,21 @@ namespace WindowsGSM.Functions
             }
         }
 
+        public static bool IsTcpPortBoundToProcess(Process serverProcess, int port)
+        {
+            if (serverProcess == null || port < 1 || port > ushort.MaxValue || !IsRunning(serverProcess))
+            {
+                return false;
+            }
+
+            HashSet<int> processIds = GetProcessTree(serverProcess.Id);
+            List<BoundEndpoint> endpoints = GetTcpEndpoints();
+            return IsRunning(serverProcess) && endpoints.Any(endpoint =>
+                endpoint.Port == port &&
+                processIds.Contains(endpoint.ProcessId) &&
+                IsAddressRelevant(endpoint.LocalAddress, IPAddress.Loopback));
+        }
+
         private static bool IsAddressRelevant(IPAddress localAddress, IPAddress targetAddress)
         {
             return targetAddress.Equals(IPAddress.Any) || localAddress.Equals(IPAddress.Any) || localAddress.Equals(targetAddress);

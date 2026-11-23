@@ -96,55 +96,36 @@ namespace WindowsGSM
             }
         }
 
-        public async Task<bool> RemoveRule()
+        public async Task<bool> RemoveRuleEx()
         {
             if (Functions.ServerPath.IsTestRootOverrideActive)
             {
                 return true;
-            }
-
-            try
-            {
-                string script = "$ErrorActionPreference = 'Stop'; " +
-                    $"Remove-NetFirewallRule -Name {PowerShellLiteral(GetRuleName())} -PolicyStore PersistentStore -ErrorAction SilentlyContinue | Out-Null; " +
-                    "[Console]::Out.Write('True');";
-                await RunPowerShellAsync(script);
-                return true;
-            }
-            catch (Exception exception) when (IsFirewallException(exception))
-            {
-                LogFirewallFailure("remove", exception);
-                return false;
-            }
-        }
-
-        public async Task RemoveRuleEx()
-        {
-            if (Functions.ServerPath.IsTestRootOverrideActive)
-            {
-                return;
             }
 
             try
             {
                 string path = GetFullPath();
-                string script = "$ErrorActionPreference = 'Stop'; " + ActiveProfilesScript +
+                string script = "$ErrorActionPreference = 'Stop'; " +
                     $"$needle = {PowerShellLiteral(path)}; " +
+                    "$prefix = $needle.TrimEnd([IO.Path]::DirectorySeparatorChar, [IO.Path]::AltDirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar; " +
                     "$filters = @(Get-NetFirewallApplicationFilter -PolicyStore PersistentStore -All -ErrorAction Stop); " +
                     "foreach ($filter in $filters) { " +
-                    "if (![string]::IsNullOrWhiteSpace([string]$filter.Program) -and ([string]$filter.Program).IndexOf($needle, [StringComparison]::OrdinalIgnoreCase) -ge 0) { " +
+                    "if (![string]::IsNullOrWhiteSpace([string]$filter.Program) -and " +
+                    "(([string]$filter.Program).Equals($needle, [StringComparison]::OrdinalIgnoreCase) -or " +
+                    "([string]$filter.Program).StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase))) { " +
                     "$rules = @(Get-NetFirewallRule -AssociatedNetFirewallApplicationFilter $filter -PolicyStore PersistentStore -ErrorAction Stop); " +
                     "foreach ($rule in $rules) { " +
-                    "$ruleProfiles = @(([string]$rule.Profile -split '[,\\s]+')); " +
-                    "$matchingProfiles = @($ruleProfiles | Where-Object { $_ -eq 'Any' -or $profiles -contains $_ }); " +
-                    "if ($matchingProfiles.Count -gt 0) { Remove-NetFirewallRule -Name $rule.Name -PolicyStore PersistentStore -Confirm:$false -ErrorAction Stop | Out-Null } " +
+                    "if ([string]$rule.Name -like 'WindowsGSM-*') { Remove-NetFirewallRule -Name $rule.Name -PolicyStore PersistentStore -Confirm:$false -ErrorAction Stop | Out-Null }; " +
                     "} } };";
 
                 await RunPowerShellAsync(script);
+                return true;
             }
             catch (Exception exception) when (IsFirewallException(exception))
             {
                 LogFirewallFailure("remove by path", exception);
+                return false;
             }
         }
 

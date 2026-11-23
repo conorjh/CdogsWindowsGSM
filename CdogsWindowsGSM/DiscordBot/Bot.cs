@@ -51,7 +51,7 @@ namespace WindowsGSM.DiscordBot
 		{
 			try
 			{
-				Stream stream = Application.GetResourceStream(new Uri("pack://application:,,,/Images/WindowsGSM.png")).Stream;
+				Stream stream = Application.GetResourceStream(new Uri("pack://application:,,,/Images/WindowsGSM-EMERALD.png")).Stream;
 				await _client.CurrentUser.ModifyAsync(x =>
 				{
 					x.Username = "WindowsGSM";

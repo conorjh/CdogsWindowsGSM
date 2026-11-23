@@ -192,11 +192,20 @@
   <data name="Insurgency: Sandstorm Dedicated Server" xml:space="preserve">
     <value>Images/Games/inss.png</value>
   </data>
+  <data name="Left 4 Dead Dedicated Server" xml:space="preserve">
+    <value>Images/Games/l4d2.png</value>
+  </data>
+  <data name="Left 4 Dead Dedicated Server [L4D.cs]" xml:space="preserve">
+    <value>Images/Games/l4d2.png</value>
+  </data>
   <data name="Left 4 Dead 2 Dedicated Server" xml:space="preserve">
     <value>Images/Games/l4d2.png</value>
   </data>
   <data name="Minecraft: Bedrock Edition Server" xml:space="preserve">
     <value>Images/Games/mcbe.png</value>
+  </data>
+  <data name="Luanti Dedicated Server" xml:space="preserve">
+    <value>Images/Games/luanti.png</value>
   </data>
   <data name="Minecraft: Java Edition Server" xml:space="preserve">
     <value>Images/Games/mc.png</value>

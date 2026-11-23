@@ -218,10 +218,9 @@ Implementation and evidence still open:
 
 ## References considered
 
-- [Plugin compilation caching](PLUGIN-COMPILATION-CACHING-PLAN.md) — runtime compilation, assembly references, cache invalidation, and unchanged plugin loading behavior.
 - `docs/DOTNET-10-MIGRATION-PLAN.md` — replacement of the legacy compiler path with Roslyn supported by the .NET 10 host.
 - `docs/SERVER-MANAGEMENT-FEATURES-PLAN.md` — scheduled backups, stopped-server safety, atomic publication, retention, and visible result semantics.
-- `docs/BUILTIN-GAME-SERVER-AUDIT.md` — current stop-then-start restart and application-level full-directory backup/restore behavior.
+- `docs/GAME-INTEGRATION-ALPHA-MATRIX.md` — per-game V1 operation status and deferred V2 qualification; host backup behavior is described in the backup guides.
 - `docs/RAZIEL-FORK-COMPARISON.md` — Raziel fork's scheduled console/RCON/restart commands, multi-save backup roots, and warning about arbitrary `exec`.
 - `README.md` — existing third-party plugin ecosystem.
 - Upstream WindowsGSM: <https://github.com/WindowsGSM/WindowsGSM>.

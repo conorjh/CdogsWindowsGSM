@@ -70,6 +70,7 @@ namespace WindowsGSM.GameServer
                         FileName = exePath,
                         Arguments = _serverData.ServerParam,
                         WindowStyle = ProcessWindowStyle.Minimized,
+                        UseShellExecute = true
                     },
                     EnableRaisingEvents = true
                 };

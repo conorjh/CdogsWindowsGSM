@@ -60,6 +60,7 @@ namespace WindowsGSM
             public const string Height = "Height";
             public const string Width = "Width";
             public const string DiscordBotAutoStart = "DiscordBotAutoStart";
+            public const string FirewallAutoSync = "FirewallAutoSync";
         }
 
         public class ServerMetadata
@@ -108,6 +109,16 @@ namespace WindowsGSM
             public bool AutoScroll;
         }
 
+        private const string AllScheduleServersOptionId = "__all_servers__";
+
+        private sealed class BackupScheduleServerOption
+        {
+            public string Id { get; set; }
+            public string DisplayText { get; set; }
+            public ServerTable Server { get; set; }
+            public bool IsAllServers => Server == null;
+        }
+
         private enum WindowShowStyle : uint
         {
             Hide = 0,
@@ -138,8 +149,8 @@ namespace WindowsGSM
         public static readonly int MAX_SERVER = 256;
         public static readonly string WGSM_PATH = Path.GetDirectoryName(Process.GetCurrentProcess().MainModule.FileName);
         public static readonly string DEFAULT_THEME = "Emerald";
-        private const string LatestReleaseApiUrl = "https://api.github.com/repos/conorjh/CdogsWindowsGSM/releases/latest";
-        private const string UpdaterAssetUrl = "https://github.com/conorjh/CdogsWindowsGSM/releases/latest/download/CdogsWindowsGSM-Updater.exe";
+        private const string LatestReleaseApiUrl = "https://api.github.com/repos/conorjh/CdogsWindowsGSM/releases?per_page=1";
+        private const string ReleaseDownloadUrl = "https://github.com/conorjh/CdogsWindowsGSM/releases/download/";
         private const string UpdaterFileName = "CdogsWindowsGSM-Updater.exe";
 
         private readonly NotifyIcon notifyIcon;
@@ -158,6 +169,15 @@ namespace WindowsGSM
         private readonly Dictionary<Flyout, IInputElement> _flyoutFocusAtOpen = new Dictionary<Flyout, IInputElement>();
         private readonly Axis _playerChartXAxis = new Axis { Labels = Array.Empty<string>() };
         private readonly Axis _playerChartYAxis = new Axis { MinLimit = 0, MaxLimit = 10 };
+        private readonly ServerFirewallManager _serverFirewallManager = new ServerFirewallManager();
+        private readonly Dictionary<string, ServerFirewallSyncResult> _serverFirewallResults =
+            new Dictionary<string, ServerFirewallSyncResult>(StringComparer.OrdinalIgnoreCase);
+        private StartupSplashWindow _startupSplashWindow;
+        private Task _initialFirewallSyncTask = Task.CompletedTask;
+        private Task _autoStartTask = Task.CompletedTask;
+        private bool _isLoadingStartupServerTable;
+        private bool _startupFlowStarted;
+        private bool _firewallAutoSyncEnabled;
 
         private int _peakActivePlayers;
         private IInputElement _focusBeforeFlyout;
@@ -165,11 +185,13 @@ namespace WindowsGSM
         private readonly Random _mapRotationRandom = new Random();
         private readonly System.Windows.Threading.DispatcherTimer _backupScheduleTimer = new System.Windows.Threading.DispatcherTimer();
         private bool _isLoadingBackupScheduleEditor;
+        private bool _isBulkBackupScheduleEditor;
         private bool _backupScheduleTimeChanged;
         private DateTime _backupScheduleStartedAt;
         private DateTime _backupScheduleLastTickAt;
         private bool _backupScheduleTickRunning;
         private bool _editConfigQueryUsesServerPort;
+        private static readonly TimeSpan StartupAutoStartSplashTimeout = TimeSpan.FromSeconds(30);
         private readonly IServerHealthCheck[] _serverHealthChecks =
         {
             new ProcessServerHealthCheck(),
@@ -180,14 +202,16 @@ namespace WindowsGSM
 
         public MainWindow(bool showCrashHint)
         {
-            //Add SplashScreen
-            var splashScreen = new SplashScreen("Images/SplashScreen.png");
-            splashScreen.Show(false, true);
+            _startupSplashWindow = new StartupSplashWindow();
+            _startupSplashWindow.Show();
+            UpdateStartupSplash("StartupInitializing");
             DiscordWebhook.SendErrorLog();
 
             InitializeComponent();
+            UpdateStartupSplash("StartupLoading", LocalizationManager.Get("SettingsTitle"));
             _flyouts = new[]
             {
+                MahAppFlyout_BuiltInFeatures,
                 MahAppFlyout_ViewPlugins,
                 MahAppFlyout_Settings,
                 MahAppFlyout_DiscordAlert,
@@ -208,9 +232,6 @@ namespace WindowsGSM
             comboBox_Language.SelectionChanged -= ComboBox_Language_SelectionChanged;
             comboBox_Language.SelectedValue = LocalizationManager.SelectedLanguage;
             comboBox_Language.SelectionChanged += ComboBox_Language_SelectionChanged;
-
-            //Close SplashScreen
-            splashScreen.Close(new TimeSpan(0, 0, 1));
 
             // Add all themes to comboBox_Themes
             ThemeManager.Current.Themes.Select(t => Path.GetExtension(t.Name).Trim('.')).Distinct().OrderBy(x => x).ToList().ForEach(delegate (string name) { comboBox_Themes.Items.Add(name); });
@@ -239,6 +260,7 @@ namespace WindowsGSM
                 key.SetValue(RegistryKeyName.Height, Height);
                 key.SetValue(RegistryKeyName.Width, Width);
                 key.SetValue(RegistryKeyName.DiscordBotAutoStart, "False");
+                key.SetValue(RegistryKeyName.FirewallAutoSync, "False");
             }
 
             MahAppSwitch_HardWareAcceleration.IsOn = (key.GetValue(RegistryKeyName.HardWareAcceleration) ?? true).ToString() == "True";
@@ -248,6 +270,10 @@ namespace WindowsGSM
             MahAppSwitch_RestartOnCrash.IsOn = (key.GetValue(RegistryKeyName.RestartOnCrash) ?? false).ToString() == "True";
             MahAppSwitch_SendStatistics.IsOn = (key.GetValue(RegistryKeyName.SendStatistics) ?? true).ToString() == "True";
             MahAppSwitch_DiscordBotAutoStart.IsOn = (key.GetValue(RegistryKeyName.DiscordBotAutoStart) ?? false).ToString() == "True";
+            _firewallAutoSyncEnabled = (key.GetValue(RegistryKeyName.FirewallAutoSync) ?? false).ToString() == "True";
+            checkBox_FirewallAutoSync.IsChecked = _firewallAutoSyncEnabled;
+            checkBox_FirewallAutoSync.Checked += CheckBox_FirewallAutoSync_Changed;
+            checkBox_FirewallAutoSync.Unchecked += CheckBox_FirewallAutoSync_Changed;
             string color = (key.GetValue(RegistryKeyName.ThemeColor) ?? key.GetValue("DonorColor") ?? string.Empty).ToString();
             comboBox_Themes.SelectionChanged -= ComboBox_Themes_SelectionChanged;
             comboBox_Themes.SelectedItem = comboBox_Themes.Items.Contains(color) ? color : DEFAULT_THEME;
@@ -340,16 +366,31 @@ namespace WindowsGSM
                 Visible = true
             };
 
-            notifyIcon.Icon = new System.Drawing.Icon(System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/Images/WindowsGSM-Icon.ico")).Stream);
+            notifyIcon.Icon = new System.Drawing.Icon(System.Windows.Application.GetResourceStream(new Uri("pack://application:,,,/Images/WindowsGSM-EMERALD.ico")).Stream);
             notifyIcon.BalloonTipClicked += OnBalloonTipClick;
             notifyIcon.MouseClick += NotifyIcon_MouseClick;
 
+            UpdateStartupSplash("StartupLoading", LocalizationManager.Get("PluginsTitle"));
             ServerPath.CreateAndFixDirectories();
 
             LoadPlugins(shouldAwait: false);
+            UpdateStartupSplash("StartupLoading", LocalizationManager.Get("GameServerLabel"));
             AddGamesToComboBox();
 
-            LoadServerTable();
+            UpdateStartupSplash("StartupLoading", LocalizationManager.Get("ServersMenu"));
+            _isLoadingStartupServerTable = true;
+            try
+            {
+                LoadServerTable();
+            }
+            finally
+            {
+                _isLoadingStartupServerTable = false;
+            }
+
+            _initialFirewallSyncTask = _firewallAutoSyncEnabled
+                ? RefreshServerFirewallRulesAsync()
+                : Task.CompletedTask;
 
             if (ServerGrid.Items.Count > 0)
             {
@@ -358,6 +399,7 @@ namespace WindowsGSM
 
             foreach (var server in ServerGroups_GetAllServerRows())
             {
+                UpdateStartupSplash("StartupLoading", server.Name);
                 int pid = ServerCache.GetPID(server.ID);
                 if (pid != -1)
                 {
@@ -428,8 +470,6 @@ namespace WindowsGSM
                 string logFile = $"CRASH_{DateTime.Now:yyyyMMdd}.log";
                 Log("System", string.Format(LocalizationManager.Get("CrashLogHint"), logFile));
             }
-
-            AutoStartServer();
 
             if (MahAppSwitch_SendStatistics.IsOn)
             {
@@ -756,6 +796,13 @@ namespace WindowsGSM
                 if (!File.Exists(configpath)) { continue; }
 
                 var serverConfig = new ServerConfig(i.ToString());
+                if (_isLoadingStartupServerTable)
+                {
+                    string serverLabel = string.IsNullOrWhiteSpace(serverConfig.ServerName)
+                        ? serverConfig.ServerGame
+                        : serverConfig.ServerName;
+                    UpdateStartupSplash("StartupLoading", serverLabel);
+                }
 
                 object gameServer = GameServer.Data.Class.Get(serverConfig.ServerGame, pluginList: PluginsList);
                 if (gameServer == null) { continue; }
@@ -882,7 +929,7 @@ namespace WindowsGSM
                 : (int?)null;
         }
 
-        private ServerHealthSummary GetServerHealthSummary(ServerMetadata metadata)
+        private ServerHealthSummary GetServerHealthSummary(ServerTable server, ServerMetadata metadata)
         {
             if (metadata == null)
             {
@@ -942,7 +989,7 @@ namespace WindowsGSM
         {
             if (server == null) { return; }
 
-            ServerHealthSummary summary = GetServerHealthSummary(GetServerMetadata(server.ID));
+            ServerHealthSummary summary = GetServerHealthSummary(server, GetServerMetadata(server.ID));
             ServerTable selectedServer = ServerGrid.SelectedItem as ServerTable;
             bool selectedServerHealthChanged = selectedServer != null && selectedServer.ID == server.ID &&
                 selectedServer.HealthStatus != summary.OverallStatus;
@@ -1058,14 +1105,16 @@ namespace WindowsGSM
             _serverMetadata[i].AutoScroll = serverConfig.AutoScroll;
         }
 
-        private async void AutoStartServer()
+        private async Task AutoStartServerAsync()
         {
+            UpdateStartupSplash("StartupStartingAutoServers");
             foreach (ServerTable server in ServerGroups_GetAllServerRows())
             {
                 int serverId = int.Parse(server.ID);
 
                 if (GetServerMetadata(serverId).AutoStart && GetServerMetadata(server.ID).ServerStatus == ServerStatus.Stopped)
                 {
+                    UpdateStartupSplash("StartupStarting", server.Name);
                     await GameServer_Start(server, " | Auto Start");
 
                     if (GetServerMetadata(server.ID).ServerStatus == ServerStatus.Started)
@@ -1182,31 +1231,21 @@ namespace WindowsGSM
 
         private void Refresh_DashBoard_LiveChart()
         {
-            // List<(ServerType, PlayerCount)> Example: ("Ricochet Dedicated Server", 0)
-            List<(string, int)> typePlayers = ServerGroups_GetAllServerRows()
-                .Where(s => s.StatusCode == ServerStatus.Started && s.Maxplayers != null && s.Maxplayers.Contains("/"))
-                .Select(s => (type: s.Game, players: int.TryParse(s.Maxplayers.Split('/')[0], out int players) ? players : 0))
-                .GroupBy(s => s.type)
-                .Select(s => (type: s.Key, players: s.Sum(p => p.players)))
-                .ToList();
+            List<(string Game, int Players)> typePlayers = GetDashboardPlayerCounts(ServerGroups_GetAllServerRows());
 
             string chartHelpText = typePlayers.Count == 0
                 ? string.Format(CultureInfo.CurrentUICulture, "{0}: 0", LocalizationManager.Get("Players"))
                 : string.Join(Environment.NewLine, typePlayers.Select(item => string.Format(
                     CultureInfo.CurrentCulture,
                     "{0}: {1}",
-                    item.Item1,
-                    item.Item2)));
+                    item.Game,
+                    item.Players)));
             AutomationProperties.SetHelpText(livechart_players, chartHelpText);
 
-            // Ajust the maxvalue of axis Y base on PlayerCount
-            if (typePlayers.Count > 0)
-            {
-                int maxValue = typePlayers.Select(s => s.Item2).Max() + 5;
-                _playerChartYAxis.MaxLimit = (maxValue > 10) ? maxValue : 10;
-            }
+            int maxValue = typePlayers.Select(item => item.Players).DefaultIfEmpty(0).Max() + 5;
+            _playerChartYAxis.MaxLimit = maxValue > 10 ? maxValue : 10;
 
-            var activeTypes = new HashSet<string>(typePlayers.Select(item => item.Item1), StringComparer.Ordinal);
+            var activeTypes = new HashSet<string>(typePlayers.Select(item => item.Game), StringComparer.Ordinal);
             foreach (string inactiveType in _playerChartValues.Keys.Where(type => !activeTypes.Contains(type)).ToList())
             {
                 _playerChartSeries.Remove(_playerChartValues[inactiveType].Series);
@@ -1215,25 +1254,39 @@ namespace WindowsGSM
 
             foreach (var item in typePlayers)
             {
-                if (_playerChartValues.TryGetValue(item.Item1, out var chartValue))
+                if (_playerChartValues.TryGetValue(item.Game, out var chartValue))
                 {
-                    if (chartValue.Value.Value != item.Item2)
+                    if (chartValue.Value.Value != item.Players)
                     {
-                        chartValue.Value.Value = item.Item2;
+                        chartValue.Value.Value = item.Players;
                     }
                 }
                 else
                 {
-                    var value = new ObservableValue(item.Item2);
+                    var value = new ObservableValue(item.Players);
                     var series = new ColumnSeries<ObservableValue>
                     {
-                        Name = item.Item1,
+                        Name = item.Game,
                         Values = new ObservableCollection<ObservableValue> { value }
                     };
-                    _playerChartValues.Add(item.Item1, (series, value));
+                    _playerChartValues.Add(item.Game, (series, value));
                     _playerChartSeries.Add(series);
                 }
             }
+        }
+
+        internal static List<(string Game, int Players)> GetDashboardPlayerCounts(IEnumerable<ServerTable> serverRows)
+        {
+            return serverRows
+                .Where(s => s.StatusCode == ServerStatus.Started &&
+                    !string.IsNullOrWhiteSpace(s.Game) &&
+                    s.Maxplayers != null &&
+                    s.Maxplayers.Contains("/"))
+                .Select(s => (Game: s.Game, Players: int.TryParse(s.Maxplayers.Split('/')[0], out int players) ? players : 0))
+                .Where(s => s.Players > 0)
+                .GroupBy(s => s.Game)
+                .Select(s => (Game: s.Key, Players: s.Sum(p => p.Players)))
+                .ToList();
         }
 
         private async void SendGoogleAnalytics()
@@ -1898,6 +1951,7 @@ namespace WindowsGSM
                 }
 
                 LoadServerTable();
+                await SynchronizeServerFirewallAsync(newServerConfig.ServerID);
                 Log(newServerConfig.ServerID, "Install: Success");
 
                 SetAccessibleLiveText(textblock_InstallProgress, LocalizationManager.Get("AddonInstallSuccess"));
@@ -2097,6 +2151,7 @@ namespace WindowsGSM
             newServerConfig.CreateWindowsGSMConfig();
 
             LoadServerTable();
+            await SynchronizeServerFirewallAsync(newServerConfig.ServerID);
             Log(newServerConfig.ServerID, "Import: Success");
 
             SetAccessibleLiveText(textblock_ImportProgress, LocalizationManager.Get("ImportCompleted"));
@@ -2751,7 +2806,12 @@ namespace WindowsGSM
                 BackupScheduleRow row = BackupScheduleGrid.SelectedItem as BackupScheduleRow;
                 if (row == null)
                 {
-                    label_BackupScheduleServer.Text = string.Empty;
+                    if (_isBulkBackupScheduleEditor)
+                    {
+                        LoadBulkBackupScheduleEditor();
+                        return;
+                    }
+
                     textBox_BackupScheduleTime.Text = string.Empty;
                     comboBox_BackupScheduleFrequency.SelectedValue = null;
                     comboBox_ScheduledAction.SelectedValue = null;
@@ -2769,7 +2829,9 @@ namespace WindowsGSM
                     return;
                 }
 
-                label_BackupScheduleServer.Text = row.ServerName;
+                _isBulkBackupScheduleEditor = false;
+                button_AddScheduledTask.Content = LocalizationManager.Get("ScheduleAdd");
+                comboBox_BackupScheduleServer.SelectedValue = row.ServerId;
                 if (string.IsNullOrWhiteSpace(row.ScheduleId))
                 {
                     textBox_BackupScheduleTime.Text = string.Empty;
@@ -2829,6 +2891,67 @@ namespace WindowsGSM
             }
         }
 
+        private void BackupScheduleServer_SelectionChanged(object sender, SelectionChangedEventArgs e)
+        {
+            if (_isLoadingBackupScheduleEditor) { return; }
+
+            BackupScheduleServerOption option = comboBox_BackupScheduleServer.SelectedItem as BackupScheduleServerOption;
+            if (option == null) { return; }
+
+            if (option.IsAllServers)
+            {
+                _isBulkBackupScheduleEditor = true;
+                bool hadSelectedRow = BackupScheduleGrid.SelectedItem != null;
+                BackupScheduleGrid.SelectedItem = null;
+                if (!hadSelectedRow)
+                {
+                    LoadBulkBackupScheduleEditor();
+                }
+                return;
+            }
+
+            _isBulkBackupScheduleEditor = false;
+            ServerTable server = option.Server;
+            if (server == null) { return; }
+
+            BackupScheduleRow row = BackupScheduleGrid.Items.OfType<BackupScheduleRow>()
+                .FirstOrDefault(item => string.Equals(item.ServerId, server.ID, StringComparison.OrdinalIgnoreCase));
+            if (row == null)
+            {
+                RefreshBackupSchedules(server.ID);
+                return;
+            }
+
+            BackupScheduleGrid.SelectedItem = row;
+            BackupScheduleGrid.ScrollIntoView(row);
+        }
+
+        private void LoadBulkBackupScheduleEditor()
+        {
+            bool wasLoadingBackupScheduleEditor = _isLoadingBackupScheduleEditor;
+            _isLoadingBackupScheduleEditor = true;
+            try
+            {
+                _backupScheduleTimeChanged = false;
+                textBox_BackupScheduleTime.Text = "02:00";
+                comboBox_BackupScheduleFrequency.SelectedValue = "Daily";
+                comboBox_ScheduledAction.SelectedValue = BackupScheduleConfig.ScheduledActionBackup;
+                comboBox_BackupScheduleType.SelectedValue = BackupScheduleConfig.BackupTypeFullServer;
+                comboBox_BackupScheduleDay.SelectedValue = null;
+                switch_BackupScheduleEnabled.IsOn = false;
+                switch_BackupScheduleEnabled.IsEnabled = true;
+                button_RunScheduledTaskNow.IsEnabled = false;
+                button_DeleteScheduledTask.IsEnabled = false;
+                label_BackupScheduleStorage.Text = string.Empty;
+                label_BackupScheduleStatus.Text = string.Empty;
+                UpdateBackupScheduleEditor();
+            }
+            finally
+            {
+                _isLoadingBackupScheduleEditor = wasLoadingBackupScheduleEditor;
+            }
+        }
+
         private void BackupScheduleFrequency_SelectionChanged(object sender, SelectionChangedEventArgs e)
         {
             if (_isLoadingBackupScheduleEditor) { return; }
@@ -2880,6 +3003,12 @@ namespace WindowsGSM
                 return;
             }
 
+            if (_isBulkBackupScheduleEditor)
+            {
+                _backupScheduleTimeChanged = false;
+                return;
+            }
+
             BackupScheduleRow row = BackupScheduleGrid.SelectedItem as BackupScheduleRow;
             if (row != null && SaveBackupScheduleFromEditor(refreshGrid: false))
             {
@@ -2890,10 +3019,14 @@ namespace WindowsGSM
 
         private void BackupScheduleAdd_Click(object sender, RoutedEventArgs e)
         {
-            BackupScheduleRow selectedRow = BackupScheduleGrid.SelectedItem as BackupScheduleRow;
-            ServerTable server = selectedRow == null
-                ? ServerGrid.SelectedItem as ServerTable
-                : FindServerTable(selectedRow.ServerId);
+            BackupScheduleServerOption selectedTarget = comboBox_BackupScheduleServer.SelectedItem as BackupScheduleServerOption;
+            if (selectedTarget?.IsAllServers == true)
+            {
+                AddBackupScheduleToAllServers();
+                return;
+            }
+
+            ServerTable server = selectedTarget?.Server;
             if (server == null)
             {
                 SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleNoServerSelected"));
@@ -2916,6 +3049,88 @@ namespace WindowsGSM
 
             RefreshBackupSchedules(server.ID, task.Id);
             SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleSaved"));
+        }
+
+        private void AddBackupScheduleToAllServers()
+        {
+            List<ServerTable> servers = ServerGroups_GetAllServerRows();
+            if (servers.Count == 0)
+            {
+                SetAccessibleLiveText(label_BackupScheduleStatus, LocalizationManager.Get("ScheduleNoServerSelected"));
+                return;
+            }
+
+            if (!TryGetBackupScheduleEditorValues(
+                null,
+                forAllServers: true,
+                reportValidationErrors: true,
+                out string scheduledAction,
+                out string backupType,
+                out string expression))
+            {
+                return;
+            }
+
+            var pendingSchedules = new List<(ServerTable Server, BackupScheduleConfig Config, BackupScheduleTaskConfig Task)>();
+            foreach (ServerTable server in servers)
+            {
+                if (!TryLoadBackupSchedule(server.ID, out BackupScheduleConfig config, out string error))
+                {
+                    SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(
+                        LocalizationManager.Get("ScheduleBulkSaveFailed"),
+                        0,
+                        servers.Count,
+                        server.Name,
+                        error));
+                    return;
+                }
+
+                var task = new BackupScheduleTaskConfig
+                {
+                    Enabled = switch_BackupScheduleEnabled.IsOn,
+                    CronExpression = expression,
+                    ScheduledAction = scheduledAction,
+                    BackupType = backupType,
+                    LastEvaluatedAt = DateTime.Now
+                };
+                config.Tasks.Add(task);
+                pendingSchedules.Add((server, config, task));
+            }
+
+            var savedSchedules = new List<(ServerTable Server, BackupScheduleTaskConfig Task)>();
+            var failures = new List<string>();
+            foreach (var pending in pendingSchedules)
+            {
+                if (TrySaveBackupSchedule(pending.Server.ID, pending.Config, out string error))
+                {
+                    savedSchedules.Add((pending.Server, pending.Task));
+                }
+                else
+                {
+                    failures.Add($"{pending.Server.Name}: {error}");
+                }
+            }
+
+            if (savedSchedules.Count > 0)
+            {
+                (ServerTable Server, BackupScheduleTaskConfig Task) firstSaved = savedSchedules[0];
+                RefreshBackupSchedules(firstSaved.Server.ID, firstSaved.Task.Id);
+            }
+
+            if (failures.Count > 0)
+            {
+                SetAccessibleLiveText(label_BackupScheduleStatus, string.Format(
+                    LocalizationManager.Get("ScheduleBulkSaveFailed"),
+                    savedSchedules.Count,
+                    servers.Count,
+                    string.Join(", ", failures.Select(failure => failure.Split(new[] { ':' }, 2)[0])),
+                    string.Join(" | ", failures)));
+                return;
+            }
+
+            SetAccessibleLiveText(
+                label_BackupScheduleStatus,
+                string.Format(LocalizationManager.Get("ScheduleBulkSaved"), savedSchedules.Count));
         }
 
         private void BackupScheduleDelete_Click(object sender, RoutedEventArgs e)
@@ -2957,8 +3172,48 @@ namespace WindowsGSM
             }
 
             BackupScheduleRow row = BackupScheduleGrid.SelectedItem as BackupScheduleRow;
+            if (row == null && _isBulkBackupScheduleEditor)
+            {
+                string bulkFrequency = comboBox_BackupScheduleFrequency.SelectedValue as string;
+                string bulkScheduledAction = comboBox_ScheduledAction.SelectedValue as string;
+                bool bulkBackupAction = bulkScheduledAction == BackupScheduleConfig.ScheduledActionBackup;
+                bool bulkWeekly = bulkFrequency == "Weekly";
+                bool bulkSimpleSchedule = bulkFrequency == "Daily" || bulkWeekly;
+                List<ServerTable> servers = ServerGroups_GetAllServerRows();
+                bool allServersSupportConfigurationBackup = servers.Count > 0 &&
+                    servers.All(server => IsConfigurationBackupSupported(server.Game));
+                ComboBoxItem bulkCustomFrequencyItem = comboBox_BackupScheduleFrequency.Items.OfType<ComboBoxItem>()
+                    .FirstOrDefault(item => item.Tag as string == "Custom");
+                ComboBoxItem bulkConfigurationTypeItem = comboBox_BackupScheduleType.Items.OfType<ComboBoxItem>()
+                    .FirstOrDefault(item => item.Tag as string == BackupScheduleConfig.BackupTypeConfiguration);
+                if (bulkCustomFrequencyItem != null) { bulkCustomFrequencyItem.IsEnabled = false; }
+                if (bulkConfigurationTypeItem != null) { bulkConfigurationTypeItem.IsEnabled = allServersSupportConfigurationBackup; }
+
+                label_BackupScheduleTime.Visibility = bulkSimpleSchedule ? Visibility.Visible : Visibility.Collapsed;
+                textBox_BackupScheduleTime.Visibility = bulkSimpleSchedule ? Visibility.Visible : Visibility.Collapsed;
+                label_BackupScheduleDay.Visibility = bulkWeekly ? Visibility.Visible : Visibility.Collapsed;
+                comboBox_BackupScheduleDay.Visibility = bulkWeekly ? Visibility.Visible : Visibility.Collapsed;
+                comboBox_BackupScheduleFrequency.IsEnabled = true;
+                comboBox_ScheduledAction.IsEnabled = true;
+                label_BackupScheduleType.Visibility = bulkBackupAction ? Visibility.Visible : Visibility.Collapsed;
+                comboBox_BackupScheduleType.Visibility = bulkBackupAction ? Visibility.Visible : Visibility.Collapsed;
+                comboBox_BackupScheduleType.IsEnabled = bulkBackupAction;
+                textBox_BackupScheduleTime.IsEnabled = bulkSimpleSchedule;
+                comboBox_BackupScheduleDay.IsEnabled = bulkWeekly;
+                switch_BackupScheduleEnabled.IsEnabled = true;
+                button_RunScheduledTaskNow.IsEnabled = false;
+                button_DeleteScheduledTask.IsEnabled = false;
+                button_AddScheduledTask.Content = LocalizationManager.Get("ScheduleAddAll");
+                label_BackupScheduleHint.Text = LocalizationManager.Get("ScheduleBulkHint");
+                return;
+            }
+
             if (row == null || string.IsNullOrWhiteSpace(row.ScheduleId))
             {
+                ComboBoxItem customFrequencyItem = comboBox_BackupScheduleFrequency.Items.OfType<ComboBoxItem>()
+                    .FirstOrDefault(item => item.Tag as string == "Custom");
+                if (customFrequencyItem != null) { customFrequencyItem.IsEnabled = true; }
+                button_AddScheduledTask.Content = LocalizationManager.Get("ScheduleAdd");
                 label_BackupScheduleTime.Visibility = Visibility.Collapsed;
                 textBox_BackupScheduleTime.Visibility = Visibility.Collapsed;
                 label_BackupScheduleDay.Visibility = Visibility.Collapsed;
@@ -2972,13 +3227,17 @@ namespace WindowsGSM
                 comboBox_BackupScheduleDay.IsEnabled = false;
                 button_DeleteScheduledTask.IsEnabled = false;
                 label_BackupScheduleHint.Text = row == null
-                    ? LocalizationManager.Get("ScheduleNoServerSelected")
+                    ? LocalizationManager.Get(comboBox_BackupScheduleServer.SelectedItem == null ? "ScheduleNoServerSelected" : "ScheduleNoTaskSelected")
                     : string.IsNullOrWhiteSpace(row.ConfigurationError)
                         ? LocalizationManager.Get("ScheduleNoTaskSelected")
                         : row.ConfigurationError;
                 return;
             }
 
+            ComboBoxItem enabledCustomFrequencyItem = comboBox_BackupScheduleFrequency.Items.OfType<ComboBoxItem>()
+                .FirstOrDefault(item => item.Tag as string == "Custom");
+            if (enabledCustomFrequencyItem != null) { enabledCustomFrequencyItem.IsEnabled = true; }
+            button_AddScheduledTask.Content = LocalizationManager.Get("ScheduleAdd");
             bool configurationAvailable = string.IsNullOrEmpty(row.ConfigurationError);
             string frequency = comboBox_BackupScheduleFrequency.SelectedValue as string;
             string scheduledAction = comboBox_ScheduledAction.SelectedValue as string;
@@ -3376,8 +3635,53 @@ namespace WindowsGSM
 
         private void RefreshBackupSchedules(string selectedServerId = null, string selectedScheduleId = null)
         {
+            List<ServerTable> servers = ServerGroups_GetAllServerRows();
+            string serverIdToSelect = selectedServerId;
+            if (string.IsNullOrWhiteSpace(serverIdToSelect))
+            {
+                serverIdToSelect = comboBox_BackupScheduleServer.SelectedValue as string;
+            }
+            if (string.Equals(serverIdToSelect, AllScheduleServersOptionId, StringComparison.Ordinal))
+            {
+                serverIdToSelect = null;
+            }
+            if (string.IsNullOrWhiteSpace(serverIdToSelect))
+            {
+                serverIdToSelect = (ServerGrid.SelectedItem as ServerTable)?.ID;
+            }
+
+            var serverOptions = new List<BackupScheduleServerOption>
+            {
+                new BackupScheduleServerOption
+                {
+                    Id = AllScheduleServersOptionId,
+                    DisplayText = LocalizationManager.Get("ServerGroupAll")
+                }
+            };
+            serverOptions.AddRange(servers.Select(server => new BackupScheduleServerOption
+            {
+                Id = server.ID,
+                DisplayText = $"({server.Game}) - {server.Name}",
+                Server = server
+            }));
+
+            _isBulkBackupScheduleEditor = false;
+            bool wasLoadingBackupScheduleEditor = _isLoadingBackupScheduleEditor;
+            _isLoadingBackupScheduleEditor = true;
+            try
+            {
+                comboBox_BackupScheduleServer.ItemsSource = serverOptions;
+                comboBox_BackupScheduleServer.SelectedValue = serverOptions.FirstOrDefault(option =>
+                        string.Equals(option.Id, serverIdToSelect, StringComparison.OrdinalIgnoreCase))?.Id
+                    ?? serverOptions.FirstOrDefault(option => !option.IsAllServers)?.Id;
+            }
+            finally
+            {
+                _isLoadingBackupScheduleEditor = wasLoadingBackupScheduleEditor;
+            }
+
             var rows = new List<BackupScheduleRow>();
-            foreach (ServerTable server in ServerGroups_GetAllServerRows())
+            foreach (ServerTable server in servers)
             {
                 if (!TryLoadBackupSchedule(server.ID, out BackupScheduleConfig config, out string error))
                 {
@@ -4102,31 +4406,8 @@ namespace WindowsGSM
             await EndAllRunningProcess(server.ID);
             await Task.Delay(500);
 
-            //Add Start File to WindowsFirewall before start
-            string startPath;
-            try
-            {
-                startPath = !string.IsNullOrWhiteSpace(serverConfig.SharedInstallationId)
-                    ? Path.Combine(SharedInstallationStore.GetServerBinaryRoot(serverConfig.SharedInstallationId), gameServer.StartPath)
-                    : ServerPath.GetServersServerFiles(server.ID, gameServer.StartPath);
-            }
-            catch (ArgumentException exception)
-            {
-                Log(server.ID, "[ERROR] " + exception.Message);
-                startPath = string.Empty;
-            }
-
-            if (!string.IsNullOrWhiteSpace(gameServer.StartPath))
-            {
-                if (!string.IsNullOrWhiteSpace(startPath))
-                {
-                    WindowsFirewall firewall = new WindowsFirewall(Path.GetFileName(startPath), startPath);
-                    if (!await firewall.IsRuleExist())
-                    {
-                        await firewall.AddRule();
-                    }
-                }
-            }
+            await _initialFirewallSyncTask;
+            await SynchronizeServerFirewallAsync(serverConfig, gameServer);
 
             gameServer.AllowsEmbedConsole = GetServerMetadata(server.ID).EmbedConsole;
             Process p = await gameServer.Start();
@@ -4255,14 +4536,34 @@ namespace WindowsGSM
             metadata.ProcessStartInfoAvailable = false;
             ClearDetectedMainPort(server);
 
-            dynamic gameServer = GameServer.Data.Class.Get(server.Game, pluginList: PluginsList);
+            ServerConfig serverConfig = new ServerConfig(server.ID);
+            dynamic gameServer = GameServer.Data.Class.Get(server.Game, serverConfig, PluginsList);
             try
             {
                 await gameServer.Stop(p);
+                if (gameServer is GameServer.RUST rustServer && !string.IsNullOrWhiteSpace(rustServer.Notice))
+                {
+                    Log(server.ID, $"[NOTICE] {rustServer.Notice}");
+                }
+                if (gameServer is GameServer.Luanti luantiServer && !string.IsNullOrWhiteSpace(luantiServer.Notice))
+                {
+                    Log(server.ID, $"[NOTICE] {luantiServer.Notice}");
+                }
             }
-            catch (InvalidOperationException exception) when (!processStartInfoAvailable)
+            catch (Exception exception) when (
+                exception is TimeoutException ||
+                exception is InvalidOperationException ||
+                exception is IOException ||
+                exception is InvalidDataException ||
+                exception is UnauthorizedAccessException ||
+                exception is System.ComponentModel.Win32Exception ||
+                exception is System.Net.WebSockets.WebSocketException ||
+                exception is System.Text.Json.JsonException)
             {
-                Log(server.ID, $"[NOTICE] The recovered process cannot use its original console settings for a graceful stop. WindowsGSM will use its normal stop timeout and termination fallback. {exception.Message}");
+                string stopFailure = processStartInfoAvailable
+                    ? "Graceful stop failed."
+                    : "The recovered process could not be stopped gracefully.";
+                Log(server.ID, $"[NOTICE] {stopFailure} WindowsGSM will use its normal stop timeout and termination fallback. {exception.Message}");
             }
 
             for (int i = 0; i < 10; i++)
@@ -4334,7 +4635,7 @@ namespace WindowsGSM
         }
 
         #region Actions - Game Server
-        private async Task GameServer_Start(ServerTable server, string notes = "")
+        private async Task GameServer_Start(ServerTable server, string notes = "", bool runStartActions = true)
         {
             if (GetServerMetadata(server.ID).ServerStatus != ServerStatus.Stopped) { return; }
 
@@ -4382,12 +4683,12 @@ namespace WindowsGSM
                 }
             }
 
-            if (GetServerMetadata(server.ID).BackupOnStart)
+            if (runStartActions && GetServerMetadata(server.ID).BackupOnStart)
             {
                 await GameServer_Backup(server, " | Backup on Start");
             }
 
-            if (GetServerMetadata(server.ID).UpdateOnStart)
+            if (runStartActions && GetServerMetadata(server.ID).UpdateOnStart)
             {
                 await GameServer_Update(server, " | Update on Start");
             }
@@ -4623,7 +4924,7 @@ namespace WindowsGSM
 
                     using (SharedInstallationStore.AcquireReadLeaseForServer(new ServerConfig(server.ID)))
                     {
-                        await Task.Run(() => ZipFile.CreateFromDirectory(startPath, temporaryZipPath));
+                        await Task.Run(() => FullServerBackupArchive.CreateFromDirectory(startPath, temporaryZipPath));
                     }
                     File.Move(temporaryZipPath, backupPath);
                     temporaryZipPath = null;
@@ -4950,7 +5251,7 @@ namespace WindowsGSM
             {
                 try
                 {
-                    ZipFile.ExtractToDirectory(backupPath, extractPath);
+                    FullServerBackupArchive.ExtractToDirectory(backupPath, extractPath);
                 }
                 catch (Exception e)
                 {
@@ -5095,10 +5396,6 @@ namespace WindowsGSM
             Log(server.ID, "Action: Delete");
             SetServerStatus(server, "Deleting");
 
-            //Remove firewall rule
-            var firewall = new WindowsFirewall(null, ServerPath.GetServers(server.ID));
-            await firewall.RemoveRuleEx();
-
             //End All Running Process
             await EndAllRunningProcess(server.ID);
             await Task.Delay(1000);
@@ -5193,6 +5490,23 @@ namespace WindowsGSM
                 }
             }
 
+            var firewallRemovalFailures = new List<string>();
+            var legacyFirewall = new WindowsFirewall(null, ServerPath.GetServers(server.ID));
+            if (!await legacyFirewall.RemoveRuleEx())
+            {
+                firewallRemovalFailures.Add("A legacy program-based firewall rule could not be removed.");
+            }
+            firewallRemovalFailures.AddRange(await _serverFirewallManager.RemoveServerRulesAsync(server.ID));
+            _serverFirewallResults.Remove(server.ID);
+            string firewallDeleteError = string.Join(Environment.NewLine, firewallRemovalFailures);
+            foreach (string failure in firewallRemovalFailures)
+            {
+                Log(server.ID, "[WARNING] " + string.Format(
+                    CultureInfo.CurrentCulture,
+                    LocalizationManager.Get("FirewallDeleteCleanupFailure"),
+                    failure));
+            }
+
             Log(server.ID, "Server: Deleted server");
 
             _serverMetadata[int.Parse(server.ID)].ServerStatus = ServerStatus.Stopped;
@@ -5203,6 +5517,14 @@ namespace WindowsGSM
             {
                 MessageBox.Show(
                     string.Format(LocalizationManager.Get("SharedInstallationDeleteFailed"), sharedInstallationDeleteError),
+                    LocalizationManager.Get("ErrorTitle"),
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+            if (!string.IsNullOrWhiteSpace(firewallDeleteError))
+            {
+                MessageBox.Show(
+                    string.Format(LocalizationManager.Get("FirewallDeleteCleanupFailure"), firewallDeleteError),
                     LocalizationManager.Get("ErrorTitle"),
                     MessageBoxButton.OK,
                     MessageBoxImage.Warning);
@@ -5229,7 +5551,7 @@ namespace WindowsGSM
                     metadata.ProcessExitedUnexpectedly = true;
                     bool autoRestart = GetServerMetadata(serverId).AutoRestart;
                     _serverMetadata[int.Parse(server.ID)].ServerStatus = autoRestart ? ServerStatus.Restarting : ServerStatus.Stopped;
-                    Log(server.ID, "Server: Crashed");
+                    Log(server.ID, $"Server: Crashed | Exit code: {process.ExitCode}");
                     SetServerStatus(server, autoRestart ? "Restarting" : "Stopped");
 
                     if (GetServerMetadata(serverId).DiscordAlert && GetServerMetadata(serverId).CrashAlert)
@@ -5482,11 +5804,24 @@ namespace WindowsGSM
 
         private async void StartPortDiscoveryAndQuery(ServerTable server, Process process)
         {
-            await StartMainPortDiscovery(server, process);
             if (IsCurrentServerProcess(server.ID, process))
             {
                 StartQuery(server);
             }
+
+            await StartMainPortDiscovery(server, process);
+        }
+
+        private static bool IsExpectedGlobalServerListException(Exception exception)
+        {
+            return exception is System.Net.Http.HttpRequestException ||
+                exception is WebException ||
+                exception is OperationCanceledException ||
+                exception is System.Text.Json.JsonException ||
+                exception is InvalidDataException ||
+                exception is ArgumentException ||
+                exception is InvalidOperationException ||
+                exception is IOException;
         }
 
         private void StartBackupScheduleScheduler()
@@ -5628,7 +5963,8 @@ namespace WindowsGSM
                 ? queryPort
                 : 0;
 
-            for (int attempt = 0; attempt < 5; attempt++)
+            const int maximumAttempts = 60;
+            for (int attempt = 0; attempt < maximumAttempts; attempt++)
             {
                 if (attempt == 0) { await Task.Delay(1000); }
                 if (!IsCurrentServerProcess(server.ID, process)) { return; }
@@ -5649,7 +5985,7 @@ namespace WindowsGSM
                 }
 
                 if (!IsCurrentServerProcess(server.ID, process)) { return; }
-                if (detectedMainPort.HasValue && (detectedMainPort.Value == configuredPort || attempt == 4))
+                if (detectedMainPort.HasValue && (detectedMainPort.Value == configuredPort || attempt == maximumAttempts - 1))
                 {
                     ServerMetadata metadata = GetServerMetadata(server.ID);
                     metadata.DetectedMainPort = detectedMainPort;
@@ -5658,7 +5994,7 @@ namespace WindowsGSM
                     return;
                 }
 
-                if (attempt < 4) { await Task.Delay(1000); }
+                if (attempt < maximumAttempts - 1) { await Task.Delay(1000); }
             }
 
             Log(server.ID, "[NOTICE] Main port could not be verified; the configured value remains displayed.");
@@ -5673,6 +6009,7 @@ namespace WindowsGSM
             if (string.IsNullOrWhiteSpace(server.IP) || !IsValidIPAddress(server.IP))
             {
                 metadata.QuerySupported = false;
+                Log(server.ID, "[NOTICE] Server query health check unavailable: the configured server IP is missing or invalid.");
                 RefreshServerHealth(server);
                 return;
             }
@@ -5700,6 +6037,7 @@ namespace WindowsGSM
             if (p == null)
             {
                 metadata.QuerySupported = false;
+                Log(server.ID, "[NOTICE] Server query health check could not start because the server process is unavailable.");
                 RefreshServerHealth(server);
                 return;
             }
@@ -5708,6 +6046,7 @@ namespace WindowsGSM
             if (!resolvedQueryPort.HasValue)
             {
                 metadata.QuerySupported = false;
+                Log(server.ID, "[NOTICE] Server query health check unavailable: the configured query port is missing or invalid.");
                 RefreshServerHealth(server);
                 return;
             }
@@ -5716,6 +6055,8 @@ namespace WindowsGSM
             RefreshServerHealth(server);
 
             dynamic query = queryMethod;
+            string lastLoggedQueryFailureMessage = null;
+            DateTime? lastQueryFailureLogAt = null;
 
             // Query server every 5 seconds
             while (IsCurrentServerProcess(server.ID, p))
@@ -5731,6 +6072,7 @@ namespace WindowsGSM
                 {
                     metadata.QuerySupported = false;
                     metadata.QueryInProgress = false;
+                    Log(server.ID, "[NOTICE] Server query health check stopped: the configured query port is missing or invalid.");
                     RefreshServerHealth(server);
                     return;
                 }
@@ -5741,6 +6083,7 @@ namespace WindowsGSM
 
                 string players = null;
                 string queryError = null;
+                string queryErrorType = null;
                 try
                 {
                     query.SetAddressPort(server.IP, queryPort.Value);
@@ -5749,6 +6092,7 @@ namespace WindowsGSM
                 catch (Exception e) when (IsExpectedServerQueryException(e))
                 {
                     queryError = e.Message;
+                    queryErrorType = e.GetType().Name;
                 }
 
                 if (!IsCurrentServerProcess(server.ID, p)) { break; }
@@ -5758,9 +6102,21 @@ namespace WindowsGSM
 
                 if (players != null)
                 {
+                    int previousConsecutiveFailures = metadata.ConsecutiveQueryFailures;
+                    bool hadPreviousSuccess = metadata.LastQuerySucceededAt.HasValue;
                     metadata.LastQuerySucceededAt = DateTime.Now;
                     metadata.ConsecutiveQueryFailures = 0;
                     metadata.LastQueryFailureMessage = string.Empty;
+                    if (previousConsecutiveFailures > 0)
+                    {
+                        Log(server.ID, $"[NOTICE] Server query recovered on query port {queryPort.Value} after {previousConsecutiveFailures} consecutive failures.");
+                    }
+                    else if (!hadPreviousSuccess)
+                    {
+                        Log(server.ID, $"[NOTICE] Server query health check succeeded on query port {queryPort.Value}.");
+                    }
+                    lastLoggedQueryFailureMessage = null;
+                    lastQueryFailureLogAt = null;
                     server.Maxplayers = players;
 
                     foreach (ServerTable row in ServerGroups_GetAllServerRows())
@@ -5774,8 +6130,24 @@ namespace WindowsGSM
                 }
                 else
                 {
-                    metadata.ConsecutiveQueryFailures++;
-                    metadata.LastQueryFailureMessage = queryError;
+                    string failureMessage = queryError == null
+                        ? "The query returned no player data."
+                        : $"{queryErrorType}: {queryError}";
+                    int consecutiveFailures = metadata.ConsecutiveQueryFailures + 1;
+                    bool failureMessageChanged = !string.Equals(lastLoggedQueryFailureMessage, failureMessage, StringComparison.Ordinal);
+                    metadata.ConsecutiveQueryFailures = consecutiveFailures;
+                    metadata.LastQueryFailureMessage = failureMessage;
+
+                    bool logFailure = consecutiveFailures == 1 || consecutiveFailures == 3 ||
+                        (failureMessageChanged && (!lastQueryFailureLogAt.HasValue || DateTime.Now - lastQueryFailureLogAt.Value >= TimeSpan.FromMinutes(1)));
+                    if (logFailure)
+                    {
+                        string severity = consecutiveFailures >= 3 ? "[WARNING]" : "[NOTICE]";
+                        string failureCount = consecutiveFailures == 1 ? string.Empty : $" ({consecutiveFailures} consecutive failures)";
+                        Log(server.ID, $"{severity} Server query failed on query port {queryPort.Value}{failureCount}: {failureMessage}");
+                        lastLoggedQueryFailureMessage = failureMessage;
+                        lastQueryFailureLogAt = DateTime.Now;
+                    }
                 }
 
                 RefreshServerHealth(server);
@@ -6196,10 +6568,69 @@ namespace WindowsGSM
         #region Menu - Help
         private async void MainWindow_Loaded(object sender, RoutedEventArgs e)
         {
-            AssociateAccessibleLabels();
+            if (_startupFlowStarted)
+            {
+                return;
+            }
+            _startupFlowStarted = true;
 
-            string latestVersion = await GetLatestVersion();
-            SetUpdateAvailableIndicator(latestVersion);
+            try
+            {
+                UpdateStartupSplash("StartupCheckingUpdates");
+                await System.Windows.Threading.Dispatcher.Yield(System.Windows.Threading.DispatcherPriority.Background);
+                AssociateAccessibleLabels();
+
+                Task<string> updateCheck = GetLatestVersion();
+                _autoStartTask = AutoStartServerAsync();
+                Task completedUpdateCheck = await Task.WhenAny(updateCheck, Task.Delay(TimeSpan.FromSeconds(5)));
+                string latestVersion = completedUpdateCheck == updateCheck
+                    ? await updateCheck
+                    : null;
+                if (completedUpdateCheck != updateCheck)
+                {
+                    Log("System", "[NOTICE] The startup update check timed out; continuing startup.");
+                }
+                SetUpdateAvailableIndicator(latestVersion);
+
+                Task completedAutoStart = await Task.WhenAny(_autoStartTask, Task.Delay(StartupAutoStartSplashTimeout));
+                if (completedAutoStart == _autoStartTask)
+                {
+                    await _autoStartTask;
+                }
+                else
+                {
+                    Log("System", "[NOTICE] Auto-start is still running; the main window is ready and the startup splash will close.");
+                }
+            }
+            finally
+            {
+                CloseStartupSplash();
+            }
+        }
+
+        private void UpdateStartupSplash(string resourceKey, params object[] arguments)
+        {
+            if (_startupSplashWindow == null || !_startupSplashWindow.IsVisible)
+            {
+                return;
+            }
+
+            string status = LocalizationManager.Get(resourceKey);
+            if (arguments != null && arguments.Length > 0)
+            {
+                status = string.Format(CultureInfo.CurrentUICulture, status, arguments);
+            }
+            _startupSplashWindow.SetStatus(status);
+        }
+
+        private void CloseStartupSplash()
+        {
+            StartupSplashWindow splashWindow = _startupSplashWindow;
+            _startupSplashWindow = null;
+            if (splashWindow != null && splashWindow.IsVisible)
+            {
+                splashWindow.Close();
+            }
         }
 
         private void AssociateAccessibleLabels()
@@ -6396,7 +6827,7 @@ namespace WindowsGSM
 
         private void Help_OnlineDocumentation_Click(object sender, RoutedEventArgs e)
         {
-            OpenWithShell("https://docs.windowsgsm.com");
+            OpenWithShell($"https://github.com/conorjh/CdogsWindowsGSM/tree/{WGSM_VERSION}/docs");
         }
 
         private void Help_ReportIssue_Click(object sender, RoutedEventArgs e)
@@ -6440,7 +6871,7 @@ namespace WindowsGSM
                 string filePath = Path.Combine(installPath, UpdaterFileName);
                 controller = await this.ShowProgressAsync(LocalizationManager.Get("DownloadingUpdater"), LocalizationManager.Get("PleaseWait"));
                 controller.SetIndeterminate();
-                bool updaterDownloaded = await DownloadWindowsGSMUpdater();
+                bool updaterDownloaded = await DownloadWindowsGSMUpdater(latestVersion);
                 await controller.CloseAsync();
 
                 if (!updaterDownloaded || !File.Exists(filePath))
@@ -6493,6 +6924,7 @@ namespace WindowsGSM
                 var webRequest = (HttpWebRequest)WebRequest.Create(LatestReleaseApiUrl);
                 webRequest.Method = "GET";
                 webRequest.UserAgent = "CdogsWindowsGSM";
+                webRequest.Accept = "application/vnd.github+json";
                 webRequest.ServicePoint.Expect100Continue = false;
                 webRequest.Timeout = 15000;
                 webRequest.ReadWriteTimeout = 15000;
@@ -6508,7 +6940,13 @@ namespace WindowsGSM
                     using (responseStream)
                     using (var responseReader = new StreamReader(responseStream))
                     {
-                        JObject release = JObject.Parse(responseReader.ReadToEnd());
+                        JArray releases = JArray.Parse(responseReader.ReadToEnd());
+                        JObject release = releases.Count > 0 ? releases[0] as JObject : null;
+                        if (release == null)
+                        {
+                            throw new InvalidDataException("GitHub returned no published CdogsWindowsGSM releases.");
+                        }
+
                         string tag = (string)release["tag_name"];
                         JArray assets = release["assets"] as JArray;
                         bool hasApplication = false;
@@ -6555,7 +6993,7 @@ namespace WindowsGSM
             }
         }
 
-        private async Task<bool> DownloadWindowsGSMUpdater()
+        private async Task<bool> DownloadWindowsGSMUpdater(string releaseTag)
         {
             string filePath = ServerPath.GetBin(UpdaterFileName);
             string downloadPath = filePath + ".download";
@@ -6565,7 +7003,8 @@ namespace WindowsGSM
                 using (WebClient webClient = new WebClient())
                 {
                     webClient.Headers[HttpRequestHeader.UserAgent] = "CdogsWindowsGSM";
-                    await webClient.DownloadFileTaskAsync(UpdaterAssetUrl, downloadPath);
+                    string updaterUrl = ReleaseDownloadUrl + Uri.EscapeDataString(releaseTag) + "/" + Uri.EscapeDataString(UpdaterFileName);
+                    await webClient.DownloadFileTaskAsync(updaterUrl, downloadPath);
                 }
 
                 using (FileStream updaterStream = File.OpenRead(downloadPath))
@@ -6636,38 +7075,43 @@ namespace WindowsGSM
         #endregion
 
         #region Menu - Tools
-        private void Tools_GlobalServerListCheck_Click(object sender, RoutedEventArgs e)
+        private async void Tools_GlobalServerListCheck_Click(object sender, RoutedEventArgs e)
         {
             var row = (ServerTable)ServerGrid.SelectedItem;
             if (row == null) { return; }
 
-            if (row.Game == GameServer.MCPE.FullName || row.Game == GameServer.MC.FullName ||
-                row.Game == GameServer.PaperMC.FullName || row.Game == GameServer.ForgeMC.FullName)
+            if (!GlobalServerList.IsSupportedGame(row.Game))
             {
                 Log(row.ID, string.Format(LocalizationManager.Get("GlobalFeatureNotApplicable"), row.Game));
                 return;
             }
 
-            string publicIP = GetPublicIP();
-            if (publicIP == null)
+            try
             {
-                Log(row.ID, LocalizationManager.Get("GlobalCheckPublicIpFailed"));
-                return;
-            }
+                GlobalServerListCheckResult result = await GlobalServerList.CheckServerAsync(
+                    row.QueryPort,
+                    System.Threading.CancellationToken.None);
 
-            string messageText = string.Join(Environment.NewLine, new[]
-            {
-                string.Format(LocalizationManager.Get("GlobalServerName"), row.Name),
-                string.Format(LocalizationManager.Get("GlobalPublicIp"), publicIP),
-                string.Format(LocalizationManager.Get("GlobalQueryPort"), row.QueryPort)
-            });
-            if (GlobalServerList.IsServerOnSteamServerList(publicIP, row.QueryPort))
-            {
-                MessageBox.Show(string.Format(LocalizationManager.Get("GlobalServerListOnline"), messageText), LocalizationManager.Get("GlobalServerListCheckTitle"), MessageBoxButton.OK, MessageBoxImage.Information);
+                string messageText = string.Join(Environment.NewLine, new[]
+                {
+                    string.Format(LocalizationManager.Get("GlobalServerName"), row.Name),
+                    string.Format(LocalizationManager.Get("GlobalPublicIp"), result.PublicIp),
+                    string.Format(LocalizationManager.Get("GlobalQueryPort"), row.QueryPort)
+                });
+                MessageBox.Show(
+                    string.Format(LocalizationManager.Get(result.IsListed ? "GlobalServerListOnline" : "GlobalServerListOffline"), messageText),
+                    LocalizationManager.Get("GlobalServerListCheckTitle"),
+                    MessageBoxButton.OK,
+                    result.IsListed ? MessageBoxImage.Information : MessageBoxImage.Error);
             }
-            else
+            catch (Exception exception) when (IsExpectedGlobalServerListException(exception))
             {
-                MessageBox.Show(string.Format(LocalizationManager.Get("GlobalServerListOffline"), messageText), LocalizationManager.Get("GlobalServerListCheckTitle"), MessageBoxButton.OK, MessageBoxImage.Error);
+                string detail = exception is OperationCanceledException
+                    ? LocalizationManager.Get("GlobalServerListHealthTimedOut")
+                    : exception.Message;
+                string message = string.Format(LocalizationManager.Get("GlobalServerListCheckFailed"), detail);
+                Log(row.ID, $"[NOTICE] {message}");
+                MessageBox.Show(message, LocalizationManager.Get("GlobalServerListCheckTitle"), MessageBoxButton.OK, MessageBoxImage.Warning);
             }
         }
 
@@ -6792,21 +7236,6 @@ namespace WindowsGSM
         }
         #endregion
 
-        private string GetPublicIP()
-        {
-            try
-            {
-                using (var webClient = new WebClient())
-                {
-                    return webClient.DownloadString("https://ipinfo.io/ip").Replace("\n", string.Empty);
-                }
-            }
-            catch
-            {
-                return null;
-            }
-        }
-
         private void OnBalloonTipClick(object sender, EventArgs e)
         {
         }
@@ -6906,15 +7335,30 @@ namespace WindowsGSM
             textbox_EC_ServerGame.Text = serverConfig.ServerGame;
             textbox_EC_ServerName.Text = serverConfig.ServerName;
             textbox_EC_ServerIP.Text = serverConfig.ServerIP;
-            numericUpDown_EC_ServerMaxplayer.Value = int.TryParse(serverConfig.ServerMaxPlayer, out var maxplayer) ? maxplayer : int.Parse(gameServer.Maxplayers);
-            numericUpDown_EC_ServerPort.Value = int.TryParse(serverConfig.ServerPort, out var port) ? port : int.Parse(gameServer.Port);
+            numericUpDown_EC_ServerMaxplayer.Value = ResolveEditConfigNumber(serverConfig.ServerMaxPlayer, gameServer.Maxplayers);
+            if (!numericUpDown_EC_ServerMaxplayer.Value.HasValue)
+            {
+                Log(serverId, "[NOTICE] The configured and game-default max-player values are not numeric. The Edit Config field was left blank.");
+            }
+
+            numericUpDown_EC_ServerPort.Value = ResolveEditConfigNumber(serverConfig.ServerPort, gameServer.Port);
+            if (!numericUpDown_EC_ServerPort.Value.HasValue)
+            {
+                Log(serverId, "[NOTICE] The configured and game-default server ports are not numeric. The Edit Config field was left blank.");
+            }
+
             numericUpDown_EC_ServerQueryPort.IsEnabled = !_editConfigQueryUsesServerPort;
             numericUpDown_EC_ServerQueryPort.ToolTip = _editConfigQueryUsesServerPort
                 ? LocalizationManager.Get("QueryPortUsesServerPort")
                 : null;
             numericUpDown_EC_ServerQueryPort.Value = _editConfigQueryUsesServerPort
                 ? numericUpDown_EC_ServerPort.Value
-                : int.TryParse(serverConfig.ServerQueryPort, out var queryPort) ? queryPort : int.Parse(gameServer.QueryPort);
+                : ResolveEditConfigNumber(serverConfig.ServerQueryPort, gameServer.QueryPort);
+            if (!_editConfigQueryUsesServerPort && !numericUpDown_EC_ServerQueryPort.Value.HasValue)
+            {
+                Log(serverId, "[NOTICE] The configured and game-default query ports are not numeric. The Edit Config field was left blank.");
+            }
+
             textbox_EC_ServerMap.Text = serverConfig.ServerMap;
             textbox_EC_ServerGSLT.Text = serverConfig.ServerGSLT;
             textbox_EC_ServerParam.Text = serverConfig.ServerParam;
@@ -6928,6 +7372,19 @@ namespace WindowsGSM
             return true;
         }
 
+        internal static double? ResolveEditConfigNumber(string configuredValue, object gameDefaultValue)
+        {
+            if (int.TryParse(configuredValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int configuredNumber))
+            {
+                return configuredNumber;
+            }
+
+            string gameDefault = Convert.ToString(gameDefaultValue, CultureInfo.InvariantCulture);
+            return int.TryParse(gameDefault, NumberStyles.Integer, CultureInfo.InvariantCulture, out int defaultNumber)
+                ? defaultNumber
+                : (double?)null;
+        }
+
         private void NumericUpDown_EC_ServerPort_ValueChanged(object sender, RoutedPropertyChangedEventArgs<double?> e)
         {
             if (_editConfigQueryUsesServerPort && e.NewValue.HasValue)
@@ -6936,7 +7393,7 @@ namespace WindowsGSM
             }
         }
 
-        private void Button_EditConfig_Save_Click(object sender, RoutedEventArgs e)
+        private async void Button_EditConfig_Save_Click(object sender, RoutedEventArgs e)
         {
             string serverId = textbox_EC_ServerID.Text;
             if (string.IsNullOrWhiteSpace(serverId)) { return; }
@@ -7013,6 +7470,8 @@ namespace WindowsGSM
             {
                 ServerConfig.SetSetting(serverId, ServerConfig.SettingName.CfxLicenseKey, cfxLicenseKey);
             }
+
+            await SynchronizeServerFirewallAsync(serverId);
 
             if (gameServer is GameServer.MCBE)
             {
@@ -7568,9 +8027,10 @@ namespace WindowsGSM
             MahAppFlyout_Settings.IsOpen = flyout == MahAppFlyout_Settings && !MahAppFlyout_Settings.IsOpen;
             MahAppFlyout_ServerGroups.IsOpen = flyout == MahAppFlyout_ServerGroups && !MahAppFlyout_ServerGroups.IsOpen;
             MahAppFlyout_ViewPlugins.IsOpen = flyout == MahAppFlyout_ViewPlugins && !MahAppFlyout_ViewPlugins.IsOpen;
+            MahAppFlyout_BuiltInFeatures.IsOpen = flyout == MahAppFlyout_BuiltInFeatures && !MahAppFlyout_BuiltInFeatures.IsOpen;
         }
 
-        private void HamburgerMenu_ItemClick(object sender, ItemClickEventArgs e)
+        private async void HamburgerMenu_ItemClick(object sender, ItemClickEventArgs e)
         {
             HamburgerMenuControl.IsPaneOpen = false;
 
@@ -7578,7 +8038,8 @@ namespace WindowsGSM
             hMenu_Dashboard.Visibility = (HamburgerMenuControl.SelectedIndex == 1) ? Visibility.Visible : Visibility.Hidden;
             hMenu_Schedules.Visibility = (HamburgerMenuControl.SelectedIndex == 2) ? Visibility.Visible : Visibility.Hidden;
             hMenu_SharedInstallations.Visibility = (HamburgerMenuControl.SelectedIndex == 3) ? Visibility.Visible : Visibility.Hidden;
-            hMenu_Discordbot.Visibility = (HamburgerMenuControl.SelectedIndex == 4) ? Visibility.Visible : Visibility.Hidden;
+            hMenu_Firewall.Visibility = (HamburgerMenuControl.SelectedIndex == 4) ? Visibility.Visible : Visibility.Hidden;
+            hMenu_Discordbot.Visibility = (HamburgerMenuControl.SelectedIndex == 5) ? Visibility.Visible : Visibility.Hidden;
 
             if (HamburgerMenuControl.SelectedIndex == 2)
             {
@@ -7589,6 +8050,10 @@ namespace WindowsGSM
                 RefreshSharedInstallations();
             }
             else if (HamburgerMenuControl.SelectedIndex == 4)
+            {
+                await RefreshServerFirewallRulesAsync();
+            }
+            else if (HamburgerMenuControl.SelectedIndex == 5)
             {
                 label_DiscordBotCommands.Content = DiscordBot.Configs.GetCommandsList();
                 button_DiscordBotPrefixEdit.Content = LocalizationManager.Get("Edit");
@@ -7615,6 +8080,246 @@ namespace WindowsGSM
             RefreshSharedInstallations();
         }
 
+        private async void Button_RefreshFirewall_Click(object sender, RoutedEventArgs e)
+        {
+            await RefreshServerFirewallRulesAsync(force: true);
+        }
+
+        private async void Button_EnableFirewallRules_Click(object sender, RoutedEventArgs e)
+        {
+            await RefreshServerFirewallRulesAsync(force: true);
+            await SetManagedFirewallRulesEnabledAsync(true);
+        }
+
+        private async void Button_DisableFirewallRules_Click(object sender, RoutedEventArgs e)
+        {
+            await SetManagedFirewallRulesEnabledAsync(false);
+        }
+
+        private async void CheckBox_FirewallAutoSync_Changed(object sender, RoutedEventArgs e)
+        {
+            _firewallAutoSyncEnabled = checkBox_FirewallAutoSync.IsChecked == true;
+            using (var key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\WindowsGSM", true))
+            {
+                key?.SetValue(RegistryKeyName.FirewallAutoSync, _firewallAutoSyncEnabled.ToString());
+            }
+
+            if (_firewallAutoSyncEnabled)
+            {
+                await RefreshServerFirewallRulesAsync(force: true);
+            }
+            else
+            {
+                textBlock_FirewallStatus.Text = LocalizationManager.Get("FirewallAutoSyncDisabledStatus");
+            }
+        }
+
+        private void Button_OpenWindowsFirewall_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                Process.Start(new ProcessStartInfo("wf.msc") { UseShellExecute = true });
+            }
+            catch (Exception exception) when (exception is InvalidOperationException ||
+                exception is System.ComponentModel.Win32Exception || exception is FileNotFoundException)
+            {
+                textBlock_FirewallStatus.Text = string.Format(
+                    CultureInfo.CurrentCulture,
+                    LocalizationManager.Get("FirewallOpenError"),
+                    exception.Message);
+                Log("System", textBlock_FirewallStatus.Text);
+            }
+        }
+
+        private async Task RefreshServerFirewallRulesAsync(bool force = false)
+        {
+            if (!_firewallAutoSyncEnabled && !force)
+            {
+                textBlock_FirewallStatus.Text = LocalizationManager.Get("FirewallAutoSyncDisabledStatus");
+                return;
+            }
+
+            try
+            {
+                List<string> serverIds = GetConfiguredServerIds();
+                var targets = new List<ServerFirewallTarget>();
+                foreach (string serverId in serverIds)
+                {
+                    try
+                    {
+                        ServerConfig serverConfig = new ServerConfig(serverId);
+                        object gameServer = GameServer.Data.Class.Get(serverConfig.ServerGame, serverConfig, PluginsList);
+                        targets.Add(new ServerFirewallTarget(serverId, serverConfig, gameServer));
+                    }
+                    catch (Exception exception) when (IsServerFirewallException(exception))
+                    {
+                        targets.Add(new ServerFirewallTarget(serverId, null, null, error: exception.Message));
+                    }
+                }
+
+                IReadOnlyList<ServerFirewallSyncResult> results = await _serverFirewallManager.SynchronizeManyAsync(targets, serverIds);
+                _serverFirewallResults.Clear();
+                foreach (ServerFirewallSyncResult result in results)
+                {
+                    _serverFirewallResults[result.ServerId] = result;
+                    if (!result.Succeeded)
+                    {
+                        string message = string.IsNullOrWhiteSpace(result.ServerId)
+                            ? string.Format(CultureInfo.CurrentCulture, LocalizationManager.Get("FirewallOrphanCleanupFailure"), result.Error)
+                            : string.Format(
+                                CultureInfo.CurrentCulture,
+                                LocalizationManager.Get("FirewallSyncFailure"),
+                                result.ServerId,
+                                result.Error);
+                        Log(string.IsNullOrWhiteSpace(result.ServerId) ? "System" : result.ServerId, message);
+                    }
+                }
+
+                RenderServerFirewallRows();
+            }
+            catch (Exception exception) when (IsServerFirewallException(exception))
+            {
+                textBlock_FirewallStatus.Text = string.Format(
+                    CultureInfo.CurrentCulture,
+                    LocalizationManager.Get("FirewallStatusFailed"),
+                    exception.Message);
+                Log("System", textBlock_FirewallStatus.Text);
+            }
+        }
+
+        private static List<string> GetConfiguredServerIds()
+        {
+            var serverIds = new List<string>();
+            for (int serverId = 1; serverId <= MAX_SERVER; serverId++)
+            {
+                string id = serverId.ToString(CultureInfo.InvariantCulture);
+                if (File.Exists(ServerPath.GetServersConfigs(id, "WindowsGSM.cfg")))
+                {
+                    serverIds.Add(id);
+                }
+            }
+
+            return serverIds;
+        }
+
+        private async Task SynchronizeServerFirewallAsync(string serverId)
+        {
+            if (!_firewallAutoSyncEnabled)
+            {
+                return;
+            }
+
+            ServerConfig serverConfig;
+            object gameServer;
+            try
+            {
+                serverConfig = new ServerConfig(serverId);
+                gameServer = GameServer.Data.Class.Get(serverConfig.ServerGame, serverConfig, PluginsList);
+            }
+            catch (Exception exception) when (IsServerFirewallException(exception))
+            {
+                StoreServerFirewallResult(new ServerFirewallSyncResult(
+                    serverId,
+                    string.Empty,
+                    string.Empty,
+                    false,
+                    exception.Message));
+                return;
+            }
+
+            await SynchronizeServerFirewallAsync(serverConfig, gameServer);
+        }
+
+        private async Task SynchronizeServerFirewallAsync(ServerConfig serverConfig, object gameServer)
+        {
+            if (!_firewallAutoSyncEnabled)
+            {
+                return;
+            }
+
+            ServerFirewallSyncResult result = await _serverFirewallManager.SynchronizeAsync(
+                serverConfig,
+                gameServer,
+                GetConfiguredServerIds());
+            StoreServerFirewallResult(result);
+        }
+
+        private async Task SetManagedFirewallRulesEnabledAsync(bool enabled)
+        {
+            IReadOnlyList<string> failures = await _serverFirewallManager.SetManagedRulesEnabledAsync(enabled);
+            if (failures.Count == 0)
+            {
+                textBlock_FirewallStatus.Text = LocalizationManager.Get(
+                    enabled ? "FirewallRulesEnabled" : "FirewallRulesDisabled");
+                return;
+            }
+
+            textBlock_FirewallStatus.Text = string.Format(
+                CultureInfo.CurrentCulture,
+                LocalizationManager.Get("FirewallRulesToggleFailure"),
+                string.Join(Environment.NewLine, failures));
+            Log("System", textBlock_FirewallStatus.Text);
+        }
+
+        private void StoreServerFirewallResult(ServerFirewallSyncResult result)
+        {
+            _serverFirewallResults[result.ServerId] = result;
+            if (!result.Succeeded)
+            {
+                Log(result.ServerId, string.Format(
+                    CultureInfo.CurrentCulture,
+                    LocalizationManager.Get("FirewallSyncFailure"),
+                    result.ServerId,
+                    result.Error));
+            }
+
+            if (hMenu_Firewall.Visibility == Visibility.Visible)
+            {
+                RenderServerFirewallRows();
+            }
+        }
+
+        private void RenderServerFirewallRows()
+        {
+            var rows = _serverFirewallResults.Values
+                .OrderBy(result => int.TryParse(result.ServerId, out int serverId) ? serverId : int.MaxValue)
+                .ThenBy(result => result.ServerId, StringComparer.OrdinalIgnoreCase)
+                .Select(result => new
+                {
+                    result.ServerId,
+                    Game = result.GameName,
+                    Ports = result.PortSummary,
+                    Status = result.Succeeded
+                        ? LocalizationManager.Get("FirewallStatusConfigured")
+                        : string.Format(CultureInfo.CurrentCulture, LocalizationManager.Get("FirewallStatusFailed"), result.Error)
+                })
+                .ToList();
+            dataGrid_Firewall.ItemsSource = rows;
+
+            var statusMessages = _serverFirewallResults.Values
+                    .Where(result => !result.Succeeded)
+                    .Select(result => string.IsNullOrWhiteSpace(result.ServerId)
+                        ? string.Format(CultureInfo.CurrentCulture, LocalizationManager.Get("FirewallOrphanCleanupFailure"), result.Error)
+                        : string.Format(CultureInfo.CurrentCulture, LocalizationManager.Get("FirewallSyncFailure"), result.ServerId, result.Error))
+                    .ToList();
+            textBlock_FirewallStatus.Text = statusMessages.Count > 0
+                ? string.Join(Environment.NewLine, statusMessages)
+                : rows.Count == 0 ? LocalizationManager.Get("FirewallEmpty") : string.Empty;
+        }
+
+        private static bool IsServerFirewallException(Exception exception)
+        {
+            return exception is ArgumentException || exception is IOException || exception is InvalidDataException ||
+                exception is InvalidOperationException || exception is NotSupportedException || exception is OperationCanceledException ||
+                exception is TimeoutException || exception is UnauthorizedAccessException || exception is System.Security.SecurityException ||
+                exception is System.ComponentModel.Win32Exception;
+        }
+
+        private void RefreshBuiltInFeatures()
+        {
+            dataGrid_BuiltInFeatures.ItemsSource = BuiltInGameCapabilities.GetFeatureRows();
+        }
+
         private void RefreshSharedInstallations()
         {
             try
@@ -7622,7 +8327,20 @@ namespace WindowsGSM
                 Dictionary<string, ServerTable> serversById = ServerGroups_GetAllServerRows()
                     .ToDictionary(server => server.ID, StringComparer.OrdinalIgnoreCase);
 
-                var rows = SharedInstallationStore.GetInstallations()
+                List<SharedInstallationCleanupFailure> cleanupFailures;
+                var installations = SharedInstallationStore.GetInstallationsForDisplay(out cleanupFailures);
+                List<string> cleanupMessages = cleanupFailures
+                    .Select(failure => string.Format(
+                        CultureInfo.CurrentCulture,
+                        LocalizationManager.Get("SharedInstallationCleanupFailed"),
+                        failure.InstallationId + ": " + failure.Message))
+                    .ToList();
+                foreach (string cleanupMessage in cleanupMessages)
+                {
+                    Log("System", cleanupMessage);
+                }
+
+                var rows = installations
                     .Select(installation =>
                     {
                         List<string> serverNames = SharedInstallationStore.GetLinkedServerIds(installation.Id)
@@ -7651,9 +8369,12 @@ namespace WindowsGSM
                     .ToList();
 
                 dataGrid_SharedInstallations.ItemsSource = rows;
-                textBlock_SharedInstallationsStatus.Text = rows.Count == 0
-                    ? LocalizationManager.Get("SharedInstallationsEmpty")
-                    : string.Empty;
+                string statusMessage = string.Join(Environment.NewLine, cleanupMessages);
+                if (rows.Count == 0 && string.IsNullOrWhiteSpace(statusMessage))
+                {
+                    statusMessage = LocalizationManager.Get("SharedInstallationsEmpty");
+                }
+                textBlock_SharedInstallationsStatus.Text = statusMessage;
             }
             catch (Exception exception) when (exception is IOException || exception is InvalidDataException || exception is UnauthorizedAccessException || exception is InvalidOperationException || exception is ArgumentException)
             {
@@ -7669,9 +8390,14 @@ namespace WindowsGSM
         {
             if (HamburgerMenuControl.SelectedOptionsIndex == 0)
             {
-                ToggleMahappFlyout(MahAppFlyout_ViewPlugins);
+                RefreshBuiltInFeatures();
+                ToggleMahappFlyout(MahAppFlyout_BuiltInFeatures);
             }
             else if (HamburgerMenuControl.SelectedOptionsIndex == 1)
+            {
+                ToggleMahappFlyout(MahAppFlyout_ViewPlugins);
+            }
+            else if (HamburgerMenuControl.SelectedOptionsIndex == 2)
             {
                 ToggleMahappFlyout(MahAppFlyout_Settings);
             }
@@ -7695,9 +8421,13 @@ namespace WindowsGSM
             {
                 HamburgerMenuControl.SelectedIndex = 3;
             }
-            else if (hMenu_Discordbot.Visibility == Visibility.Visible)
+            else if (hMenu_Firewall.Visibility == Visibility.Visible)
             {
                 HamburgerMenuControl.SelectedIndex = 4;
+            }
+            else if (hMenu_Discordbot.Visibility == Visibility.Visible)
+            {
+                HamburgerMenuControl.SelectedIndex = 5;
             }
         }
 
@@ -7708,6 +8438,7 @@ namespace WindowsGSM
             hMenu_Dashboard.Visibility = Visibility.Hidden;
             hMenu_Schedules.Visibility = Visibility.Hidden;
             hMenu_SharedInstallations.Visibility = Visibility.Hidden;
+            hMenu_Firewall.Visibility = Visibility.Hidden;
             hMenu_Discordbot.Visibility = Visibility.Hidden;
 
             await Task.Delay(1); // Delay 0.001 sec due to a bug

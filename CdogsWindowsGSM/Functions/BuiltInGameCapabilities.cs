@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
+using System.Reflection;
 
 namespace WindowsGSM.Functions
 {
@@ -14,6 +16,7 @@ namespace WindowsGSM.Functions
             GameServer.GMOD.FullName,
             GameServer.HL2DM.FullName,
             GameServer.INS.FullName,
+            GameServer.L4D.FullName,
             GameServer.L4D2.FullName,
             GameServer.NMRIH.FullName,
             GameServer.TF2.FullName,
@@ -42,14 +45,21 @@ namespace WindowsGSM.Functions
             return games;
         }
 
+        private static string NormalizeGameKey(string gameKey)
+        {
+            return string.Equals(gameKey, GameServer.L4D.LegacyPluginFullName, StringComparison.OrdinalIgnoreCase)
+                ? GameServer.L4D.FullName
+                : (gameKey ?? string.Empty);
+        }
+
         public static bool SupportsSharedInstallation(string gameKey)
         {
-            return SharedInstallationGames.Contains(gameKey ?? string.Empty);
+            return SharedInstallationGames.Contains(NormalizeGameKey(gameKey));
         }
 
         public static bool IsGoldSourceGame(string gameKey)
         {
-            return GoldSourceGames.Contains(gameKey ?? string.Empty);
+            return GoldSourceGames.Contains(NormalizeGameKey(gameKey));
         }
 
         public static bool SupportsSharedInstallation(string gameKey, object gameServerObject)
@@ -62,7 +72,7 @@ namespace WindowsGSM.Functions
                 return false;
             }
 
-            string normalizedGameKey = gameKey ?? string.Empty;
+            string normalizedGameKey = NormalizeGameKey(gameKey);
             if (GoldSourceGames.Contains(normalizedGameKey) &&
                 gameServerObject is GameServer.Engine.GoldSource goldSource)
             {
@@ -93,11 +103,67 @@ namespace WindowsGSM.Functions
 
         public static bool SupportsConfigurationBackup(string gameKey)
         {
-            return string.Equals(gameKey, GameServer.RUST.FullName, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(gameKey, GameServer.COD1.FullName, StringComparison.OrdinalIgnoreCase) ||
-                string.Equals(gameKey, GameServer.MCBE.FullName, StringComparison.OrdinalIgnoreCase) ||
-                IsGoldSourceGame(gameKey) ||
-                SourceGames.Contains(gameKey ?? string.Empty);
+            string normalizedGameKey = NormalizeGameKey(gameKey);
+            return string.Equals(normalizedGameKey, GameServer.RUST.FullName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(normalizedGameKey, GameServer.COD1.FullName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(normalizedGameKey, GameServer.Luanti.FullName, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(normalizedGameKey, GameServer.MCBE.FullName, StringComparison.OrdinalIgnoreCase) ||
+                IsGoldSourceGame(normalizedGameKey) ||
+                SourceGames.Contains(normalizedGameKey);
+        }
+
+        public static IReadOnlyList<BuiltInGameFeatureRow> GetFeatureRows()
+        {
+            string gameNamespace = typeof(GameServer.CSGO).Namespace;
+            return typeof(GameServer.CSGO).Assembly.GetTypes()
+                .Where(type => string.Equals(type.Namespace, gameNamespace, StringComparison.Ordinal))
+                .Select(type =>
+                {
+                    FieldInfo field = type.GetField("FullName", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly);
+                    if (field?.FieldType == typeof(string))
+                    {
+                        return field.GetValue(null) as string;
+                    }
+
+                    PropertyInfo property = type.GetProperty("FullName", BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.Static | BindingFlags.DeclaredOnly);
+                    return property?.PropertyType == typeof(string) && property.GetMethod?.IsStatic == true
+                        ? property.GetValue(null) as string
+                        : null;
+                })
+                .Where(gameKey => !string.IsNullOrWhiteSpace(gameKey))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(gameKey => gameKey, StringComparer.CurrentCultureIgnoreCase)
+                .Select(gameKey =>
+                {
+                    var serverConfig = new ServerConfig("built-in-features");
+                    object gameServer = GameServer.Data.Class.Get(gameKey, serverConfig);
+                    return new BuiltInGameFeatureRow(
+                        gameKey,
+                        SupportsSharedInstallation(gameKey),
+                        SupportsConfigurationBackup(gameKey),
+                        supportsProcessHealthCheck: gameServer != null,
+                        supportsQueryHealthCheck: HasQueryMethod(gameServer),
+                        supportsGlobalServerListCheck: GlobalServerList.IsSupportedGame(gameKey));
+                })
+                .ToList();
+        }
+
+        private static bool HasQueryMethod(object gameServer)
+        {
+            if (gameServer == null)
+            {
+                return false;
+            }
+
+            Type serverType = gameServer.GetType();
+            FieldInfo queryField = serverType.GetField("QueryMethod", BindingFlags.Public | BindingFlags.Instance);
+            if (queryField != null)
+            {
+                return queryField.GetValue(gameServer) != null;
+            }
+
+            PropertyInfo queryProperty = serverType.GetProperty("QueryMethod", BindingFlags.Public | BindingFlags.Instance);
+            return queryProperty?.GetValue(gameServer) != null;
         }
 
         public static List<ConfigurationBackupPath> GetConfigurationBackupPlan(
@@ -117,7 +183,7 @@ namespace WindowsGSM.Functions
                 throw new ArgumentException("The per-instance serverfiles root is required.", nameof(roots));
             }
 
-            string gameKey = serverConfig.ServerGame ?? string.Empty;
+            string gameKey = NormalizeGameKey(serverConfig.ServerGame);
             if (string.Equals(gameKey, GameServer.RUST.FullName, StringComparison.OrdinalIgnoreCase))
             {
                 return new List<ConfigurationBackupPath>
@@ -138,6 +204,16 @@ namespace WindowsGSM.Functions
                 }
 
                 return paths;
+            }
+
+            if (string.Equals(gameKey, GameServer.Luanti.FullName, StringComparison.OrdinalIgnoreCase))
+            {
+                string worldName = GameServer.Luanti.ResolveWorldName(serverConfig.ServerMap);
+                return new List<ConfigurationBackupPath>
+                {
+                    new ConfigurationBackupPath("serverfiles", GameServer.Luanti.ConfigFileName),
+                    new ConfigurationBackupPath("serverfiles", Path.Combine("worlds", worldName, "world.mt"))
+                };
             }
 
             if (IsGoldSourceGame(gameKey))
@@ -205,6 +281,47 @@ namespace WindowsGSM.Functions
             }
 
             throw new InvalidOperationException($"Configuration-only backups are not enabled for '{gameKey}'.");
+        }
+    }
+
+    internal sealed class BuiltInGameFeatureRow
+    {
+        public string Game { get; }
+        public string SharedInstallation { get; }
+        public string ConfigurationBackup { get; }
+        public string ProcessHealth { get; }
+        public string QueryHealth { get; }
+        public string GlobalServerList { get; }
+        public string SharedInstallationIndicator => SupportsSharedInstallation ? "\u2713" : "\u2717";
+        public string ConfigurationBackupIndicator => SupportsConfigurationBackup ? "\u2713" : "\u2717";
+        public string ProcessHealthIndicator => SupportsProcessHealthCheck ? "\u2713" : "\u2717";
+        public string QueryHealthIndicator => SupportsQueryHealthCheck ? "\u2713" : "\u2717";
+        public string GlobalServerListIndicator => SupportsGlobalServerListCheck ? "\u2713" : "\u2717";
+        public bool SupportsSharedInstallation { get; }
+        public bool SupportsConfigurationBackup { get; }
+        public bool SupportsProcessHealthCheck { get; }
+        public bool SupportsQueryHealthCheck { get; }
+        public bool SupportsGlobalServerListCheck { get; }
+
+        public BuiltInGameFeatureRow(
+            string game,
+            bool supportsSharedInstallation,
+            bool supportsConfigurationBackup,
+            bool supportsProcessHealthCheck,
+            bool supportsQueryHealthCheck,
+            bool supportsGlobalServerListCheck)
+        {
+            Game = game;
+            SupportsSharedInstallation = supportsSharedInstallation;
+            SupportsConfigurationBackup = supportsConfigurationBackup;
+            SupportsProcessHealthCheck = supportsProcessHealthCheck;
+            SupportsQueryHealthCheck = supportsQueryHealthCheck;
+            SupportsGlobalServerListCheck = supportsGlobalServerListCheck;
+            SharedInstallation = Localization.LocalizationManager.Get(supportsSharedInstallation ? "FeatureSupported" : "FeatureNotSupported");
+            ConfigurationBackup = Localization.LocalizationManager.Get(supportsConfigurationBackup ? "FeatureSupported" : "FeatureNotSupported");
+            ProcessHealth = Localization.LocalizationManager.Get(supportsProcessHealthCheck ? "FeatureSupported" : "FeatureNotSupported");
+            QueryHealth = Localization.LocalizationManager.Get(supportsQueryHealthCheck ? "FeatureSupported" : "FeatureNotSupported");
+            GlobalServerList = Localization.LocalizationManager.Get(supportsGlobalServerListCheck ? "FeatureSupported" : "FeatureNotSupported");
         }
     }
 }

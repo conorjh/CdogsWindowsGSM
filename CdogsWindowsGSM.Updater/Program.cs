@@ -3,6 +3,7 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Text.Json;
 using System.Threading;
 
 namespace CdogsWindowsGSM.Updater
@@ -10,7 +11,7 @@ namespace CdogsWindowsGSM.Updater
     internal static class Program
     {
         private const string ApplicationFileName = "CdogsWindowsGSM.exe";
-        private const string ApplicationDownloadUrl = "https://github.com/conorjh/CdogsWindowsGSM/releases/latest/download/CdogsWindowsGSM.exe";
+        private const string LatestReleaseApiUrl = "https://api.github.com/repos/conorjh/CdogsWindowsGSM/releases?per_page=1";
         private const int ReplaceAttempts = 40;
 
         private static int Main(string[] args)
@@ -78,7 +79,8 @@ namespace CdogsWindowsGSM.Updater
         private static void DownloadLatestApplication(string destinationPath)
         {
             ServicePointManager.SecurityProtocol = SecurityProtocolType.Tls12;
-            var request = (HttpWebRequest)WebRequest.Create(ApplicationDownloadUrl);
+            string applicationDownloadUrl = GetLatestApplicationDownloadUrl();
+            var request = (HttpWebRequest)WebRequest.Create(applicationDownloadUrl);
             request.Method = "GET";
             request.UserAgent = "CdogsWindowsGSM-Updater";
             request.Timeout = 30000;
@@ -94,6 +96,87 @@ namespace CdogsWindowsGSM.Updater
                 }
 
                 responseStream.CopyTo(destinationStream);
+            }
+        }
+
+        private static string GetLatestApplicationDownloadUrl()
+        {
+            var request = (HttpWebRequest)WebRequest.Create(LatestReleaseApiUrl);
+            request.Method = "GET";
+            request.UserAgent = "CdogsWindowsGSM-Updater";
+            request.Accept = "application/vnd.github+json";
+            request.Timeout = 30000;
+            request.ReadWriteTimeout = 30000;
+
+            using (WebResponse response = request.GetResponse())
+            using (Stream responseStream = response.GetResponseStream())
+            {
+                if (responseStream == null)
+                {
+                    throw new InvalidDataException("GitHub returned an empty release response.");
+                }
+
+                using (var responseReader = new StreamReader(responseStream))
+                {
+                    JsonDocument releaseList;
+                    try
+                    {
+                        releaseList = JsonDocument.Parse(responseReader.ReadToEnd());
+                    }
+                    catch (JsonException ex)
+                    {
+                        throw new InvalidDataException("GitHub returned invalid release data.", ex);
+                    }
+
+                    using (releaseList)
+                    {
+                        JsonElement releases = releaseList.RootElement;
+                        if (releases.ValueKind != JsonValueKind.Array || releases.GetArrayLength() == 0)
+                        {
+                            throw new InvalidDataException("GitHub returned no published CdogsWindowsGSM releases.");
+                        }
+
+                        JsonElement latestRelease = releases[0];
+                        JsonElement assets;
+                        if (latestRelease.ValueKind != JsonValueKind.Object ||
+                            !latestRelease.TryGetProperty("assets", out assets) ||
+                            assets.ValueKind != JsonValueKind.Array)
+                        {
+                            throw new InvalidDataException("The latest CdogsWindowsGSM release has no usable assets.");
+                        }
+
+                        foreach (JsonElement asset in assets.EnumerateArray())
+                        {
+                            JsonElement assetName;
+                            JsonElement downloadUrl;
+                            if (asset.ValueKind != JsonValueKind.Object ||
+                                !asset.TryGetProperty("name", out assetName) ||
+                                assetName.ValueKind != JsonValueKind.String ||
+                                !string.Equals(assetName.GetString(), ApplicationFileName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                continue;
+                            }
+
+                            if (!asset.TryGetProperty("browser_download_url", out downloadUrl) ||
+                                downloadUrl.ValueKind != JsonValueKind.String)
+                            {
+                                continue;
+                            }
+
+                            Uri downloadUri;
+                            if (!Uri.TryCreate(downloadUrl.GetString(), UriKind.Absolute, out downloadUri) ||
+                                !string.Equals(downloadUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
+                                !string.Equals(downloadUri.Host, "github.com", StringComparison.OrdinalIgnoreCase))
+                            {
+                                throw new InvalidDataException("The latest application asset does not have a valid GitHub download URL.");
+                            }
+
+                            return downloadUri.AbsoluteUri;
+                        }
+
+                        throw new InvalidDataException("The latest release does not contain a valid " + ApplicationFileName + " asset.");
+                    }
+                }
             }
         }
 

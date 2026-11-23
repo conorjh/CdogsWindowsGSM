@@ -13,14 +13,15 @@ Config-only is not selected automatically as a fallback. If the selected game/pl
 
 ## Current built-in scopes
 
-The host has explicit config-only plans for 20 built-in identities. These declarations are source-level scope, not live qualification of every game's read/write behavior. The [built-in report](BUILT-IN-GAME-SHARED-INSTALL-CONFIG-REPORT.md) contains the exact title names and implementation notes.
+The host has explicit config-only plans for 22 built-in identities. These declarations are source-level scope, not live qualification of every game's read/write behavior. The [game integration Alpha matrix](GAME-INTEGRATION-ALPHA-MATRIX.md) tracks per-game status; the exact current paths are listed below.
 
 | Built-in family | Declared paths | Notes |
 |---|---|---|
-| Source (10 titles) | Per-instance `<game>\cfg\server.cfg` and `<game>\mapcycle.txt` | Only those two paths are archived; other game state is excluded. |
+| Source (11 titles) | Per-instance `<game>\cfg\server.cfg` and `<game>\mapcycle.txt` | Only those two paths are archived; other game state is excluded. |
 | GoldSrc (7 titles) | Per-instance `<mod>\server.cfg` and map-cycle file | In shared mode, the map cycle is a unique `windowsgsm_goldsrc_mapcycle_<serverId>.txt` under the shared mod directory. The matching shared installation/build is part of archive identity. |
 | Call of Duty 1 | `main\server.cfg`; when MeatBots is enabled, also `CoD1MeatBots_RC2\server.cfg` | The generated `wgs_cod1_meatbots.cfg` is omitted because the host regenerates it from server settings. |
-| Minecraft Bedrock | Per-instance `server.properties`, `allowlist.json`, and `permissions.json` | WindowsGSM synchronizes the managed server name, player limit, level name, IPv4 port, and IPv6 port into `server.properties`; the IPv6 port is set to IPv4 + 1, so the IPv4 port must be 1–65534. Other properties are preserved. Worlds, logs, shared binaries, and behavior/resource-pack runtime directories are excluded. |
+| Minecraft Bedrock | Per-instance `server.properties`, `allowlist.json`, and `permissions.json` | WindowsGSM synchronizes the managed server name, player limit, level name, IPv4 port, and IPv6 port into `server.properties` when settings are saved and again immediately before each launch; the IPv6 port is set to IPv4 + 1, so the IPv4 port must be 1–65534. Other properties are preserved. A focused test verifies a stale port is corrected before the launch process starts; the actual Bedrock listener still needs live verification. Worlds, logs, shared binaries, and behavior/resource-pack runtime directories are excluded. |
+| Luanti | Per-instance `minetest.conf` and the selected world's `world.mt` | The world map, player/auth databases, games, mods, logs, and engine binaries are excluded; full-server backup is needed for world recovery. |
 | Rust | Per-instance `serverfiles\server.cfg` | Rust shared installation is disabled; this config-only scope remains separate from shared binaries. |
 
 Other built-in games do not currently have a host-owned config-only scope. Plugin V2 can declare a path list through `GetConfigOnlyBackupPlan(PluginInstanceContext)`, but the host validates the list and owns archive creation and restore. Plugin plans currently receive only the approved per-instance `serverfiles` root. No plugin has live Alpha qualification; method presence alone is not approval. Shared-install and config-only eligibility are separate decisions.

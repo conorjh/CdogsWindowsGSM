@@ -1,6 +1,7 @@
-﻿using System.Threading.Tasks;
+﻿using System;
 using System.Diagnostics;
 using System.IO;
+using System.Threading.Tasks;
 
 namespace WindowsGSM.GameServer
 {
@@ -59,17 +60,18 @@ namespace WindowsGSM.GameServer
 
         public async Task<Process> Start()
         {
+            Error = string.Empty;
+            string serverFilesPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID);
+            if (!await EnsureDirectXRuntimeAsync(serverFilesPath))
+            {
+                return null;
+            }
+
             // Use DZSALModServer.exe if the exe exist, otherwise use original
-            string dzsaPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "DZSALModServer.exe");
+            string dzsaPath = Path.Combine(serverFilesPath, "DZSALModServer.exe");
             if (File.Exists(dzsaPath))
             {
                 StartPath = "DZSALModServer.exe";
-
-                WindowsFirewall firewall = new WindowsFirewall(StartPath, dzsaPath);
-                if (!await firewall.IsRuleExist())
-                {
-                    await firewall.AddRule();
-                }
             }
             else
             {
@@ -121,6 +123,20 @@ namespace WindowsGSM.GameServer
             p.Start();
 
             return p;
+        }
+
+        private async Task<bool> EnsureDirectXRuntimeAsync(string serverFilesPath)
+        {
+            try
+            {
+                await Functions.LegacyDirectXRuntime.EnsureInstalledAsync(serverFilesPath);
+                return true;
+            }
+            catch (InvalidOperationException exception)
+            {
+                Error = exception.Message;
+                return false;
+            }
         }
 
         public async Task Stop(Process p)

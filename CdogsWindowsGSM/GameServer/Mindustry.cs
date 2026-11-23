@@ -8,6 +8,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Xml;
+using System.Xml.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using WindowsGSM.Functions;
@@ -16,7 +18,7 @@ namespace WindowsGSM.GameServer
 {
     class Mindustry
     {
-        private const string ReleaseApi = "https://api.github.com/repos/Anuken/Mindustry/releases/latest";
+        private const string ReleaseFeedUrl = "https://github.com/Anuken/Mindustry/releases.atom";
         private const string ServerJarName = "server-release.jar";
         private const string VersionFileName = "mindustry_version.txt";
         private readonly ServerConfig _serverData;
@@ -94,16 +96,27 @@ namespace WindowsGSM.GameServer
             string javaPath = FindJavaExecutable();
             if (string.IsNullOrWhiteSpace(javaPath))
             {
-                Error = "Mindustry requires Java 17 or newer. Set JAVA_HOME or add a compatible java.exe to PATH.";
-                return null;
+                try
+                {
+                    javaPath = await Engine.MinecraftJava.EnsureJavaRuntimeAsync(17);
+                }
+                catch (Exception exception) when (
+                    exception is WebException
+                    || exception is JsonException
+                    || exception is InvalidDataException
+                    || exception is IOException
+                    || exception is UnauthorizedAccessException
+                    || exception is CryptographicException
+                    || exception is TaskCanceledException
+                    || exception is NotSupportedException
+                    || exception is ArgumentException)
+                {
+                    Error = $"Failed to prepare Mindustry's Java 17 runtime: {exception.Message}";
+                    return null;
+                }
             }
 
             string serverFilesPath = ServerPath.GetServersServerFiles(_serverData.ServerID);
-            var firewall = new WindowsFirewall("java.exe", javaPath);
-            if (!await firewall.IsRuleExist() && !await firewall.AddRule())
-            {
-                Notice = "Could not add Java to the Windows Firewall; verify the server port is allowed.";
-            }
 
             string arguments = $"-jar \"{ServerJarName}\" {_serverData.ServerParam}".Trim();
             var process = new Process
@@ -117,18 +130,15 @@ namespace WindowsGSM.GameServer
                     UseShellExecute = false,
                     CreateNoWindow = AllowsEmbedConsole,
                     RedirectStandardInput = true,
-                    RedirectStandardOutput = AllowsEmbedConsole,
-                    RedirectStandardError = AllowsEmbedConsole
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
                 },
                 EnableRaisingEvents = true
             };
 
-            if (AllowsEmbedConsole)
-            {
-                var serverConsole = new ServerConsole(_serverData.ServerID);
-                process.OutputDataReceived += serverConsole.AddOutput;
-                process.ErrorDataReceived += serverConsole.AddOutput;
-            }
+            var serverConsole = new ServerConsole(_serverData.ServerID);
+            process.OutputDataReceived += serverConsole.AddOutput;
+            process.ErrorDataReceived += serverConsole.AddOutput;
 
             bool processStarted = false;
             try
@@ -140,11 +150,8 @@ namespace WindowsGSM.GameServer
                     process.Dispose();
                     return null;
                 }
-                if (AllowsEmbedConsole)
-                {
-                    process.BeginOutputReadLine();
-                    process.BeginErrorReadLine();
-                }
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
 
                 int port = int.Parse(_serverData.ServerPort);
                 int maxPlayers = int.Parse(_serverData.ServerMaxPlayer);
@@ -378,52 +385,79 @@ namespace WindowsGSM.GameServer
         {
             var webClient = new WebClient();
             webClient.Headers[HttpRequestHeader.UserAgent] = "CdogsWindowsGSM";
-            webClient.Headers[HttpRequestHeader.Accept] = "application/vnd.github+json";
             return webClient;
         }
 
         private static async Task<ReleaseInfo> GetLatestRelease(WebClient webClient)
         {
-            JObject release = JObject.Parse(await webClient.DownloadStringTaskAsync(ReleaseApi));
-            string version = ((string)release["tag_name"] ?? string.Empty).Trim();
-            string normalizedVersion = version.StartsWith("v", StringComparison.OrdinalIgnoreCase) ? version.Substring(1) : version;
-            if (!Regex.IsMatch(normalizedVersion, @"^\d+(?:\.\d+)+$"))
+            XDocument releaseFeed;
+            try
             {
-                throw new InvalidDataException("GitHub returned an invalid Mindustry release tag.");
+                releaseFeed = XDocument.Parse(await webClient.DownloadStringTaskAsync(ReleaseFeedUrl));
+            }
+            catch (XmlException exception)
+            {
+                throw new InvalidDataException("GitHub returned invalid Mindustry release metadata.", exception);
             }
 
-            JArray assets = release["assets"] as JArray;
-            JToken serverAsset = null;
-            if (assets != null)
+            XNamespace atom = "http://www.w3.org/2005/Atom";
+            string releaseTag = string.Empty;
+            foreach (XElement entry in releaseFeed.Descendants(atom + "entry"))
             {
-                foreach (JToken asset in assets)
+                string releaseUrl = (string)entry.Element(atom + "link")?.Attribute("href");
+                if (!Uri.TryCreate(releaseUrl, UriKind.Absolute, out Uri releaseUri)
+                    || !string.Equals(releaseUri.Host, "github.com", StringComparison.OrdinalIgnoreCase))
                 {
-                    if (string.Equals((string)asset["name"], ServerJarName, StringComparison.Ordinal))
-                    {
-                        serverAsset = asset;
-                        break;
-                    }
+                    continue;
+                }
+
+                string candidate = Path.GetFileName(releaseUri.AbsolutePath);
+                string normalizedCandidate = candidate.StartsWith("v", StringComparison.OrdinalIgnoreCase)
+                    ? candidate.Substring(1)
+                    : candidate;
+                if (Regex.IsMatch(normalizedCandidate, @"^\d+(?:\.\d+)+$", RegexOptions.CultureInvariant))
+                {
+                    releaseTag = candidate;
+                    break;
                 }
             }
-            if (serverAsset == null)
+
+            if (string.IsNullOrWhiteSpace(releaseTag))
             {
-                throw new InvalidDataException("The latest Mindustry release did not include server-release.jar.");
+                throw new InvalidDataException("GitHub did not publish a stable Mindustry release in its release feed.");
             }
 
-            string digest = (string)serverAsset["digest"];
-            string downloadUrl = (string)serverAsset["browser_download_url"];
-            Uri uri;
-            if (!Regex.IsMatch(digest ?? string.Empty, @"^sha256:[a-f0-9]{64}$", RegexOptions.IgnoreCase) ||
-                !Uri.TryCreate(downloadUrl, UriKind.Absolute, out uri) ||
-                !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
-                !uri.IsDefaultPort ||
-                !string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase) ||
-                !string.Equals(Uri.UnescapeDataString(uri.AbsolutePath), $"/Anuken/Mindustry/releases/download/{version}/{ServerJarName}", StringComparison.Ordinal))
+            string assetsUrl = $"https://github.com/Anuken/Mindustry/releases/expanded_assets/{Uri.EscapeDataString(releaseTag)}";
+            string assetsHtml = await webClient.DownloadStringTaskAsync(assetsUrl);
+            Match assetMatch = Regex.Match(
+                assetsHtml,
+                @"<li\b[^>]*>[\s\S]*?<a href=""(?<url>/Anuken/Mindustry/releases/download/[^""]+/server-release\.jar)""[\s\S]*?<span[^>]*class=""Truncate-text""[^>]*>sha256:(?<sha256>[a-f0-9]{64})</span>[\s\S]*?</li>",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (!assetMatch.Success)
             {
-                throw new InvalidDataException("GitHub returned invalid Mindustry download or checksum metadata.");
+                throw new InvalidDataException($"Mindustry release {releaseTag} did not expose a server-release.jar SHA-256 digest.");
             }
 
-            return new ReleaseInfo { DownloadUrl = uri, Sha256 = digest.Substring("sha256:".Length), Version = version };
+            string downloadUrl = "https://github.com" + assetMatch.Groups["url"].Value;
+            Uri downloadUri;
+            string expectedPath = $"/Anuken/Mindustry/releases/download/{releaseTag}/{ServerJarName}";
+            if (!Uri.TryCreate(downloadUrl, UriKind.Absolute, out downloadUri)
+                || downloadUri.Scheme != Uri.UriSchemeHttps
+                || !string.Equals(downloadUri.Host, "github.com", StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(Uri.UnescapeDataString(downloadUri.AbsolutePath), expectedPath, StringComparison.Ordinal))
+            {
+                throw new InvalidDataException("GitHub returned an invalid Mindustry server JAR URL.");
+            }
+
+            string version = releaseTag.StartsWith("v", StringComparison.OrdinalIgnoreCase)
+                ? releaseTag.Substring(1)
+                : releaseTag;
+            return new ReleaseInfo
+            {
+                DownloadUrl = downloadUri,
+                Sha256 = assetMatch.Groups["sha256"].Value,
+                Version = version
+            };
         }
 
         private static bool VerifySha256(string filePath, string expectedHash)

@@ -12,6 +12,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Xml.Linq;
 using WindowsGSM.Functions;
 using GameServer = WindowsGSM.GameServer;
 
@@ -23,8 +24,13 @@ namespace CdogsWindowsGSM.Tests;
 public sealed class BuiltInGameIntegrationTests
 {
     private static readonly TimeSpan ProcessTimeout = TimeSpan.FromMinutes(90);
+    private static readonly TimeSpan RemoteBuildTimeout = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan ConfigurationTimeout = TimeSpan.FromMinutes(5);
     private static readonly TimeSpan ServerStartupGracePeriod = TimeSpan.FromSeconds(15);
+    private static readonly TimeSpan MinecraftStartupTimeout = TimeSpan.FromMinutes(5);
+    private static readonly TimeSpan RustReadinessTimeout = TimeSpan.FromMinutes(10);
+    private static readonly TimeSpan RustReadinessRetryInterval = TimeSpan.FromSeconds(1);
+    private static readonly TimeSpan RustQueryProbeTimeout = TimeSpan.FromSeconds(30);
     private static readonly TimeSpan ServerShutdownTimeout = TimeSpan.FromSeconds(30);
     private const int ServerDirectoryDeletionRetryAttempts = 12;
     private static readonly TimeSpan ServerDirectoryDeletionRetryDelay = TimeSpan.FromSeconds(5);
@@ -190,6 +196,42 @@ public sealed class BuiltInGameIntegrationTests
         }
     }
 
+    public static IEnumerable<object[]> SourceAndGoldSourceGameCases()
+    {
+        foreach (string gameKey in GetBuiltInGameKeys())
+        {
+            object gameServer = GameServer.Data.Class.Get(gameKey, new ServerConfig("integration-map-catalog"));
+            if ((gameServer is GameServer.Engine.Source || gameServer is GameServer.Engine.GoldSource) &&
+                !string.IsNullOrWhiteSpace(ReadStringMember(gameServer, "Game")))
+            {
+                yield return new object[] { gameKey };
+            }
+        }
+    }
+
+    public static IEnumerable<object[]> GoldSourceGameCases()
+    {
+        foreach (string gameKey in GetBuiltInGameKeys())
+        {
+            object gameServer = GameServer.Data.Class.Get(gameKey, new ServerConfig("integration-goldsrc-import-catalog"));
+            if (gameServer is GameServer.Engine.GoldSource)
+            {
+                yield return new object[] { gameKey };
+            }
+        }
+    }
+
+    public static IEnumerable<object[]> BuiltInConfigurationBackupCases()
+    {
+        foreach (string gameKey in GetBuiltInGameKeys())
+        {
+            if (BuiltInGameCapabilities.SupportsConfigurationBackup(gameKey))
+            {
+                yield return new object[] { gameKey };
+            }
+        }
+    }
+
     public static IEnumerable<object[]> V2PluginCases()
     {
         yield return new object[] { "GarrysModV2", "GarrysModV2.cs" };
@@ -197,7 +239,8 @@ public sealed class BuiltInGameIntegrationTests
     }
 
     [TestMethod]
-    public void EveryBuiltInGameHasAnInstallUpdateAndStartOperation()
+    [TestCategory("V1")]
+    public void EveryBuiltInGameExposesTheRequiredV1OperationSurface()
     {
         string[] gameKeys = GetBuiltInGameKeys();
         Assert.IsTrue(gameKeys.Length > 0, "No built-in games were found.");
@@ -213,20 +256,193 @@ public sealed class BuiltInGameIntegrationTests
             Assert.IsNotNull(FindProcessOperation(gameServer, "Update"), $"'{gameKey}' has no Task<Process> Update operation.");
             Assert.IsNotNull(FindProcessOperation(gameServer, "Start"), $"'{gameKey}' has no Task<Process> Start operation.");
             Assert.IsNotNull(FindStopOperation(gameServer), $"'{gameKey}' has no Stop(Process) operation.");
+
+            MethodInfo? installValidation = gameServer.GetType().GetMethod(
+                "IsInstallValid",
+                BindingFlags.Instance | BindingFlags.Public,
+                binder: null,
+                types: Type.EmptyTypes,
+                modifiers: null);
+            Assert.IsNotNull(installValidation, $"'{gameKey}' has no IsInstallValid operation.");
+            Assert.AreEqual(typeof(bool), installValidation.ReturnType, $"'{gameKey}' IsInstallValid must return Boolean.");
+
+            MethodInfo? importValidation = gameServer.GetType().GetMethod(
+                "IsImportValid",
+                BindingFlags.Instance | BindingFlags.Public,
+                binder: null,
+                types: new[] { typeof(string) },
+                modifiers: null);
+            Assert.IsNotNull(importValidation, $"'{gameKey}' has no IsImportValid(string) operation.");
+            Assert.AreEqual(typeof(bool), importValidation.ReturnType, $"'{gameKey}' IsImportValid must return Boolean.");
         }
     }
 
     [TestMethod]
-    [DynamicData(nameof(BuiltInGameCases), DynamicDataSourceType.Method)]
-    public async Task InstallUpdateVerifyLaunchAndRestoreWorkForBuiltInGame(string gameKey)
+    [TestCategory("V1")]
+    [DynamicData(nameof(GoldSourceGameCases), DynamicDataSourceType.Method)]
+    public void V1GoldSourceImportValidationAcceptsAValidExecutableFixture(string gameKey)
     {
-        if (!TryGetSettings(gameKey, out IntegrationSettings settings, out string skipReason))
-        {
-            Assert.Inconclusive(skipReason);
-            return;
-        }
+        string rootPath = Path.Combine(Path.GetTempPath(), "CdogsWindowsGSM.V1GoldSourceImportTests", Guid.NewGuid().ToString("N"));
+        string importPath = Path.Combine(rootPath, "import");
+        Directory.CreateDirectory(importPath);
 
-        if (!SteamCredentials.TryLoad(settings.CredentialsPath, out SteamCredentials credentials, out skipReason))
+        try
+        {
+            using IDisposable rootScope = ServerPath.UseRootForTesting(rootPath);
+            var config = new ServerConfig("v1-goldsrc-import-" + GetGameSuffix(gameKey))
+            {
+                ServerGame = gameKey
+            };
+            object gameServer = GameServer.Data.Class.Get(gameKey, config);
+            string startPath = ReadStringMember(gameServer, "StartPath");
+            Assert.IsFalse(string.IsNullOrWhiteSpace(startPath), $"'{gameKey}' has no import executable identity.");
+            File.WriteAllText(Path.Combine(importPath, startPath), string.Empty);
+
+            MethodInfo importValidation = gameServer.GetType().GetMethod(
+                "IsImportValid",
+                BindingFlags.Instance | BindingFlags.Public,
+                binder: null,
+                types: new[] { typeof(string) },
+                modifiers: null);
+            Assert.IsNotNull(importValidation, $"'{gameKey}' has no IsImportValid operation.");
+            Assert.AreEqual(typeof(bool), importValidation.ReturnType, $"'{gameKey}' IsImportValid must return Boolean.");
+            Assert.IsTrue(
+                (bool)InvokeUnwrapped(importValidation, gameServer, new object?[] { importPath }),
+                $"'{gameKey}' rejected an import directory containing its required executable.");
+        }
+        finally
+        {
+            if (Directory.Exists(rootPath))
+            {
+                Directory.Delete(rootPath, recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("V1")]
+    [DynamicData(nameof(BuiltInGameCases), DynamicDataSourceType.Method)]
+    public void V1FullServerBackupRestoreRoundTripsForBuiltInGame(string gameKey)
+    {
+        string rootPath = Path.Combine(Path.GetTempPath(), "CdogsWindowsGSM.V1FullBackupTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(rootPath);
+
+        try
+        {
+            using IDisposable rootScope = ServerPath.UseRootForTesting(rootPath);
+            string serverId = "v1-full-backup-" + GetGameSuffix(gameKey);
+            string serverRoot = ServerPath.GetServers(serverId);
+            string configPath = ServerPath.GetServersConfigs(serverId, "WindowsGSM.cfg");
+            string gameFilePath = ServerPath.GetServersServerFiles(serverId, "backup-probe", "config.ini");
+            Directory.CreateDirectory(Path.GetDirectoryName(configPath));
+            Directory.CreateDirectory(Path.GetDirectoryName(gameFilePath));
+            File.WriteAllText(configPath, "host configuration");
+            File.WriteAllText(gameFilePath, "game data");
+
+            string archiveDirectory = Path.Combine(rootPath, "backup-output");
+            Directory.CreateDirectory(archiveDirectory);
+            string archivePath = Path.Combine(archiveDirectory, serverId + ".zip");
+            FullServerBackupArchive.CreateFromDirectory(serverRoot, archivePath);
+            Assert.IsTrue(File.Exists(archivePath), $"'{gameKey}' full backup did not create its ZIP archive.");
+
+            Directory.Delete(serverRoot, recursive: true);
+            FullServerBackupArchive.ExtractToDirectory(archivePath, serverRoot);
+
+            Assert.AreEqual("host configuration", File.ReadAllText(configPath), $"'{gameKey}' full restore did not restore host configuration.");
+            Assert.AreEqual("game data", File.ReadAllText(gameFilePath), $"'{gameKey}' full restore did not restore server files.");
+        }
+        finally
+        {
+            if (Directory.Exists(rootPath))
+            {
+                Directory.Delete(rootPath, recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("V1")]
+    [DynamicData(nameof(BuiltInGameCases), DynamicDataSourceType.Method)]
+    public void V1InstallValidationRejectsAnEmptyPrivateInstallForBuiltInGame(string gameKey)
+    {
+        string rootPath = Path.Combine(Path.GetTempPath(), "CdogsWindowsGSM.V1InstallValidationTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(rootPath);
+
+        try
+        {
+            using IDisposable rootScope = ServerPath.UseRootForTesting(rootPath);
+            var config = new ServerConfig("v1-empty-install-" + GetGameSuffix(gameKey))
+            {
+                ServerGame = gameKey
+            };
+            object gameServer = GameServer.Data.Class.Get(gameKey, config);
+            string serverFiles = ServerPath.GetServersServerFiles(config.ServerID);
+            Directory.CreateDirectory(serverFiles);
+            MethodInfo validation = gameServer.GetType().GetMethod(
+                "IsInstallValid",
+                BindingFlags.Instance | BindingFlags.Public,
+                binder: null,
+                types: Type.EmptyTypes,
+                modifiers: null);
+
+            Assert.IsNotNull(validation, $"'{gameKey}' has no IsInstallValid operation.");
+            Assert.AreEqual(typeof(bool), validation.ReturnType, $"'{gameKey}' IsInstallValid must return Boolean.");
+            Assert.IsFalse((bool)InvokeUnwrapped(validation, gameServer, null), $"'{gameKey}' accepted an empty private install.");
+        }
+        finally
+        {
+            if (Directory.Exists(rootPath))
+            {
+                Directory.Delete(rootPath, recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("V1")]
+    [DynamicData(nameof(BuiltInGameCases), DynamicDataSourceType.Method)]
+    public void V1ImportValidationRejectsAnEmptyDirectoryForBuiltInGame(string gameKey)
+    {
+        string rootPath = Path.Combine(Path.GetTempPath(), "CdogsWindowsGSM.V1ImportValidationTests", Guid.NewGuid().ToString("N"));
+        string importPath = Path.Combine(rootPath, "empty-import");
+        Directory.CreateDirectory(importPath);
+
+        try
+        {
+            using IDisposable rootScope = ServerPath.UseRootForTesting(rootPath);
+            var config = new ServerConfig("v1-empty-import-" + GetGameSuffix(gameKey))
+            {
+                ServerGame = gameKey
+            };
+            object gameServer = GameServer.Data.Class.Get(gameKey, config);
+            MethodInfo validation = gameServer.GetType().GetMethod(
+                "IsImportValid",
+                BindingFlags.Instance | BindingFlags.Public,
+                binder: null,
+                types: new[] { typeof(string) },
+                modifiers: null);
+
+            Assert.IsNotNull(validation, $"'{gameKey}' has no IsImportValid operation.");
+            Assert.AreEqual(typeof(bool), validation.ReturnType, $"'{gameKey}' IsImportValid must return Boolean.");
+            Assert.IsFalse(
+                (bool)InvokeUnwrapped(validation, gameServer, new object?[] { importPath }),
+                $"'{gameKey}' accepted an empty import directory.");
+        }
+        finally
+        {
+            if (Directory.Exists(rootPath))
+            {
+                Directory.Delete(rootPath, recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("V1")]
+    [DynamicData(nameof(BuiltInGameCases), DynamicDataSourceType.Method)]
+    public async Task V1InstallOperationCompletesForBuiltInGame(string gameKey)
+    {
+        if (!TryGetLiveOperationInputs(gameKey, out IntegrationSettings settings, out SteamCredentials credentials, out string skipReason))
         {
             Assert.Inconclusive(skipReason);
             return;
@@ -234,23 +450,370 @@ public sealed class BuiltInGameIntegrationTests
 
         Directory.CreateDirectory(settings.RootPath);
         using IDisposable rootScope = ServerPath.UseRootForTesting(settings.RootPath);
-
-        GameInstance primary = CreateGameInstance(
+        GameInstance instance = CreateGameInstance(
             gameKey,
-            CreateServerId("primary", gameKey),
+            CreateServerId("v1-install", gameKey),
             sharedInstallationId: string.Empty);
 
-        if (BuiltInGameCapabilities.SupportsSharedInstallation(gameKey, primary.GameServer))
+        await RunProcessOperationAsync(instance, gameKey, "Install", validate: null, credentials);
+        AssertInstallationIsValid(instance, gameKey, "after private V1 install");
+    }
+
+    [TestMethod]
+    [TestCategory("V1")]
+    [DynamicData(nameof(BuiltInGameCases), DynamicDataSourceType.Method)]
+    public async Task V1UpdateOperationCompletesForBuiltInGame(string gameKey)
+    {
+        if (!TryGetLiveOperationInputs(gameKey, out IntegrationSettings settings, out SteamCredentials credentials, out string skipReason))
         {
-            await RunSharedInstallationLifecycleAsync(primary, gameKey, credentials);
+            Assert.Inconclusive(skipReason);
+            return;
         }
-        else
+
+        Directory.CreateDirectory(settings.RootPath);
+        using IDisposable rootScope = ServerPath.UseRootForTesting(settings.RootPath);
+        GameInstance instance = await InstallPrivateV1PrerequisiteAsync(gameKey, "update", credentials);
+
+        await RunUpdateAndVerifyAsync(instance, gameKey, credentials);
+    }
+
+    [TestMethod]
+    [TestCategory("V1")]
+    [DynamicData(nameof(BuiltInGameCases), DynamicDataSourceType.Method)]
+    public async Task V1InstallValidationReflectsInstalledStateForBuiltInGame(string gameKey)
+    {
+        if (!TryGetLiveOperationInputs(gameKey, out IntegrationSettings settings, out SteamCredentials credentials, out string skipReason))
         {
-            await RunStandaloneLifecycleAsync(primary, gameKey, credentials);
+            Assert.Inconclusive(skipReason);
+            return;
+        }
+
+        Directory.CreateDirectory(settings.RootPath);
+        using IDisposable rootScope = ServerPath.UseRootForTesting(settings.RootPath);
+        GameInstance instance = CreateGameInstance(
+            gameKey,
+            CreateServerId("v1-validation", gameKey),
+            sharedInstallationId: string.Empty);
+
+        MethodInfo validation = instance.GameServer.GetType().GetMethod(
+            "IsInstallValid",
+            BindingFlags.Instance | BindingFlags.Public,
+            binder: null,
+            types: Type.EmptyTypes,
+            modifiers: null);
+        Assert.IsNotNull(validation, $"'{gameKey}' has no IsInstallValid operation.");
+        Assert.AreEqual(typeof(bool), validation.ReturnType, $"'{gameKey}' IsInstallValid must return Boolean.");
+        Assert.IsFalse((bool)InvokeUnwrapped(validation, instance.GameServer, null), $"'{gameKey}' accepted an empty private install.");
+
+        await RunProcessOperationAsync(instance, gameKey, "Install", validate: null, credentials);
+        Assert.IsTrue((bool)InvokeUnwrapped(validation, instance.GameServer, null), $"'{gameKey}' rejected its completed private install. {ReadError(instance.GameServer)}");
+    }
+
+    [TestMethod]
+    [TestCategory("V1")]
+    [DynamicData(nameof(BuiltInGameCases), DynamicDataSourceType.Method)]
+    public async Task V1ImportValidationAcceptsInstalledFilesAndRejectsAnEmptyDirectory(string gameKey)
+    {
+        if (!TryGetLiveOperationInputs(gameKey, out IntegrationSettings settings, out SteamCredentials credentials, out string skipReason))
+        {
+            Assert.Inconclusive(skipReason);
+            return;
+        }
+
+        Directory.CreateDirectory(settings.RootPath);
+        using IDisposable rootScope = ServerPath.UseRootForTesting(settings.RootPath);
+        GameInstance instance = await InstallPrivateV1PrerequisiteAsync(gameKey, "import", credentials);
+        MethodInfo importValidation = instance.GameServer.GetType().GetMethod(
+            "IsImportValid",
+            BindingFlags.Instance | BindingFlags.Public,
+            binder: null,
+            types: new[] { typeof(string) },
+            modifiers: null);
+        Assert.IsNotNull(importValidation, $"'{gameKey}' has no IsImportValid operation.");
+        Assert.AreEqual(typeof(bool), importValidation.ReturnType, $"'{gameKey}' IsImportValid must return Boolean.");
+
+        string emptyImportPath = Path.Combine(
+            ServerPath.GetServers(instance.Config.ServerID),
+            "empty-import-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(emptyImportPath);
+        Assert.IsFalse(
+            (bool)InvokeUnwrapped(importValidation, instance.GameServer, new object?[] { emptyImportPath }),
+            $"'{gameKey}' accepted an empty import directory.");
+        ClearError(instance.GameServer);
+        Assert.IsTrue(
+            (bool)InvokeUnwrapped(importValidation, instance.GameServer, new object?[] { ServerPath.GetServersServerFiles(instance.Config.ServerID) }),
+            $"'{gameKey}' rejected the files created by its own installer. {ReadError(instance.GameServer)}");
+    }
+
+    [TestMethod]
+    [TestCategory("V1")]
+    [DynamicData(nameof(BuiltInGameCases), DynamicDataSourceType.Method)]
+    public async Task V1ConfigurationGenerationCompletesForBuiltInGame(string gameKey)
+    {
+        if (!TryGetLiveOperationInputs(gameKey, out IntegrationSettings settings, out SteamCredentials credentials, out string skipReason))
+        {
+            Assert.Inconclusive(skipReason);
+            return;
+        }
+
+        Directory.CreateDirectory(settings.RootPath);
+        using IDisposable rootScope = ServerPath.UseRootForTesting(settings.RootPath);
+        GameInstance instance = CreateGameInstance(
+            gameKey,
+            CreateServerId("v1-config", gameKey),
+            sharedInstallationId: string.Empty);
+        MethodInfo configuration = FindConfigurationOperation(instance.GameServer);
+        if (configuration == null)
+        {
+            Assert.Inconclusive($"'{gameKey}' configures its instance without CreateServerCFG; it is not a V1 CreateServerCFG case.");
+            return;
+        }
+
+        if (gameKey == GameServer.Soldat.FullName)
+        {
+            await InstallPrivateV1InstanceAsync(instance, "config", credentials);
+        }
+
+        await PrepareServerConfigurationAsync(instance, gameKey);
+    }
+
+    [TestMethod]
+    [TestCategory("V1")]
+    [DynamicData(nameof(BuiltInGameCases), DynamicDataSourceType.Method)]
+    public async Task V1StartOperationSurvivesItsStartupWindowForBuiltInGame(string gameKey)
+    {
+        if (!TryGetLiveOperationInputs(gameKey, out IntegrationSettings settings, out SteamCredentials credentials, out string skipReason))
+        {
+            Assert.Inconclusive(skipReason);
+            return;
+        }
+
+        Directory.CreateDirectory(settings.RootPath);
+        using IDisposable rootScope = ServerPath.UseRootForTesting(settings.RootPath);
+        GameInstance instance = await InstallPrivateV1PrerequisiteAsync(gameKey, "start", credentials);
+        await PrepareServerConfigurationAsync(instance, gameKey);
+        Process process = await StartAndVerifyServerAsync(instance, gameKey);
+
+        using (process)
+        {
+            try
+            {
+                TestContext.WriteLine($"{gameKey}: Start passed; force-terminating the isolated process because Stop is tested separately.");
+            }
+            finally
+            {
+                await ForceStopTestProcessAsync(process, gameKey);
+            }
         }
     }
 
     [TestMethod]
+    [TestCategory("V1")]
+    [DynamicData(nameof(BuiltInGameCases), DynamicDataSourceType.Method)]
+    public async Task V1StopOperationStopsTheBuiltInGameProcess(string gameKey)
+    {
+        if (!TryGetLiveOperationInputs(gameKey, out IntegrationSettings settings, out SteamCredentials credentials, out string skipReason))
+        {
+            Assert.Inconclusive(skipReason);
+            return;
+        }
+
+        Directory.CreateDirectory(settings.RootPath);
+        using IDisposable rootScope = ServerPath.UseRootForTesting(settings.RootPath);
+        GameInstance instance = await InstallPrivateV1PrerequisiteAsync(gameKey, "stop", credentials);
+        await PrepareServerConfigurationAsync(instance, gameKey);
+        Process process = await StartAndVerifyServerAsync(instance, gameKey);
+        if (IsMinecraftJavaServer(gameKey))
+        {
+            await WaitForMinecraftServerReadinessAsync(instance, gameKey, process);
+        }
+
+        using (process)
+        {
+            LogProcessStopDiagnostics(process, gameKey, instance.Config.EmbedConsole);
+            await StopServerAsync(instance.GameServer, gameKey, process);
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("V1")]
+    [DynamicData(nameof(BuiltInGameCases), DynamicDataSourceType.Method)]
+    public async Task V1LocalBuildLookupReturnsForInstalledBuiltInGame(string gameKey)
+    {
+        if (!TryGetLiveOperationInputs(gameKey, out IntegrationSettings settings, out SteamCredentials credentials, out string skipReason))
+        {
+            Assert.Inconclusive(skipReason);
+            return;
+        }
+
+        Directory.CreateDirectory(settings.RootPath);
+        using IDisposable rootScope = ServerPath.UseRootForTesting(settings.RootPath);
+        GameInstance instance = CreateGameInstance(
+            gameKey,
+            CreateServerId("v1-local-build", gameKey),
+            sharedInstallationId: string.Empty);
+        MethodInfo localBuild = FindBuildOperation(instance.GameServer, "GetLocalBuild");
+        if (localBuild == null)
+        {
+            Assert.Inconclusive($"'{gameKey}' does not expose GetLocalBuild.");
+            return;
+        }
+
+        await InstallPrivateV1InstanceAsync(instance, "local-build", credentials);
+        object result = InvokeUnwrapped(localBuild, instance.GameServer, null);
+        string buildId = Assert.IsInstanceOfType<string>(result);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(buildId), $"'{gameKey}' GetLocalBuild returned an empty build ID.");
+        TestContext.WriteLine($"{gameKey}: GetLocalBuild returned build ID {buildId}.");
+
+        if (gameKey == "Minecraft: Pocket Edition Server (PocketMine-MP)")
+        {
+            string buildInfoPath = ServerPath.GetServersServerFiles(instance.Config.ServerID, "PocketMine-MP-build.json");
+            Assert.IsTrue(File.Exists(buildInfoPath), "PocketMine-MP installation did not persist its build metadata.");
+            File.Delete(buildInfoPath);
+            ClearError(instance.GameServer);
+
+            object importedBuildResult = InvokeUnwrapped(localBuild, instance.GameServer, null);
+            string importedBuildId = Assert.IsInstanceOfType<string>(importedBuildResult);
+            Assert.AreEqual(buildId, importedBuildId, "PocketMine-MP GetLocalBuild did not recover the build ID from the imported phar.");
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("V1")]
+    [DynamicData(nameof(BuiltInGameCases), DynamicDataSourceType.Method)]
+    public async Task V1RemoteBuildLookupReturnsForBuiltInGame(string gameKey)
+    {
+        if (!TryGetLiveOperationInputs(gameKey, out IntegrationSettings settings, out SteamCredentials credentials, out string skipReason))
+        {
+            Assert.Inconclusive(skipReason);
+            return;
+        }
+
+        Directory.CreateDirectory(settings.RootPath);
+        string remoteBuildRoot = Path.Combine(settings.RootPath, "audit-results", "remote-build");
+        Directory.CreateDirectory(remoteBuildRoot);
+        using IDisposable rootScope = ServerPath.UseRootForTesting(remoteBuildRoot);
+        GameInstance instance = CreateGameInstance(
+            gameKey,
+            CreateServerId("v1-remote-build", gameKey),
+            sharedInstallationId: string.Empty);
+        MethodInfo remoteBuild = FindBuildOperation(instance.GameServer, "GetRemoteBuild");
+        if (remoteBuild == null)
+        {
+            Assert.Inconclusive($"'{gameKey}' does not expose GetRemoteBuild.");
+            return;
+        }
+
+        ClearError(instance.GameServer);
+        object result = InvokeUnwrapped(remoteBuild, instance.GameServer, null);
+        string buildId;
+        if (result is Task<string> buildTask)
+        {
+            buildId = await buildTask.WaitAsync(RemoteBuildTimeout);
+        }
+        else if (result is string directBuildId)
+        {
+            buildId = directBuildId;
+        }
+        else
+        {
+            Assert.Fail($"'{gameKey}' GetRemoteBuild returned an unsupported result type.");
+            return;
+        }
+
+        Assert.IsFalse(string.IsNullOrWhiteSpace(buildId), $"'{gameKey}' GetRemoteBuild returned no build ID. {ReadError(instance.GameServer)}");
+    }
+
+    [TestMethod]
+    [TestCategory("V1")]
+    [DynamicData(nameof(SourceAndGoldSourceGameCases), DynamicDataSourceType.Method)]
+    public void V1MapCycleOperationsRoundTripForSourceAndGoldSourceGames(string gameKey)
+    {
+        string rootPath = Path.Combine(Path.GetTempPath(), "CdogsWindowsGSM.V1MapCycleTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(rootPath);
+
+        try
+        {
+            using IDisposable rootScope = ServerPath.UseRootForTesting(rootPath);
+            var config = new ServerConfig("v1-map-cycle-" + GetGameSuffix(gameKey))
+            {
+                ServerGame = gameKey
+            };
+            object gameServer = GameServer.Data.Class.Get(gameKey, config);
+            PropertyInfo mapDirectoryProperty = gameServer.GetType().GetProperty("MapDirectory", BindingFlags.Instance | BindingFlags.Public);
+            PropertyInfo mapCyclePathProperty = gameServer.GetType().GetProperty("MapCyclePath", BindingFlags.Instance | BindingFlags.Public);
+            MethodInfo getAvailableMaps = gameServer.GetType().GetMethod("GetAvailableMaps", Type.EmptyTypes);
+            MethodInfo getMapRotation = gameServer.GetType().GetMethod("GetMapRotation", Type.EmptyTypes);
+            MethodInfo saveMapRotation = gameServer.GetType().GetMethod("SaveMapRotation", new[] { typeof(IEnumerable<string>) });
+            Assert.IsNotNull(mapDirectoryProperty);
+            Assert.IsNotNull(mapCyclePathProperty);
+            Assert.IsNotNull(getAvailableMaps);
+            Assert.IsNotNull(getMapRotation);
+            Assert.IsNotNull(saveMapRotation);
+
+            string mapDirectory = (string)mapDirectoryProperty.GetValue(gameServer);
+            Directory.CreateDirectory(mapDirectory);
+            File.WriteAllText(Path.Combine(mapDirectory, "zeta.bsp"), string.Empty);
+            File.WriteAllText(Path.Combine(mapDirectory, "alpha.bsp"), string.Empty);
+            List<string> availableMaps = (List<string>)InvokeUnwrapped(getAvailableMaps, gameServer, null);
+            CollectionAssert.AreEqual(new[] { "alpha", "zeta" }, availableMaps, $"'{gameKey}' map enumeration was not sorted or did not strip extensions.");
+
+            string[] rotation = { "zeta", "alpha" };
+            InvokeUnwrapped(saveMapRotation, gameServer, new object?[] { rotation });
+            List<string> savedRotation = (List<string>)InvokeUnwrapped(getMapRotation, gameServer, null);
+            CollectionAssert.AreEqual(rotation, savedRotation, $"'{gameKey}' map-cycle save/load did not round-trip.");
+        }
+        finally
+        {
+            if (Directory.Exists(rootPath))
+            {
+                Directory.Delete(rootPath, recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("V1")]
+    [DynamicData(nameof(BuiltInConfigurationBackupCases), DynamicDataSourceType.Method)]
+    public void V1ConfigurationBackupRestoreRoundTripsForBuiltInGame(string gameKey)
+    {
+        string rootPath = Path.Combine(Path.GetTempPath(), "CdogsWindowsGSM.V1ConfigBackupTests", Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(rootPath);
+
+        try
+        {
+            using IDisposable rootScope = ServerPath.UseRootForTesting(rootPath);
+            GameInstance instance = CreateGameInstance(
+                gameKey,
+                CreateServerId("v1-config-backup", gameKey),
+                sharedInstallationId: string.Empty);
+            var roots = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "serverfiles", ServerPath.GetServersServerFiles(instance.Config.ServerID) }
+            };
+            List<ConfigurationBackupPath> plan = BuiltInGameCapabilities.GetConfigurationBackupPlan(instance.Config, roots);
+            Assert.IsTrue(plan.Count > 0, $"'{gameKey}' declares configuration backup support but produced no paths.");
+
+            foreach (ConfigurationBackupPath path in plan)
+            {
+                string destination = Path.Combine(roots[path.RootId], path.RelativePath);
+                Directory.CreateDirectory(Path.GetDirectoryName(destination));
+                File.WriteAllText(destination, "original " + path.RelativePath);
+            }
+
+            RunConfigurationBackupRestoreRoundTrip(instance.Config, gameKey, roots, plan, buildId: string.Empty);
+        }
+        finally
+        {
+            if (Directory.Exists(rootPath))
+            {
+                Directory.Delete(rootPath, recursive: true);
+            }
+        }
+    }
+
+    [TestMethod]
+    [TestCategory("V2")]
     [DynamicData(nameof(V2PluginCases), DynamicDataSourceType.Method)]
     public async Task InstallUpdateVerifyLaunchAndV2CapabilitiesWorkForPluginExample(string selectionName, string fixtureFileName)
     {
@@ -292,6 +855,7 @@ public sealed class BuiltInGameIntegrationTests
     }
 
     [TestMethod]
+    [TestCategory("V2")]
     public async Task V2PluginExamplesRoundTripTheirApprovedConfigurationBackupsThroughTheHost()
     {
         string rootPath = Path.Combine(
@@ -370,15 +934,142 @@ public sealed class BuiltInGameIntegrationTests
         }
     }
 
-    private async Task RunStandaloneLifecycleAsync(GameInstance instance, string gameKey, SteamCredentials credentials)
+    private async Task<GameInstance> InstallPrivateV1PrerequisiteAsync(
+        string gameKey,
+        string operationRole,
+        SteamCredentials credentials)
     {
-        await RunProcessOperationAsync(instance, gameKey, "Install", validate: null, credentials);
-        AssertInstallationIsValid(instance, gameKey, "after install");
+        GameInstance instance = CreateGameInstance(
+            gameKey,
+            CreateServerId("v1-prerequisite-" + operationRole, gameKey),
+            sharedInstallationId: string.Empty);
 
-        await RunUpdateAndVerifyAsync(instance, gameKey, credentials);
-        await PrepareServerConfigurationAsync(instance, gameKey);
-        await RunConfigurationBackupRestoreAsync(instance, gameKey);
-        await RunLaunchSmokeTestAsync(instance, gameKey);
+        await InstallPrivateV1InstanceAsync(instance, operationRole, credentials);
+        return instance;
+    }
+
+    private async Task InstallPrivateV1InstanceAsync(
+        GameInstance instance,
+        string operationRole,
+        SteamCredentials credentials)
+    {
+        string gameKey = instance.Config.ServerGame;
+        TestContext.WriteLine($"{gameKey}: preparing a private V1 installation for {operationRole}.");
+        await RunProcessOperationAsync(instance, gameKey, "Install", validate: null, credentials);
+        AssertInstallationIsValid(instance, gameKey, $"while preparing the {operationRole} operation");
+    }
+
+    private async Task<Process> StartAndVerifyServerAsync(GameInstance instance, string gameKey)
+    {
+        ApplyConfiguredConsoleMode(instance.GameServer, instance.Config.EmbedConsole, gameKey);
+        MethodInfo start = FindProcessOperation(instance.GameServer, "Start");
+        ClearError(instance.GameServer);
+        TestContext.WriteLine($"{gameKey}: exercising Start and waiting for its startup check.");
+
+        var startTask = InvokeUnwrapped(start, instance.GameServer, null) as Task<Process>;
+        Assert.IsNotNull(startTask, $"'{gameKey}' Start did not return Task<Process>.");
+        Process process = await startTask;
+        if (process == null)
+        {
+            Assert.Fail($"'{gameKey}' Start returned no process. Error: {ReadError(instance.GameServer)}");
+            return null;
+        }
+
+        bool verified = false;
+        try
+        {
+            BeginDrainingProcessOutput(process);
+            AssertNoOperationError(instance.GameServer, gameKey, "Start");
+            if (string.Equals(gameKey, GameServer.RUST.FullName, StringComparison.Ordinal))
+            {
+                await WaitForRustReadinessAsync(instance, process, gameKey);
+            }
+            else
+            {
+                await Task.Delay(ServerStartupGracePeriod);
+                Assert.IsFalse(
+                    process.HasExited,
+                    $"'{gameKey}' exited during its {ServerStartupGracePeriod} startup window (exit code {process.ExitCode}).");
+            }
+
+            verified = true;
+            return process;
+        }
+        finally
+        {
+            if (!verified)
+            {
+                await ForceStopTestProcessAsync(process, gameKey);
+                process.Dispose();
+            }
+        }
+    }
+
+    private static bool IsMinecraftJavaServer(string gameKey)
+    {
+        return gameKey == GameServer.MC.FullName
+            || gameKey == GameServer.ForgeMC.FullName
+            || gameKey == GameServer.PaperMC.FullName;
+    }
+
+    private async Task WaitForMinecraftServerReadinessAsync(GameInstance instance, string gameKey, Process process)
+    {
+        string logPath = ServerPath.GetServersServerFiles(instance.Config.ServerID, "logs", "latest.log");
+        using CancellationTokenSource timeout = new CancellationTokenSource(MinecraftStartupTimeout);
+        while (!timeout.IsCancellationRequested)
+        {
+            if (process.HasExited)
+            {
+                throw new AssertFailedException($"'{gameKey}' exited before logging that Minecraft startup was complete (exit code {process.ExitCode}).");
+            }
+
+            if (File.Exists(logPath))
+            {
+                try
+                {
+                    using FileStream stream = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+                    using StreamReader reader = new StreamReader(stream);
+                    string line;
+                    while ((line = reader.ReadLine()) != null)
+                    {
+                        if (line.Contains("Done (", StringComparison.OrdinalIgnoreCase)
+                            && line.Contains("For help", StringComparison.OrdinalIgnoreCase))
+                        {
+                            TestContext.WriteLine($"{gameKey}: Minecraft logged its ready marker before Stop.");
+                            return;
+                        }
+                    }
+                }
+                catch (IOException)
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(1));
+                    continue;
+                }
+            }
+
+            await Task.Delay(TimeSpan.FromSeconds(1));
+        }
+
+        throw new AssertFailedException($"'{gameKey}' did not log Minecraft readiness within {MinecraftStartupTimeout}.");
+    }
+
+    private async Task ForceStopTestProcessAsync(Process process, string gameKey)
+    {
+        if (process.HasExited)
+        {
+            return;
+        }
+
+        KillProcessTree(process);
+        using var timeout = new CancellationTokenSource(ServerShutdownTimeout);
+        try
+        {
+            await process.WaitForExitAsync(timeout.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            throw new AssertFailedException($"'{gameKey}' test process did not exit after forced cleanup.");
+        }
     }
 
     private async Task RunV2StandaloneLifecycleAsync(GameInstance instance, string gameKey, SteamCredentials credentials)
@@ -392,66 +1083,24 @@ public sealed class BuiltInGameIntegrationTests
         await RunLaunchSmokeTestAsync(instance, gameKey);
     }
 
-    private async Task RunSharedInstallationLifecycleAsync(GameInstance owner, string gameKey, SteamCredentials credentials)
+    private static MethodInfo FindConfigurationOperation(object gameServer)
     {
-        var provider = owner.GameServer as GameServer.Engine.ISharedInstallationProvider;
-        Assert.IsNotNull(provider, $"'{gameKey}' is marked shareable but has no shared-install provider.");
-        Assert.IsFalse(string.IsNullOrWhiteSpace(provider.SharedInstallationAppId), $"'{gameKey}' has no shared-install app ID.");
-        Assert.IsFalse(string.IsNullOrWhiteSpace(provider.SharedInstallationExecutableName), $"'{gameKey}' has no shared-install executable.");
+        return gameServer.GetType().GetMethod(
+            "CreateServerCFG",
+            BindingFlags.Instance | BindingFlags.Public,
+            binder: null,
+            types: Type.EmptyTypes,
+            modifiers: null);
+    }
 
-        string installationId;
-        bool created;
-        using (SharedInstallationResolution resolution = SharedInstallationStore.ResolveOrCreate(
-            owner.Config.ServerID,
-            gameKey,
-            provider.SharedInstallationAppId,
-            provider.SharedInstallationExecutableName))
-        {
-            installationId = resolution.InstallationId;
-            created = resolution.Created;
-            owner.Config.SharedInstallationId = installationId;
-            PersistServerConfig(owner.Config);
-
-            if (created)
-            {
-                bool markedReady = false;
-                try
-                {
-                    await RunProcessOperationAsync(owner, gameKey, "InstallSharedBinaries", validate: null, credentials);
-                    AssertInstallationIsValid(owner, gameKey, "after shared install");
-                    SharedInstallationStore.MarkReady(installationId, GetLocalBuild(owner.GameServer));
-                    markedReady = true;
-                }
-                finally
-                {
-                    if (!markedReady)
-                    {
-                        SharedInstallationStore.MarkFailed(installationId);
-                    }
-                }
-            }
-            else
-            {
-                resolution.Dispose();
-                using (SharedInstallationStore.AcquireExclusiveLeaseForServer(owner.Config))
-                {
-                    await RunProcessOperationAsync(owner, gameKey, "InstallSharedBinaries", validate: null, credentials);
-                    AssertInstallationIsValid(owner, gameKey, "after shared install");
-                }
-            }
-        }
-
-        await InstallSharedInstanceConfigurationAsync(owner, gameKey);
-
-        GameInstance client = CreateGameInstance(
-            gameKey,
-            CreateServerId("client", gameKey),
-            installationId);
-        await InstallSharedInstanceConfigurationAsync(client, gameKey);
-
-        await RunUpdateAndVerifyAsync(client, gameKey, credentials);
-        await RunConfigurationBackupRestoreAsync(client, gameKey);
-        await RunLaunchSmokeTestAsync(client, gameKey);
+    private static MethodInfo FindBuildOperation(object gameServer, string operationName)
+    {
+        return gameServer.GetType().GetMethod(
+            operationName,
+            BindingFlags.Instance | BindingFlags.Public,
+            binder: null,
+            types: Type.EmptyTypes,
+            modifiers: null);
     }
 
     private async Task RunV2SharedInstallationLifecycleAsync(
@@ -555,17 +1204,6 @@ public sealed class BuiltInGameIntegrationTests
             "cfg",
             "server.cfg");
         Assert.IsTrue(File.Exists(configPath), $"'{gameKey}' V2 config-only installation did not create '{configPath}'.");
-    }
-
-    private async Task InstallSharedInstanceConfigurationAsync(GameInstance instance, string gameKey)
-    {
-        var provider = instance.GameServer as GameServer.Engine.ISharedInstallationProvider;
-        Assert.IsNotNull(provider, $"'{gameKey}' lost its shared-install provider for '{instance.Config.ServerID}'.");
-
-        ClearError(instance.GameServer);
-        bool succeeded = await provider.InstallConfigOnly();
-        Assert.IsTrue(succeeded, $"'{gameKey}' could not install configuration for '{instance.Config.ServerID}': {ReadError(instance.GameServer)}");
-        AssertNoOperationError(instance.GameServer, gameKey, "InstallConfigOnly");
     }
 
     private async Task RunUpdateAndVerifyAsync(GameInstance instance, string gameKey, SteamCredentials credentials)
@@ -703,6 +1341,33 @@ public sealed class BuiltInGameIntegrationTests
         }
 
         AssertNoOperationError(instance.GameServer, gameKey, "CreateServerCFG");
+        IsolateGameUserDataForLiveTest(instance, gameKey);
+    }
+
+    private void IsolateGameUserDataForLiveTest(GameInstance instance, string gameKey)
+    {
+        if (!string.Equals(gameKey, GameServer.SDTD.FullName, StringComparison.Ordinal))
+        {
+            return;
+        }
+
+        string configPath = ServerPath.GetServersServerFiles(instance.Config.ServerID, "serverconfig.xml");
+        XDocument configuration = XDocument.Load(configPath);
+        XElement root = configuration.Root ?? throw new InvalidDataException("7 Days to Die serverconfig.xml has no root element.");
+        XElement userDataFolder = configuration.Descendants().FirstOrDefault(element =>
+            element.Name.LocalName == "property" &&
+            string.Equals((string)element.Attribute("name"), "UserDataFolder", StringComparison.OrdinalIgnoreCase));
+        if (userDataFolder == null)
+        {
+            userDataFolder = new XElement(root.Name.Namespace + "property", new XAttribute("name", "UserDataFolder"));
+            root.Add(userDataFolder);
+        }
+
+        string userDataPath = Path.GetFullPath(ServerPath.GetServersServerFiles(instance.Config.ServerID, "test-user-data"));
+        Directory.CreateDirectory(userDataPath);
+        userDataFolder.SetAttributeValue("value", userDataPath);
+        configuration.Save(configPath);
+        TestContext.WriteLine($"{gameKey}: isolated game data under the per-run server directory.");
     }
 
     private async Task WaitForConfigurationTaskAsync(Task task, string gameKey)
@@ -715,30 +1380,6 @@ public sealed class BuiltInGameIntegrationTests
         {
             throw new AssertFailedException($"'{gameKey}' configuration generation exceeded {ConfigurationTimeout}.");
         }
-    }
-
-    private Task RunConfigurationBackupRestoreAsync(GameInstance instance, string gameKey)
-    {
-        if (!BuiltInGameCapabilities.SupportsConfigurationBackup(gameKey))
-        {
-            return Task.CompletedTask;
-        }
-
-        var roots = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
-        {
-            { "serverfiles", ServerPath.GetServersServerFiles(instance.Config.ServerID) }
-        };
-        if (!string.IsNullOrWhiteSpace(instance.Config.SharedInstallationId))
-        {
-            roots.Add("sharedserverfiles", SharedInstallationStore.GetServerBinaryRoot(instance.Config.SharedInstallationId));
-        }
-
-        List<ConfigurationBackupPath> plan = BuiltInGameCapabilities.GetConfigurationBackupPlan(instance.Config, roots);
-        Assert.IsTrue(plan.Count > 0, $"'{gameKey}' advertised configuration backups but returned an empty plan.");
-        string buildId = GetSharedInstallationBuildId(instance.Config.SharedInstallationId);
-        RunConfigurationBackupRestoreRoundTrip(instance.Config, gameKey, roots, plan, buildId);
-        TestContext.WriteLine($"{gameKey}: configuration backup and restore completed.");
-        return Task.CompletedTask;
     }
 
     private void RunPluginConfigurationBackupRestore(GameInstance instance, string gameKey)
@@ -841,7 +1482,15 @@ public sealed class BuiltInGameIntegrationTests
         ApplyConfiguredConsoleMode(instance.GameServer, instance.Config.EmbedConsole, gameKey);
         MethodInfo start = FindProcessOperation(instance.GameServer, "Start");
         ClearError(instance.GameServer);
-        TestContext.WriteLine($"{gameKey}: launching for {ServerStartupGracePeriod}.");
+        if (string.Equals(gameKey, GameServer.RUST.FullName, StringComparison.Ordinal))
+        {
+            TestContext.WriteLine($"{gameKey}: launching and waiting for bounded readiness probes.");
+        }
+        else
+        {
+            TestContext.WriteLine($"{gameKey}: launching for {ServerStartupGracePeriod}.");
+        }
+
         var startTask = InvokeUnwrapped(start, instance.GameServer, null) as Task<Process>;
         Assert.IsNotNull(startTask, $"'{gameKey}' Start did not return Task<Process>.");
         Process process = await startTask;
@@ -857,10 +1506,17 @@ public sealed class BuiltInGameIntegrationTests
             {
                 BeginDrainingProcessOutput(process);
                 AssertNoOperationError(instance.GameServer, gameKey, "Start");
-                await Task.Delay(ServerStartupGracePeriod);
-                Assert.IsFalse(
-                    process.HasExited,
-                    $"'{gameKey}' exited during its {ServerStartupGracePeriod} startup smoke window (exit code {process.ExitCode}).");
+                if (string.Equals(gameKey, GameServer.RUST.FullName, StringComparison.Ordinal))
+                {
+                    await WaitForRustReadinessAsync(instance, process, gameKey);
+                }
+                else
+                {
+                    await Task.Delay(ServerStartupGracePeriod);
+                    Assert.IsFalse(
+                        process.HasExited,
+                        $"'{gameKey}' exited during its {ServerStartupGracePeriod} startup smoke window (exit code {process.ExitCode}).");
+                }
             }
             finally
             {
@@ -870,6 +1526,85 @@ public sealed class BuiltInGameIntegrationTests
         }
 
         TestContext.WriteLine($"{gameKey}: launch stayed alive and was stopped.");
+    }
+
+    private async Task WaitForRustReadinessAsync(GameInstance instance, Process process, string gameKey)
+    {
+        string logPath = ServerPath.GetServersServerFiles(instance.Config.ServerID, "server.log");
+        TestContext.WriteLine($"{gameKey}: waiting for the Rust startup-complete log marker (up to {RustReadinessTimeout}).");
+        var startupStopwatch = Stopwatch.StartNew();
+        while (startupStopwatch.Elapsed < RustReadinessTimeout)
+        {
+            Assert.IsFalse(
+                process.HasExited,
+                $"'{gameKey}' exited before Rust reported startup complete (exit code {process.ExitCode}).");
+
+            if (HasRustStartupCompleted(logPath))
+            {
+                break;
+            }
+
+            await Task.Delay(RustReadinessRetryInterval);
+        }
+
+        Assert.IsTrue(
+            HasRustStartupCompleted(logPath),
+            $"'{gameKey}' did not report startup complete within {RustReadinessTimeout}.");
+
+        int queryPort = int.Parse(instance.Config.ServerQueryPort);
+        int serverPort = int.Parse(instance.Config.ServerPort);
+        int[] probePorts = new[] { queryPort, serverPort }.Distinct().ToArray();
+        TestContext.WriteLine($"{gameKey}: probing A2S on configured query port {queryPort} and game port {serverPort}.");
+        var queryStopwatch = Stopwatch.StartNew();
+
+        while (queryStopwatch.Elapsed < RustQueryProbeTimeout)
+        {
+            Assert.IsFalse(
+                process.HasExited,
+                $"'{gameKey}' exited while probing A2S readiness (exit code {process.ExitCode}).");
+
+            foreach (int probePort in probePorts)
+            {
+                var query = new GameServer.Query.A2S(instance.Config.ServerIP, probePort, timeout: 1);
+                Dictionary<string, string> information = await query.GetInfo();
+                if (information == null || !information.TryGetValue("Name", out string reportedName))
+                {
+                    continue;
+                }
+
+                if (probePort != queryPort)
+                {
+                    Assert.Fail($"'{gameKey}' answered A2S on game port {serverPort}, not configured query port {queryPort}.");
+                }
+
+                Assert.AreEqual(instance.Config.ServerName, reportedName, $"'{gameKey}' reported an unexpected server name.");
+                TestContext.WriteLine($"{gameKey}: A2S readiness verified on query port {queryPort}.");
+                return;
+            }
+
+            await Task.Delay(RustReadinessRetryInterval);
+        }
+
+        Assert.Fail($"'{gameKey}' reported startup complete but did not answer A2S on query port {queryPort} or game port {serverPort} within {RustQueryProbeTimeout}.");
+    }
+
+    private static bool HasRustStartupCompleted(string logPath)
+    {
+        if (!File.Exists(logPath))
+        {
+            return false;
+        }
+
+        try
+        {
+            using var log = new FileStream(logPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            using var reader = new StreamReader(log);
+            return reader.ReadToEnd().IndexOf("Server startup complete", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
     }
 
     private static void ApplyConfiguredConsoleMode(object gameServer, bool embedConsole, string gameKey)
@@ -905,14 +1640,13 @@ public sealed class BuiltInGameIntegrationTests
     private void LogProcessStopDiagnostics(Process process, string gameKey, bool embedConsole)
     {
         IntPtr mainWindow = process.MainWindowHandle;
-        ProcessStartInfo startInfo = process.StartInfo;
         bool hasUsableWindow = ServerConsole.HasUsableWindow(process, mainWindow);
         TestContext.WriteLine(
             $"{gameKey}: stop diagnostics; embedConsole={embedConsole}, processId={process.Id}, " +
-            $"hasUsableWindow={hasUsableWindow}, createNoWindow={startInfo.CreateNoWindow}, " +
-            $"redirectStandardInput={startInfo.RedirectStandardInput}, " +
-            $"redirectStandardOutput={startInfo.RedirectStandardOutput}, " +
-            $"redirectStandardError={startInfo.RedirectStandardError}.");
+            $"hasUsableWindow={hasUsableWindow}, createNoWindow={ServerConsole.IsCreatedWithoutWindow(process)}, " +
+            $"redirectStandardInput={ServerConsole.IsStandardInputRedirected(process)}, " +
+            $"redirectStandardOutput={ServerConsole.IsStandardOutputRedirected(process)}, " +
+            $"redirectStandardError={ServerConsole.IsStandardErrorRedirected(process)}.");
     }
 
     private async Task StopServerAsync(object gameServer, string gameKey, Process process)
@@ -936,7 +1670,7 @@ public sealed class BuiltInGameIntegrationTests
                     {
                         await stopTask.WaitAsync(ServerShutdownTimeout);
                     }
-                    catch (TimeoutException)
+                    catch (TimeoutException) when (!stopTask.IsCompleted)
                     {
                         stopFailure = $"'{gameKey}' Stop(Process) did not complete within {ServerShutdownTimeout}.";
                     }
@@ -1040,7 +1774,7 @@ public sealed class BuiltInGameIntegrationTests
 
     private static void BeginDrainingProcessOutput(Process process)
     {
-        if (process.StartInfo.RedirectStandardOutput)
+        if (ServerConsole.IsStandardOutputRedirected(process))
         {
             try
             {
@@ -1052,7 +1786,7 @@ public sealed class BuiltInGameIntegrationTests
             }
         }
 
-        if (process.StartInfo.RedirectStandardError)
+        if (ServerConsole.IsStandardErrorRedirected(process))
         {
             try
             {
@@ -1459,6 +2193,21 @@ public sealed class BuiltInGameIntegrationTests
 
         settings = new IntegrationSettings(rootPath, credentialsPath);
         return true;
+    }
+
+    private bool TryGetLiveOperationInputs(
+        string gameKey,
+        out IntegrationSettings settings,
+        out SteamCredentials credentials,
+        out string skipReason)
+    {
+        credentials = null;
+        if (!TryGetSettings(gameKey, out settings, out skipReason))
+        {
+            return false;
+        }
+
+        return SteamCredentials.TryLoad(settings.CredentialsPath, out credentials, out skipReason);
     }
 
     private static string FindTestProjectDirectory()

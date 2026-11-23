@@ -162,13 +162,13 @@ namespace WindowsGSM.Functions
             }
             catch
             {
-                return @"https://github.com/WindowsGSM/WindowsGSM/raw/master/WindowsGSM/Images/WindowsGSM.png";
+                return "https://raw.githubusercontent.com/conorjh/CdogsWindowsGSM/master/CdogsWindowsGSM/Images/WindowsGSM-EMERALD.png";
             }
         }
 
         private static string GetAvatarUrl()
         {
-            return "https://github.com/WindowsGSM/WindowsGSM/raw/master/WindowsGSM/Images/WindowsGSM.png";
+            return "https://raw.githubusercontent.com/conorjh/CdogsWindowsGSM/master/CdogsWindowsGSM/Images/WindowsGSM-EMERALD.png";
         }
 
         public static async void SendErrorLog()
@@ -194,7 +194,7 @@ namespace WindowsGSM.Functions
                 JObject jObject = new JObject
                 {
                     { "username", "WindowsGSM - Error Feed" },
-                    { "avatar_url", "https://github.com/WindowsGSM/WindowsGSM/raw/master/WindowsGSM/Images/WindowsGSM.png" },
+                    { "avatar_url", "https://raw.githubusercontent.com/conorjh/CdogsWindowsGSM/master/CdogsWindowsGSM/Images/WindowsGSM-EMERALD.png" },
                     { "content",  $"```php\n{errorLog}```" }
                 };
                 using (var httpClient = new HttpClient())

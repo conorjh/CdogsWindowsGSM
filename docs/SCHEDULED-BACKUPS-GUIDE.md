@@ -32,6 +32,6 @@ Scheduled backups use the same per-server backup location and retention setting 
 
 ## Choosing a backup type
 
-Full-server backup remains the default and uses the existing `.zip` format. Configuration-only is opt-in and is available only where WindowsGSM has a validated explicit plan. The current built-in plans cover Rust, 10 Source titles, 7 GoldSrc titles, and Call of Duty 1; code eligibility does not mean those providers have all passed live qualification. Plugin plans are also not runtime qualification. See the [config-only backup guide](CONFIG-ONLY-BACKUP-GUIDE.md) and the [built-in capability report](BUILT-IN-GAME-SHARED-INSTALL-CONFIG-REPORT.md) before selecting that type.
+Full-server backup remains the default and uses the existing `.zip` format. Configuration-only is opt-in and is available only where WindowsGSM has a validated explicit plan. The current built-in plans cover Rust, Luanti, 11 Source titles, 7 GoldSrc titles, Call of Duty 1, and Minecraft Bedrock; code eligibility does not mean those providers have all passed live qualification. Plugin plans are also not runtime qualification. See the [config-only backup guide](CONFIG-ONLY-BACKUP-GUIDE.md) for approved paths and the [game integration Alpha matrix](GAME-INTEGRATION-ALPHA-MATRIX.md) for current status.
 
 For Alpha testing, use BK-04 in the [tester checklist](ALPHA-TESTER-CHECKLIST.md) and record the candidate, result, and any missed/skipped/error status.

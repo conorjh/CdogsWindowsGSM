@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using System.Diagnostics;
 using System.IO;
 
@@ -97,21 +98,34 @@ namespace WindowsGSM.GameServer
 
         public async Task Stop(Process p)
         {
-            await Task.Run(async () =>
+            if (p == null || p.HasExited)
             {
-                if (Functions.ServerConsole.IsStandardInputRedirected(p))
-                {
-                    p.Kill();
-                }
-                else
-                {
-                    Functions.ServerConsole.SendMessageToMainWindow(p.MainWindowHandle, "/save");
-                    
-                    await Task.Delay(5000);
+                return;
+            }
 
-                    Functions.ServerConsole.SendMessageToMainWindow(p.MainWindowHandle, "/stop");
+            if (Functions.ServerConsole.IsStandardInputRedirected(p) ||
+                !Functions.ServerConsole.HasUsableWindow(p, p.MainWindowHandle))
+            {
+                try
+                {
+                    p.Kill(entireProcessTree: true);
                 }
-            });
+                catch (InvalidOperationException) when (p.HasExited)
+                {
+                    return;
+                }
+
+                await p.WaitForExitAsync();
+                return;
+            }
+
+            Functions.ServerConsole.SendMessageToMainWindow(p.MainWindowHandle, "/save");
+            await Task.Delay(5000);
+
+            if (!p.HasExited)
+            {
+                Functions.ServerConsole.SendMessageToMainWindow(p.MainWindowHandle, "/stop");
+            }
         }
 
         public async Task<Process> Install()

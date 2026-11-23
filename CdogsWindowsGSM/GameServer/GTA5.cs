@@ -85,6 +85,20 @@ namespace WindowsGSM.GameServer
                     configText = File.ReadAllText(configPath);
                     Notice = AppendNotice(Notice, $"The {_displayName} server.cfg template could not be downloaded; using the CFX default configuration.");
                 }
+                else if (_isRedM)
+                {
+                    configText = string.Join(
+                        Environment.NewLine,
+                        "ensure mapmanager",
+                        "ensure chat",
+                        "ensure spawnmanager",
+                        "ensure sessionmanager",
+                        "ensure basic-gamemode",
+                        "ensure hardcap",
+                        "ensure rconlog",
+                        string.Empty);
+                    Notice = AppendNotice(Notice, "The RedM template was unavailable; generated a default configuration.");
+                }
                 else
                 {
                     Error = $"No {_displayName} server.cfg template or CFX default configuration was available.";
@@ -388,7 +402,10 @@ namespace WindowsGSM.GameServer
             }
 
             JObject page = JObject.Parse(dataMatch.Groups[1].Value);
-            JObject windowsBuild = page["props"]?["pageProps"]?["legacy"]?["recommended"]?["windows"] as JObject;
+            JArray windowsBuilds = page["props"]?["pageProps"]?["legacy"]?["recommended"]?["windows"] as JArray;
+            JObject windowsBuild = windowsBuilds != null && windowsBuilds.Count > 0
+                ? windowsBuilds[0] as JObject
+                : null;
             if (windowsBuild == null)
             {
                 throw new InvalidDataException("Cfx did not publish a recommended legacy Windows server artifact.");
@@ -454,9 +471,9 @@ namespace WindowsGSM.GameServer
                             throw new InvalidDataException("Could not safely extract the Cfx server-data archive.");
                         }
                         string stagedDataPath = Path.Combine(extractedDataPath, "cfx-server-data-master");
-                        if (!Directory.Exists(stagedDataPath) || !File.Exists(Path.Combine(stagedDataPath, "server.cfg")))
+                        if (!Directory.Exists(Path.Combine(stagedDataPath, "resources")))
                         {
-                            throw new InvalidDataException("The Cfx server-data archive did not contain server.cfg.");
+                            throw new InvalidDataException("The Cfx server-data archive did not contain its resources directory.");
                         }
 
                         string serverPath = Path.Combine(serverFilesPath, "server");
@@ -556,9 +573,9 @@ namespace WindowsGSM.GameServer
                 Error = $"Invalid {_displayName} installation: FXServer.exe or citizen is missing from ({serverPath}).";
                 return false;
             }
-            if (!File.Exists(Path.Combine(serverDataPath, "server.cfg")))
+            if (!Directory.Exists(Path.Combine(serverDataPath, "resources")))
             {
-                Error = $"Invalid {_displayName} installation: server.cfg is missing from ({serverDataPath}).";
+                Error = $"Invalid {_displayName} installation: the server-data resources directory is missing from ({serverDataPath}).";
                 return false;
             }
             return true;

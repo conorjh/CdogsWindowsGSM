@@ -32,7 +32,7 @@ namespace WindowsGSM.Functions
     class PluginManagement
     {
         public const string DefaultUserImage = "pack://application:,,,/Images/Plugins/User.png";
-        public const string DefaultPluginImage = "pack://application:,,,/Images/WindowsGSM.png";
+        public const string DefaultPluginImage = "pack://application:,,,/Images/WindowsGSM-EMERALD.png";
         private static readonly Lazy<PluginCompilationEnvironment> PluginEnvironment = new Lazy<PluginCompilationEnvironment>(CreatePluginEnvironment);
         private static readonly object LoadedPluginAssembliesLock = new object();
         private static readonly Dictionary<string, Assembly> LoadedPluginAssemblies = new Dictionary<string, Assembly>(StringComparer.Ordinal);

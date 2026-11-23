@@ -1,32 +1,22 @@
 ﻿using System.Threading.Tasks;
 using System.Diagnostics;
 using System.IO;
+using System.Net;
+using System.Net.Sockets;
+using System.Text;
+using System.Threading;
+using System.Xml.Linq;
 using System;
 
 namespace WindowsGSM.GameServer
 {
     /// <summary>
-    /// 
-    /// Notes:
-    /// 7 Days to Die Dedicated Server has a special console template which, when RedirectStandardOutput=true, the console output is still working.
-    /// The console output seems have 3 channels, RedirectStandardOutput catch the first channel, RedirectStandardError catch the second channel, the third channel left on the game server console.
-    /// Moreover, it has his input bar on the bottom so a normal sendkey method is not working.
-    /// We need to send a {TAB} => (Send text) => {TAB} => (Send text) => {ENTER} to make the input cursor is on the input bar and send the command successfully.
-    /// 
-    /// RedirectStandardInput:  NO WORKING
-    /// RedirectStandardOutput: YES (Used)
-    /// RedirectStandardError:  YES (Used)
-    /// SendKeys Input Method:  YES (Used)
-    /// 
-    /// There are two methods to shutdown this special server
-    /// 1. {TAB} => (Send shutdown) => {TAB} => (Send shutdown) => {ENTER}
-    /// 2. p.CloseMainWindow(); => {ENTER}
-    /// 
-    /// The second one is used.
-    /// 
+    /// 7 Days to Die does not reliably accept redirected stdin or window input for shutdown.
+    /// Use its configured, authenticated Telnet interface instead.
     /// </summary>
     class SDTD
     {
+        private static readonly TimeSpan TelnetTimeout = TimeSpan.FromSeconds(20);
         private readonly Functions.ServerConfig _serverData;
 
         public string Error;
@@ -57,13 +47,19 @@ namespace WindowsGSM.GameServer
             string configPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "serverconfig.xml");
             if (await Functions.Github.DownloadGameServerConfig(configPath, FullName))
             {
+                string telnetPassword = _serverData.GetRCONPassword();
                 string configText = File.ReadAllText(configPath);
                 configText = configText.Replace("{{hostname}}", _serverData.ServerName);
                 configText = configText.Replace("{{rcon_password}}", _serverData.GetRCONPassword());
                 configText = configText.Replace("{{port}}", _serverData.ServerPort);
                 configText = configText.Replace("{{telnetPort}}", (int.Parse(_serverData.ServerPort) - int.Parse(Port) + 8081).ToString());
+                configText = configText.Replace("{{telnet_password}}", telnetPassword);
                 configText = configText.Replace("{{maxplayers}}", Maxplayers);
-                File.WriteAllText(configPath, configText);
+                XDocument configuration = XDocument.Parse(configText);
+                SetTelnetProperty(configuration, "TelnetEnabled", "true");
+                SetTelnetProperty(configuration, "TelnetPort", (int.Parse(_serverData.ServerPort) - int.Parse(Port) + 8081).ToString());
+                SetTelnetProperty(configuration, "TelnetPassword", telnetPassword);
+                File.WriteAllText(configPath, configuration.ToString(SaveOptions.DisableFormatting));
             }
 
             //Create steam_appid.txt
@@ -91,12 +87,6 @@ namespace WindowsGSM.GameServer
 
             string logFile = @"7DaysToDieServer_Data\output_log_dedi__" + DateTime.Now.ToString("yyyy-MM-dd-HH-mm-ss") + ".txt";
             string param = $"-logfile \"{Path.Combine(workingDir, logFile)}\" -quit -batchmode -nographics -configfile=serverconfig.xml -dedicated {_serverData.ServerParam}";
-
-            WindowsFirewall firewall = new WindowsFirewall(exeName, exePath);
-            if (!await firewall.IsRuleExist())
-            {
-                await firewall.AddRule();
-            }
 
             Process p;
             if (!AllowsEmbedConsole)
@@ -143,12 +133,185 @@ namespace WindowsGSM.GameServer
 
         public async Task Stop(Process p)
         {
-            await Task.Run(() =>
+            if (p == null)
             {
-                Functions.ServerConsole.SetMainWindow(p.MainWindowHandle);
-                p.CloseMainWindow();
-                Functions.ServerConsole.SendWaitToMainWindow("{ENTER}");
-            });
+                throw new ArgumentNullException(nameof(p));
+            }
+
+            if (p.HasExited)
+            {
+                return;
+            }
+
+            string configPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "serverconfig.xml");
+            (int port, string password) = ReadTelnetSettings(configPath);
+
+            using var timeout = new CancellationTokenSource(TelnetTimeout);
+            try
+            {
+                using var client = new TcpClient();
+                await client.ConnectAsync(IPAddress.Loopback, port, timeout.Token);
+
+                using NetworkStream stream = client.GetStream();
+                await ReadUntilAnyAsync(stream, timeout.Token, "Please enter password:");
+                await WriteTelnetLineAsync(stream, password, timeout.Token);
+
+                string authenticationResponse = await ReadUntilAnyAsync(
+                    stream,
+                    timeout.Token,
+                    "Logon successful",
+                    "Password incorrect",
+                    "Too many failed login attempts");
+                if (!authenticationResponse.Contains("Logon successful", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw new InvalidOperationException("7 Days to Die rejected the configured Telnet password.");
+                }
+
+                await WriteTelnetLineAsync(stream, "shutdown", timeout.Token);
+                await WaitForShutdownCommandAsync(p, stream, timeout.Token);
+            }
+            catch (OperationCanceledException exception) when (timeout.IsCancellationRequested)
+            {
+                throw new TimeoutException("7 Days to Die did not complete its Telnet shutdown exchange within 20 seconds.", exception);
+            }
+        }
+
+        private static (int Port, string Password) ReadTelnetSettings(string configPath)
+        {
+            if (!File.Exists(configPath))
+            {
+                throw new FileNotFoundException("7 Days to Die serverconfig.xml was not found.", configPath);
+            }
+
+            XDocument configuration = XDocument.Load(configPath);
+            string telnetEnabled = ReadTelnetProperty(configuration, "TelnetEnabled");
+            if (!bool.TryParse(telnetEnabled, out bool isEnabled) || !isEnabled)
+            {
+                throw new InvalidOperationException("7 Days to Die Telnet is disabled or not configured.");
+            }
+
+            string telnetPort = ReadTelnetProperty(configuration, "TelnetPort");
+            if (!int.TryParse(telnetPort, out int port) || port < 1 || port > 65535)
+            {
+                throw new InvalidDataException("7 Days to Die TelnetPort is missing or invalid.");
+            }
+
+            string password = ReadTelnetProperty(configuration, "TelnetPassword");
+            if (string.IsNullOrWhiteSpace(password))
+            {
+                throw new InvalidDataException("7 Days to Die TelnetPassword is missing.");
+            }
+
+            return (port, password);
+        }
+
+        private static string ReadTelnetProperty(XDocument configuration, string propertyName)
+        {
+            foreach (XElement property in configuration.Descendants())
+            {
+                if (property.Name.LocalName == "property" &&
+                    string.Equals((string)property.Attribute("name"), propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return (string)property.Attribute("value");
+                }
+            }
+
+            return null;
+        }
+
+        private static void SetTelnetProperty(XDocument configuration, string propertyName, string value)
+        {
+            foreach (XElement property in configuration.Descendants())
+            {
+                XAttribute nameAttribute = property.Attribute("name");
+                if (string.Equals(property.Name.LocalName, "property", StringComparison.OrdinalIgnoreCase) &&
+                    nameAttribute != null &&
+                    string.Equals(nameAttribute.Value, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    property.SetAttributeValue("value", value);
+                    return;
+                }
+            }
+
+            if (configuration.Root == null)
+            {
+                throw new InvalidDataException("7 Days to Die serverconfig.xml has no root element.");
+            }
+
+            configuration.Root.Add(new XElement(
+                "property",
+                new XAttribute("name", propertyName),
+                new XAttribute("value", value)));
+        }
+
+        private static async Task<string> ReadUntilAnyAsync(NetworkStream stream, CancellationToken cancellationToken, params string[] markers)
+        {
+            var response = new StringBuilder();
+            byte[] buffer = new byte[512];
+
+            while (true)
+            {
+                int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                if (bytesRead == 0)
+                {
+                    throw new IOException("7 Days to Die closed its Telnet connection before responding.");
+                }
+
+                response.Append(Encoding.UTF8.GetString(buffer, 0, bytesRead));
+                string responseText = response.ToString();
+                foreach (string marker in markers)
+                {
+                    if (responseText.IndexOf(marker, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        return responseText;
+                    }
+                }
+            }
+        }
+
+        private static async Task WaitForShutdownCommandAsync(Process process, NetworkStream stream, CancellationToken cancellationToken)
+        {
+            var response = new StringBuilder();
+            byte[] buffer = new byte[512];
+
+            while (!process.HasExited)
+            {
+                if (!stream.DataAvailable)
+                {
+                    await Task.Delay(50, cancellationToken);
+                    continue;
+                }
+
+                int bytesRead = await stream.ReadAsync(buffer, 0, buffer.Length, cancellationToken);
+                if (bytesRead == 0)
+                {
+                    if (process.HasExited)
+                    {
+                        return;
+                    }
+
+                    throw new IOException("7 Days to Die closed its Telnet connection before acknowledging shutdown.");
+                }
+
+                response.Append(Encoding.UTF8.GetString(buffer, 0, bytesRead));
+                string responseText = response.ToString();
+                if (responseText.IndexOf("Shutting server down...", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return;
+                }
+
+                if (responseText.IndexOf("*** ERROR:", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    throw new InvalidOperationException("7 Days to Die rejected the Telnet shutdown command.");
+                }
+            }
+        }
+
+        private static async Task WriteTelnetLineAsync(NetworkStream stream, string line, CancellationToken cancellationToken)
+        {
+            byte[] request = Encoding.UTF8.GetBytes(line + "\r\n");
+            await stream.WriteAsync(request, 0, request.Length, cancellationToken);
+            await stream.FlushAsync(cancellationToken);
         }
 
         public async Task<Process> Install()

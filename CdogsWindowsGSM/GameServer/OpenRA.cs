@@ -3,8 +3,12 @@ using System.ComponentModel;
 using System.Diagnostics;
 using System.IO;
 using System.Net;
+using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Xml;
+using System.Xml.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using WindowsGSM.Functions;
@@ -13,7 +17,7 @@ namespace WindowsGSM.GameServer
 {
     class OpenRA
     {
-        private const string ReleaseApi = "https://api.github.com/repos/OpenRA/OpenRA/releases/latest";
+        private const string ReleaseFeedUrl = "https://github.com/OpenRA/OpenRA/releases.atom";
         private const string RuntimeDirectoryName = "OpenRA";
         private const string SupportDirectoryName = "OpenRA-data";
         private const string VersionFileName = "openra_version.txt";
@@ -171,7 +175,13 @@ namespace WindowsGSM.GameServer
 
             string serverFilesPath = ServerPath.GetServersServerFiles(_serverData.ServerID);
             string engineDirectory = Path.Combine(serverFilesPath, RuntimeDirectoryName);
-            string executablePath = Path.Combine(engineDirectory, ExecutableRelativePath);
+            string executablePath = GetServerExecutablePath(engineDirectory);
+            if (string.IsNullOrWhiteSpace(executablePath))
+            {
+                Error = $"OpenRA server executable was not found in ({engineDirectory}).";
+                return null;
+            }
+            StartPath = Path.GetRelativePath(serverFilesPath, executablePath);
             string supportDirectory = Path.Combine(serverFilesPath, SupportDirectoryName);
             string parameters = $"Engine.EngineDir={QuoteCommandLineArgument(engineDirectory)} " +
                 $"Engine.SupportDir={QuoteCommandLineArgument(supportDirectory)} Game.Mod=ra " +
@@ -185,12 +195,6 @@ namespace WindowsGSM.GameServer
             if (!string.IsNullOrWhiteSpace(_serverData.ServerParam))
             {
                 parameters += " " + _serverData.ServerParam.Trim();
-            }
-
-            var firewall = new WindowsFirewall("OpenRA.Server.exe", executablePath);
-            if (!await firewall.IsRuleExist() && !await firewall.AddRule())
-            {
-                Notice = "Could not add OpenRA to the Windows Firewall; verify the server port is allowed.";
             }
 
             var process = new Process
@@ -384,48 +388,49 @@ namespace WindowsGSM.GameServer
         {
             var webClient = new WebClient();
             webClient.Headers[HttpRequestHeader.UserAgent] = "CdogsWindowsGSM";
-            webClient.Headers[HttpRequestHeader.Accept] = "application/vnd.github+json";
             return webClient;
         }
 
         private static async Task<ReleaseInfo> GetLatestRelease(WebClient webClient)
         {
-            JObject release = JObject.Parse(await webClient.DownloadStringTaskAsync(ReleaseApi));
-            string version = ((string)release["tag_name"] ?? string.Empty).Trim();
-            if (string.IsNullOrWhiteSpace(version) || version.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+            XDocument releaseFeed;
+            try
             {
-                throw new InvalidDataException("GitHub returned an invalid OpenRA release tag.");
+                releaseFeed = XDocument.Parse(await webClient.DownloadStringTaskAsync(ReleaseFeedUrl));
+            }
+            catch (XmlException exception)
+            {
+                throw new InvalidDataException("GitHub returned invalid OpenRA release metadata.", exception);
             }
 
-            JArray assets = release["assets"] as JArray;
-            JToken packageAsset = null;
-            if (assets != null)
+            XNamespace atom = "http://www.w3.org/2005/Atom";
+            string version = releaseFeed.Descendants(atom + "entry")
+                .Select(entry => ((string)entry.Element(atom + "title") ?? string.Empty).Trim())
+                .FirstOrDefault(tag => Regex.IsMatch(tag, @"^release-\d{8}$", RegexOptions.CultureInvariant));
+            if (string.IsNullOrWhiteSpace(version))
             {
-                foreach (JToken asset in assets)
-                {
-                    string name = (string)asset["name"];
-                    if (!string.IsNullOrWhiteSpace(name) && name.StartsWith("OpenRA-", StringComparison.OrdinalIgnoreCase) &&
-                        name.EndsWith("-x64-winportable.zip", StringComparison.OrdinalIgnoreCase))
-                    {
-                        packageAsset = asset;
-                        break;
-                    }
-                }
-            }
-            if (packageAsset == null)
-            {
-                throw new InvalidDataException("The latest OpenRA release did not include the x64 Windows portable package.");
+                throw new InvalidDataException("GitHub did not publish a stable OpenRA release in its release feed.");
             }
 
-            string fileName = (string)packageAsset["name"];
-            string downloadUrl = (string)packageAsset["browser_download_url"];
+            string expandedAssetsUrl = $"https://github.com/OpenRA/OpenRA/releases/expanded_assets/{Uri.EscapeDataString(version)}";
+            string assetsHtml = await webClient.DownloadStringTaskAsync(expandedAssetsUrl);
+            Match assetMatch = Regex.Match(
+                assetsHtml,
+                @"<a href=""(?<path>/OpenRA/OpenRA/releases/download/[^""]+/[^""]+-x64-winportable\.zip)""",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (!assetMatch.Success)
+            {
+                throw new InvalidDataException($"OpenRA release {version} did not provide an x64 Windows portable package.");
+            }
+
+            string downloadUrl = "https://github.com" + assetMatch.Groups["path"].Value;
             Uri uri;
-            string expectedPath = $"/OpenRA/OpenRA/releases/download/{version}/{fileName}";
-            if (!Uri.TryCreate(downloadUrl, UriKind.Absolute, out uri) ||
-                !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase) ||
-                !uri.IsDefaultPort ||
-                !string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase) ||
-                !string.Equals(Uri.UnescapeDataString(uri.AbsolutePath), expectedPath, StringComparison.Ordinal))
+            string expectedPrefix = $"/OpenRA/OpenRA/releases/download/{version}/";
+            if (!Uri.TryCreate(downloadUrl, UriKind.Absolute, out uri)
+                || !string.Equals(uri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase)
+                || !string.Equals(uri.Host, "github.com", StringComparison.OrdinalIgnoreCase)
+                || !uri.AbsolutePath.StartsWith(expectedPrefix, StringComparison.Ordinal)
+                || !uri.AbsolutePath.EndsWith("-x64-winportable.zip", StringComparison.OrdinalIgnoreCase))
             {
                 throw new InvalidDataException("GitHub returned an invalid OpenRA portable package URL.");
             }
@@ -438,13 +443,29 @@ namespace WindowsGSM.GameServer
             string[] executablePaths = Directory.GetFiles(extractPath, "OpenRA.Server.exe", SearchOption.AllDirectories);
             foreach (string executablePath in executablePaths)
             {
-                string binDirectory = Path.GetDirectoryName(executablePath);
-                if (string.Equals(Path.GetFileName(binDirectory), "bin", StringComparison.OrdinalIgnoreCase))
+                string extractionRoot = Path.GetFullPath(extractPath);
+                string extractionRootPrefix = extractionRoot.TrimEnd(Path.DirectorySeparatorChar) + Path.DirectorySeparatorChar;
+                for (DirectoryInfo candidate = new DirectoryInfo(Path.GetDirectoryName(executablePath)); candidate != null; candidate = candidate.Parent)
                 {
-                    return Directory.GetParent(binDirectory).FullName;
+                    string candidatePath = Path.GetFullPath(candidate.FullName);
+                    if (!string.Equals(candidatePath, extractionRoot, StringComparison.OrdinalIgnoreCase)
+                        && !candidatePath.StartsWith(extractionRootPrefix, StringComparison.OrdinalIgnoreCase))
+                    {
+                        break;
+                    }
+
+                    if (IsValidPackage(candidatePath))
+                    {
+                        return candidatePath;
+                    }
+
+                    if (string.Equals(candidatePath, extractionRoot, StringComparison.OrdinalIgnoreCase))
+                    {
+                        break;
+                    }
                 }
             }
-            throw new InvalidDataException("The OpenRA package did not contain bin\\OpenRA.Server.exe.");
+            throw new InvalidDataException("The OpenRA package did not contain a server executable and Red Alert mod directory.");
         }
 
         private static string ResolvePackageRoot(string path)
@@ -460,8 +481,20 @@ namespace WindowsGSM.GameServer
         private static bool IsValidPackage(string path)
         {
             return Directory.Exists(path) &&
-                File.Exists(Path.Combine(path, ExecutableRelativePath)) &&
+                (File.Exists(Path.Combine(path, ExecutableRelativePath)) || File.Exists(Path.Combine(path, "OpenRA.Server.exe"))) &&
                 Directory.Exists(Path.Combine(path, "mods", "ra"));
+        }
+
+        private static string GetServerExecutablePath(string runtimeDirectory)
+        {
+            string executablePath = Path.Combine(runtimeDirectory, ExecutableRelativePath);
+            if (File.Exists(executablePath))
+            {
+                return executablePath;
+            }
+
+            string rootExecutablePath = Path.Combine(runtimeDirectory, "OpenRA.Server.exe");
+            return File.Exists(rootExecutablePath) ? rootExecutablePath : string.Empty;
         }
 
         private static void ReplaceDirectory(string sourcePath, string destinationPath)
