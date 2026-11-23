@@ -136,7 +136,7 @@ New plugin authors can start with the [from-scratch tutorial without an engine b
 
 ## Releases and updates
 
-The beta candidate uses the [`v2.0.0-beta1`](https://github.com/conorjh/CdogsWindowsGSM/releases/tag/v2.0.0-beta1) tag and is intended to be published as a GitHub prerelease. Once published, download both [CdogsWindowsGSM.exe](https://github.com/conorjh/CdogsWindowsGSM/releases/download/v2.0.0-beta1/CdogsWindowsGSM.exe) and [CdogsWindowsGSM-Updater.exe](https://github.com/conorjh/CdogsWindowsGSM/releases/download/v2.0.0-beta1/CdogsWindowsGSM-Updater.exe) from that release. The in-app update check and updater use the newest published release, including prereleases; they do not rely on GitHub's stable-only `/releases/latest/download` URL. If your installed copy does not offer this prerelease, download both beta assets manually; the prerelease-aware update flow is included in beta1.
+The [`v2.0.0-beta1`](https://github.com/conorjh/CdogsWindowsGSM/releases/tag/v2.0.0-beta1) release is published as a GitHub prerelease. Download both [CdogsWindowsGSM.exe](https://github.com/conorjh/CdogsWindowsGSM/releases/download/v2.0.0-beta1/CdogsWindowsGSM.exe) and [CdogsWindowsGSM-Updater.exe](https://github.com/conorjh/CdogsWindowsGSM/releases/download/v2.0.0-beta1/CdogsWindowsGSM-Updater.exe) from that release. The in-app update check and updater use the newest published release, including prereleases; they do not rely on GitHub's stable-only `/releases/latest/download` URL. If your installed copy does not offer this prerelease, download both beta assets manually; the prerelease-aware update flow is included in beta1.
 
 ## Upstream resources
 - **Original source:** [WindowsGSM/WindowsGSM](https://github.com/WindowsGSM/WindowsGSM)

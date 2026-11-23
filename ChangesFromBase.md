@@ -3,14 +3,14 @@
 This document summarizes the product and code changes in CdogsWindowsGSM compared with the original [WindowsGSM project](https://github.com/WindowsGSM/WindowsGSM).
 
 - **Upstream comparison point:** `WindowsGSM/WindowsGSM` `upstream/master` at `3459bb6087b9ccf00d5179fe834aee4e5b3fad56` (26 December 2025).
-- **CdogsWindowsGSM snapshot:** beta candidate `2.0.0-beta1` on .NET 10, intended for the GitHub prerelease tag `v2.0.0-beta1`. The version metadata does not make the release or its assets available until that tag is published.
+- **CdogsWindowsGSM snapshot:** `2.0.0-beta1` on .NET 10, published as the GitHub prerelease tag `v2.0.0-beta1`.
 - **Scope:** functional and user-visible differences in the current checkout. This is not a line-by-line patch; it excludes restored package caches, generated build output, and session files. The original application project was renamed and migrated, so file-level diff counts overstate the amount of behavioral change.
 
 ## Fork identity and release flow
 
 - The application is branded and packaged as **CdogsWindowsGSM**, with its own README, release notes, version metadata, and attribution. The original WindowsGSM copyright is retained, and third-party notices are included.
 - In-app update checks target the newest published release, including prereleases, from `conorjh/CdogsWindowsGSM`. The app downloads the updater for the selected release tag, and the updater selects the app executable from that release feed.
-- The app and updater report version `2.0.0-beta1`; publish both executable assets with the `v2.0.0-beta1` prerelease so the tag-specific download links resolve.
+- The app and updater report version `2.0.0-beta1`; both executable assets are attached to the `v2.0.0-beta1` prerelease.
 
 ## WindowsGSM capabilities retained
 
