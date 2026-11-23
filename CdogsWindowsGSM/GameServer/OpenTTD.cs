@@ -5,10 +5,13 @@ using System.Diagnostics;
 using System.Globalization;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Xml;
+using System.Xml.Linq;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using WindowsGSM.Functions;
@@ -17,8 +20,8 @@ namespace WindowsGSM.GameServer
 {
     class OpenTTD
     {
-        private const string OpenTTDReleaseApi = "https://api.github.com/repos/OpenTTD/OpenTTD/releases/latest";
-        private const string OpenGfxReleaseApi = "https://api.github.com/repos/OpenTTD/OpenGFX/releases/latest";
+        private const string OpenTTDReleaseFeed = "https://github.com/OpenTTD/OpenTTD/releases.atom";
+        private const string OpenGfxReleaseFeed = "https://github.com/OpenTTD/OpenGFX/releases.atom";
         private const string CdnHost = "cdn.openttd.org";
         private const string ConfigFileName = "openttd.cfg";
         private const string BaseSetDirectoryName = "baseset";
@@ -206,15 +209,26 @@ namespace WindowsGSM.GameServer
         }
 
         private static async Task<ReleaseInfo> GetLatestRelease(
-            WebClient webClient, string apiUrl, string releaseDirectory, string archivePrefix, string archiveSuffix, string productName)
+            WebClient webClient, string releaseFeedUrl, string releaseDirectory, string archivePrefix, string archiveSuffix, string productName)
         {
-            JObject release = JObject.Parse(await webClient.DownloadStringTaskAsync(apiUrl));
-            string tag = ((string)release["tag_name"] ?? string.Empty).Trim();
-            string version = tag.StartsWith("v", StringComparison.OrdinalIgnoreCase) ? tag.Substring(1) : tag;
-            Version parsedVersion;
-            if (!Version.TryParse(version, out parsedVersion) || parsedVersion.Major < 1)
+            XDocument releaseFeed;
+            try
             {
-                throw new InvalidDataException($"GitHub returned an invalid {productName} release tag.");
+                releaseFeed = XDocument.Parse(await webClient.DownloadStringTaskAsync(releaseFeedUrl));
+            }
+            catch (XmlException exception)
+            {
+                throw new InvalidDataException($"GitHub returned invalid {productName} release metadata.", exception);
+            }
+
+            XNamespace atom = "http://www.w3.org/2005/Atom";
+            string version = releaseFeed.Descendants(atom + "entry")
+                .Select(entry => ((string)entry.Element(atom + "title") ?? string.Empty).Trim())
+                .Select(tag => tag.StartsWith("v", StringComparison.OrdinalIgnoreCase) ? tag.Substring(1) : tag)
+                .FirstOrDefault(tag => Version.TryParse(tag, out Version parsedVersion) && parsedVersion.Major >= 1);
+            if (string.IsNullOrWhiteSpace(version))
+            {
+                throw new InvalidDataException($"GitHub did not publish a stable {productName} release in its release feed.");
             }
 
             string fileName = archivePrefix + version + archiveSuffix;
@@ -248,8 +262,8 @@ namespace WindowsGSM.GameServer
                 string opengfxArchivePath;
                 using (WebClient webClient = CreateWebClient())
                 {
-                    openttdRelease = await GetLatestRelease(webClient, OpenTTDReleaseApi, "openttd-releases", "openttd-", "-windows-win64.zip", "OpenTTD");
-                    opengfxRelease = await GetLatestRelease(webClient, OpenGfxReleaseApi, "opengfx-releases", "opengfx-", "-all.zip", "OpenGFX");
+                    openttdRelease = await GetLatestRelease(webClient, OpenTTDReleaseFeed, "openttd-releases", "openttd-", "-windows-win64.zip", "OpenTTD");
+                    opengfxRelease = await GetLatestRelease(webClient, OpenGfxReleaseFeed, "opengfx-releases", "opengfx-", "-all.zip", "OpenGFX");
                     openttdArchivePath = Path.Combine(downloadPath, openttdRelease.FileName);
                     opengfxArchivePath = Path.Combine(downloadPath, opengfxRelease.FileName);
                     await webClient.DownloadFileTaskAsync(openttdRelease.DownloadUrl, openttdArchivePath);
@@ -357,17 +371,14 @@ namespace WindowsGSM.GameServer
                     UseShellExecute = false,
                     CreateNoWindow = AllowsEmbedConsole,
                     RedirectStandardInput = true,
-                    RedirectStandardOutput = AllowsEmbedConsole,
-                    RedirectStandardError = AllowsEmbedConsole
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true
                 },
                 EnableRaisingEvents = true
             };
-            if (AllowsEmbedConsole)
-            {
-                var serverConsole = new ServerConsole(_serverData.ServerID);
-                process.OutputDataReceived += serverConsole.AddOutput;
-                process.ErrorDataReceived += serverConsole.AddOutput;
-            }
+            var serverConsole = new ServerConsole(_serverData.ServerID);
+            process.OutputDataReceived += serverConsole.AddOutput;
+            process.ErrorDataReceived += serverConsole.AddOutput;
 
             bool processStarted = false;
             try
@@ -379,11 +390,8 @@ namespace WindowsGSM.GameServer
                     process.Dispose();
                     return Task.FromResult<Process>(null);
                 }
-                if (AllowsEmbedConsole)
-                {
-                    process.BeginOutputReadLine();
-                    process.BeginErrorReadLine();
-                }
+                process.BeginOutputReadLine();
+                process.BeginErrorReadLine();
                 return Task.FromResult(process);
             }
             catch (Win32Exception ex)
@@ -634,14 +642,15 @@ namespace WindowsGSM.GameServer
             {
                 using (WebClient webClient = CreateWebClient())
                 {
-                    ReleaseInfo openttdRelease = await GetLatestRelease(webClient, OpenTTDReleaseApi, "openttd-releases", "openttd-", "-windows-win64.zip", "OpenTTD");
-                    ReleaseInfo opengfxRelease = await GetLatestRelease(webClient, OpenGfxReleaseApi, "opengfx-releases", "opengfx-", "-all.zip", "OpenGFX");
+                    ReleaseInfo openttdRelease = await GetLatestRelease(webClient, OpenTTDReleaseFeed, "openttd-releases", "openttd-", "-windows-win64.zip", "OpenTTD");
+                    ReleaseInfo opengfxRelease = await GetLatestRelease(webClient, OpenGfxReleaseFeed, "opengfx-releases", "opengfx-", "-all.zip", "OpenGFX");
                     return $"{openttdRelease.Version} / OpenGFX {opengfxRelease.Version}";
                 }
             }
             catch (WebException ex)
             {
-                Error = $"Failed to get the latest OpenTTD build: {ex.Message}";
+                string failedUrl = ex.Response?.ResponseUri?.ToString() ?? "the release metadata endpoint";
+                Error = $"Failed to get the latest OpenTTD build from {failedUrl}: {ex.Message}";
             }
             catch (JsonException ex)
             {

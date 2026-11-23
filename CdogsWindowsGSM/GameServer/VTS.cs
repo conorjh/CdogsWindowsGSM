@@ -63,7 +63,8 @@ namespace WindowsGSM.GameServer
                     FileName = exePath,
                     Arguments = _serverData.ServerParam,
                     WindowStyle = ProcessWindowStyle.Minimized,
-                    UseShellExecute = false
+                    UseShellExecute = false,
+                    RedirectStandardInput = true
                 },
                 EnableRaisingEvents = true
             };
@@ -71,7 +72,6 @@ namespace WindowsGSM.GameServer
             if (AllowsEmbedConsole)
             {
                 p.StartInfo.CreateNoWindow = true;
-                p.StartInfo.RedirectStandardInput = true;
                 p.StartInfo.RedirectStandardOutput = true;
                 p.StartInfo.RedirectStandardError = true;
                 var serverConsole = new ServerConsole(_serverData.ServerID);
@@ -89,17 +89,48 @@ namespace WindowsGSM.GameServer
 
         public async Task Stop(Process p)
         {
-            await Task.Run(() =>
+            Error = string.Empty;
+            Notice = string.Empty;
+            if (p == null || p.HasExited)
             {
-                if (Functions.ServerConsole.IsStandardInputRedirected(p))
+                return;
+            }
+
+            try
+            {
+                ServerConsole.SendCommandToProcess(p, "/stop");
+            }
+            catch (IOException exception)
+            {
+                Notice = "Failed to send the Vintage Story shutdown command: " + exception.Message;
+            }
+            catch (InvalidOperationException exception) when (!p.HasExited)
+            {
+                Notice = "Failed to send the Vintage Story shutdown command: " + exception.Message;
+            }
+            catch (InvalidOperationException) when (p.HasExited)
+            {
+                return;
+            }
+
+            bool exited = await Task.Run(() => p.HasExited || p.WaitForExit(5000));
+            if (!exited && !p.HasExited)
+            {
+                try
                 {
-                    p.StandardInput.WriteLine("/stop");
+                    p.Kill(entireProcessTree: true);
                 }
-                else
+                catch (InvalidOperationException) when (p.HasExited)
                 {
-                    ServerConsole.SendMessageToMainWindow(p.MainWindowHandle, "/stop");
+                    return;
                 }
-            });
+
+                await p.WaitForExitAsync();
+                string forcedStopNotice = "Vintage Story did not stop gracefully and was terminated.";
+                Notice = string.IsNullOrWhiteSpace(Notice)
+                    ? forcedStopNotice
+                    : Notice + Environment.NewLine + forcedStopNotice;
+            }
         }
 
         public async Task<Process> Install()

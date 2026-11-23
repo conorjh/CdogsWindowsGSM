@@ -17,6 +17,7 @@ namespace WindowsGSM.Installer
     public class SteamCMD
     {
         private static readonly string _exeFile = "steamcmd.exe";
+        private static readonly Regex _remoteBuildIdRegex = new Regex("\"public\"\r\n.{0,}{\r\n.{0,}\"buildid\".{1,}\"(.*?)\"");
         private static string InstallPath => ServerPath.GetBin("steamcmd");
         private static string UserDataPath => Path.Combine(InstallPath, "userData.txt");
         private string _param;
@@ -56,6 +57,7 @@ namespace WindowsGSM.Installer
         // Old parameter script
         public void SetParameter(string installDir, string modName, string appId, bool validate, bool loginAnonymous = true)
         {
+            Error = string.Empty;
             _param = $"+force_install_dir \"{installDir}\"";
 
             if (loginAnonymous)
@@ -64,38 +66,15 @@ namespace WindowsGSM.Installer
             }
             else
             {
-                string steamUser = null, steamPass = null;
-
-                if (File.Exists(UserDataPath))
-                {
-                    string[] lines = File.ReadAllLines(UserDataPath);
-
-                    foreach (string line in lines)
-                    {
-                        if (line[0] == '/' && line[1] == '/')
-                        {
-                            continue;
-                        }
-
-                        string[] keyvalue = line.Split(new char[] { '=' }, 2);
-                        if (keyvalue[0] == "steamUser")
-                        {
-                            steamUser = keyvalue[1].Trim('\"');
-                        }
-                        else if(keyvalue[0] == "steamPass")
-                        {
-                            steamPass = keyvalue[1].Trim('\"');
-                        }
-                    }
-                }
-                else
+                if (!File.Exists(UserDataPath))
                 {
                     CreateUserDataTxtIfNotExist();
                 }
 
-                if (string.IsNullOrWhiteSpace(steamUser) || string.IsNullOrWhiteSpace(steamPass))
+                if (!TryLoadSteamCredentials(out string steamUser, out string steamPass, out string credentialError))
                 {
                     _param = null;
+                    Error = credentialError;
                     return;
                 }
 
@@ -116,8 +95,30 @@ namespace WindowsGSM.Installer
             _param += " +quit";
         }
 
-        // New parameter script
         public static string GetParameter(string forceInstallDir, string appId, bool validate = true, bool loginAnonymous = true, string modName = null, string custom = null)
+        {
+            return TryGetParameter(
+                forceInstallDir,
+                appId,
+                validate,
+                loginAnonymous,
+                modName,
+                custom,
+                out string parameter,
+                out _)
+                ? parameter
+                : null;
+        }
+
+        private static bool TryGetParameter(
+            string forceInstallDir,
+            string appId,
+            bool validate,
+            bool loginAnonymous,
+            string modName,
+            string custom,
+            out string parameter,
+            out string errorMessage)
         {
             var sb = new StringBuilder();
 
@@ -131,8 +132,12 @@ namespace WindowsGSM.Installer
             }
             else
             {
-                var (username, password) = GetSteamUsernamePassword();
-                if (string.IsNullOrWhiteSpace(username) || string.IsNullOrWhiteSpace(password)) { return null; }
+                if (!TryLoadSteamCredentials(out string username, out string password, out errorMessage))
+                {
+                    parameter = null;
+                    return false;
+                }
+
                 sb.Append($" +login \"{username}\" \"{password}\"");
             }
 
@@ -157,30 +162,134 @@ namespace WindowsGSM.Installer
             // Set up quit parameter
             sb.Append(" +quit");
 
-            return sb.ToString();
+            parameter = sb.ToString();
+            errorMessage = string.Empty;
+            return true;
         }
 
-        // New parameter script
-        private static (string, string) GetSteamUsernamePassword()
+        internal static bool TryParseSteamCredentials(
+            string contents,
+            out string username,
+            out string password,
+            out string errorMessage)
         {
-            if (!File.Exists(UserDataPath))
+            username = string.Empty;
+            password = string.Empty;
+            errorMessage = string.Empty;
+            if (contents == null)
             {
-                return (null, null);
+                errorMessage = "Steam credential content is missing.";
+                return false;
             }
 
-            string username = null, password = null;
-            foreach (var line in File.ReadAllLines(UserDataPath).ToList())
+            string parsedUsername = null;
+            string parsedPassword = null;
+            bool hasUsername = false;
+            bool hasPassword = false;
+            foreach (string rawLine in contents.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries))
             {
-                if (line[0] == '/' && line[1] == '/') { continue; } // Skip the line if it is a comment line
-                var keyValue = line.Split(new[] { '=' }, 2);
-                switch (keyValue[0])
+                string line = rawLine.Trim();
+                if (line.Length == 0 || line.StartsWith("//", StringComparison.Ordinal))
                 {
-                    case "steamUser": username = keyValue[1].Substring(1, keyValue[1].Length - 2); break;
-                    case "steamPass": password = keyValue[1].Substring(1, keyValue[1].Length - 2); break;
+                    continue;
+                }
+
+                int separatorIndex = line.IndexOf('=');
+                if (separatorIndex <= 0)
+                {
+                    errorMessage = "Steam credential entries must use key=\"value\" format.";
+                    return false;
+                }
+
+                string key = line.Substring(0, separatorIndex).Trim();
+                string value = line.Substring(separatorIndex + 1).Trim();
+                if (string.Equals(key, "steamUser", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (hasUsername)
+                    {
+                        errorMessage = "Steam credential file contains duplicate steamUser entries.";
+                        return false;
+                    }
+
+                    if (!TryParseQuotedCredential(value, out parsedUsername))
+                    {
+                        errorMessage = "steamUser must be a double-quoted value without embedded quotes.";
+                        return false;
+                    }
+
+                    hasUsername = true;
+                }
+                else if (string.Equals(key, "steamPass", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (hasPassword)
+                    {
+                        errorMessage = "Steam credential file contains duplicate steamPass entries.";
+                        return false;
+                    }
+
+                    if (!TryParseQuotedCredential(value, out parsedPassword))
+                    {
+                        errorMessage = "steamPass must be a double-quoted value without embedded quotes.";
+                        return false;
+                    }
+
+                    hasPassword = true;
                 }
             }
 
-            return (username, password);
+            if (string.IsNullOrWhiteSpace(parsedUsername) || string.IsNullOrWhiteSpace(parsedPassword))
+            {
+                errorMessage = "Steam credential file must contain nonempty steamUser and steamPass values.";
+                return false;
+            }
+
+            username = parsedUsername;
+            password = parsedPassword;
+            return true;
+        }
+
+        private static bool TryParseQuotedCredential(string value, out string credential)
+        {
+            credential = string.Empty;
+            if (value.Length < 2 || value[0] != '\"' || value[value.Length - 1] != '\"')
+            {
+                return false;
+            }
+
+            string parsedCredential = value.Substring(1, value.Length - 2);
+            if (parsedCredential.Contains('\"'))
+            {
+                return false;
+            }
+
+            credential = parsedCredential;
+            return true;
+        }
+
+        private static bool TryLoadSteamCredentials(out string username, out string password, out string errorMessage)
+        {
+            username = string.Empty;
+            password = string.Empty;
+            if (!File.Exists(UserDataPath))
+            {
+                errorMessage = "Steam credential file was not found.";
+                return false;
+            }
+
+            try
+            {
+                return TryParseSteamCredentials(File.ReadAllText(UserDataPath), out username, out password, out errorMessage);
+            }
+            catch (Exception exception) when (
+                exception is IOException ||
+                exception is UnauthorizedAccessException ||
+                exception is System.Security.SecurityException)
+            {
+                username = string.Empty;
+                password = string.Empty;
+                errorMessage = $"Unable to read Steam credential file: {exception.Message}";
+                return false;
+            }
         }
 
         public async Task<Process> Run()
@@ -199,7 +308,11 @@ namespace WindowsGSM.Installer
 
             if (_param == null)
             {
-                Error = "Steam account is not set";
+                if (string.IsNullOrWhiteSpace(Error))
+                {
+                    Error = "Steam account is not set";
+                }
+
                 return null;
             }
 
@@ -256,10 +369,9 @@ namespace WindowsGSM.Installer
 
         public static async Task<(Process, string)> UpdateExAtPath(string installPath, string serverId, string appId, bool validate = true, bool loginAnonymous = true, string modName = null, string custom = null, bool embedConsole = true)
         {
-            string param = GetParameter(installPath, appId, validate, loginAnonymous, modName, custom);
-            if (param == null)
+            if (!TryGetParameter(installPath, appId, validate, loginAnonymous, modName, custom, out string param, out string parameterError))
             {
-                return (null, "Steam account not set up");
+                return (null, parameterError);
             }
 
             string steamCmdPath = InstallPath;
@@ -457,16 +569,37 @@ namespace WindowsGSM.Installer
             SendEnterPreventFreeze(p);
 
             string output = await p.StandardOutput.ReadToEndAsync();
-            Regex regex = new Regex("\"public\"\r\n.{0,}{\r\n.{0,}\"buildid\".{1,}\"(.*?)\"");
-            var matches = regex.Matches(output);
-
-            if (matches.Count < 1 || matches[1].Groups.Count < 2)
+            if (!TryParseRemoteBuildId(output, out string buildId))
             {
                 Error = $"Fail to get remote build";
                 return string.Empty;
             }
 
-            return matches[0].Groups[1].Value;
+            return buildId;
+        }
+
+        internal static bool TryParseRemoteBuildId(string output, out string buildId)
+        {
+            buildId = string.Empty;
+            if (string.IsNullOrEmpty(output))
+            {
+                return false;
+            }
+
+            MatchCollection matches = _remoteBuildIdRegex.Matches(output);
+            if (matches.Count == 0 || matches[0].Groups.Count < 2)
+            {
+                return false;
+            }
+
+            string candidate = matches[0].Groups[1].Value;
+            if (string.IsNullOrWhiteSpace(candidate))
+            {
+                return false;
+            }
+
+            buildId = candidate;
+            return true;
         }
 
         public void CreateUserDataTxtIfNotExist()

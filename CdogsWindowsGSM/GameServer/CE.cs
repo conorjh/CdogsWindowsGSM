@@ -61,18 +61,13 @@ namespace WindowsGSM.GameServer
             Process p;
             if (!AllowsEmbedConsole)
             {
-                p = new Process
+                p = Functions.ServerConsole.StartInNewConsole(new ProcessStartInfo
                 {
-                    StartInfo =
-                    {
-                        FileName = shipExePath,
-                        Arguments = param,
-                        WindowStyle = ProcessWindowStyle.Minimized,
-                        UseShellExecute = false
-                    },
-                    EnableRaisingEvents = true
-                };
-                p.Start();
+                    FileName = shipExePath,
+                    Arguments = param,
+                    WindowStyle = ProcessWindowStyle.Minimized,
+                    UseShellExecute = false
+                });
             }
             else
             {
@@ -101,20 +96,32 @@ namespace WindowsGSM.GameServer
             return p;
         }
 
-        public async Task Stop(Process p)
+        public Task Stop(Process p)
         {
-            await Task.Run(() =>
+            if (p == null)
             {
-                if (Functions.ServerConsole.IsCreatedWithoutWindow(p))
+                throw new System.ArgumentNullException(nameof(p));
+            }
+
+            if (p.HasExited)
+            {
+                return Task.CompletedTask;
+            }
+
+            System.IntPtr mainWindow = p.MainWindowHandle;
+            if (Functions.ServerConsole.HasUsableWindow(p, mainWindow))
+            {
+                if (!p.CloseMainWindow())
                 {
-                    p.CloseMainWindow();
+                    throw new System.InvalidOperationException("Conan Exiles server did not accept a graceful window-close request.");
                 }
-                else
-                {
-                    Functions.ServerConsole.SetMainWindow(p.MainWindowHandle);
-                    Functions.ServerConsole.SendWaitToMainWindow("^c");
-                }
-            });
+            }
+            else
+            {
+                Functions.ServerConsole.SendConsoleKeystrokes(p, "quit\r");
+            }
+
+            return Task.CompletedTask;
         }
 
         public async Task<Process> Install()

@@ -25,6 +25,7 @@ namespace WindowsGSM.GameServer
         public string Additional = string.Empty;
 
         public string AppId = "1180760";
+        private const string BaseGameAppId = "632360";
 
         public ROR2(Functions.ServerConfig serverData)
         {
@@ -115,7 +116,7 @@ namespace WindowsGSM.GameServer
         public async Task<Process> Install()
         {
             var steamCMD = new Installer.SteamCMD();
-            Process p = await steamCMD.Install(_serverData.ServerID, string.Empty, AppId);
+            Process p = await steamCMD.Install(_serverData.ServerID, string.Empty, BaseGameAppId, loginAnonymous: false);
             Error = steamCMD.Error;
 
             return p;
@@ -123,7 +124,7 @@ namespace WindowsGSM.GameServer
 
         public async Task<Process> Update(bool validate = false, string custom = null)
         {
-            var (p, error) = await Installer.SteamCMD.UpdateEx(_serverData.ServerID, AppId, validate, custom: custom);
+            var (p, error) = await Installer.SteamCMD.UpdateEx(_serverData.ServerID, BaseGameAppId, validate, loginAnonymous: false, custom: custom);
             Error = error;
             return p;
         }
@@ -142,7 +143,7 @@ namespace WindowsGSM.GameServer
         public string GetLocalBuild()
         {
             var steamCMD = new Installer.SteamCMD();
-            return steamCMD.GetLocalBuild(_serverData.ServerID, AppId);
+            return steamCMD.GetLocalBuild(_serverData.ServerID, BaseGameAppId);
         }
 
         public async Task<string> GetRemoteBuild()

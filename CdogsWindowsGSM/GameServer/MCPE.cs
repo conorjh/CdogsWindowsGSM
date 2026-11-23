@@ -1,14 +1,23 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Net;
+using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace WindowsGSM.GameServer
 {
     class MCPE
     {
+        private const string BuildInfoUrl = "https://github.com/pmmp/PocketMine-MP/releases/latest/download/build_info.json";
+        private const string BuildInfoFileName = "PocketMine-MP-build.json";
+        private static readonly Regex SerializedBuildNumberPattern = new Regex(
+            @"s:5:""build"";(?:i:(\d+);|s:\d+:""(\d+)"";)",
+            RegexOptions.CultureInvariant);
+
         private readonly Functions.ServerConfig _serverData;
 
         public string Error;
@@ -82,6 +91,8 @@ namespace WindowsGSM.GameServer
                         FileName = phpPath,
                         Arguments = $@"-c bin\php PocketMine-MP.phar {_serverData.ServerParam}".TrimEnd(),
                         WindowStyle = ProcessWindowStyle.Minimized,
+                        UseShellExecute = false,
+                        RedirectStandardInput = true,
                     },
                     EnableRaisingEvents = true
                 };
@@ -134,41 +145,45 @@ namespace WindowsGSM.GameServer
         public async Task<Process> Install()
         {
             string serverFilesPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID);
-
-            //Download PHP-7.4-Windows-x64.zip
-            string fileName = "PHP-8.0-Windows-x64.zip";
-            string installUrl = "https://jenkins.pmmp.io/job/PHP-8.0-Aggregate/lastStableBuild/artifact/PHP-8.0-Windows-x64.zip";
-            string PHPzipPath = Path.Combine(serverFilesPath, fileName);
+            string phpZipPath = Path.Combine(serverFilesPath, "PHP-Windows-x64-PM5.zip");
+            string buildInfoPath = Path.Combine(serverFilesPath, BuildInfoFileName);
             try
             {
                 using (WebClient webClient = new WebClient())
+                using (JsonDocument buildInfoDocument = await DownloadBuildInfoAsync(webClient))
                 {
-                    await webClient.DownloadFileTaskAsync(installUrl, PHPzipPath);
-                }
+                    JsonElement buildInfo = buildInfoDocument.RootElement;
+                    string buildInfoJson = buildInfo.GetRawText();
+                    string phpDownloadUrl = GetPhpRuntimeDownloadUrl(buildInfo);
+                    string pocketMineDownloadUrl = GetPocketMineDownloadUrl(buildInfo);
 
-                //Extract PHP-7.3-Windows-x64.zip and delete the zip
-                await Task.Run(() => ZipFile.ExtractToDirectory(PHPzipPath, serverFilesPath));
-                await Task.Run(() => File.Delete(PHPzipPath));
+                    await webClient.DownloadFileTaskAsync(phpDownloadUrl, phpZipPath);
+                    await Task.Run(() => ZipFile.ExtractToDirectory(phpZipPath, serverFilesPath));
+                    File.Delete(phpZipPath);
+                    await webClient.DownloadFileTaskAsync(
+                        pocketMineDownloadUrl,
+                        Path.Combine(serverFilesPath, "PocketMine-MP.phar"));
+                    File.WriteAllText(buildInfoPath, buildInfoJson);
+                }
             }
-            catch
+            catch (WebException ex)
             {
-                Error = $"Fail to download {fileName}";
+                Error = $"Failed to download PocketMine-MP installation files: {ex.Message}";
                 return null;
             }
-
-            //Download PocketMine-MP.phar
-            fileName = "PocketMine-MP.phar";
-            installUrl = "https://jenkins.pmmp.io/job/PocketMine-MP/lastStableBuild/artifact/PocketMine-MP.phar";
-            try
+            catch (JsonException ex)
             {
-                using (WebClient webClient = new WebClient())
-                {
-                    await webClient.DownloadFileTaskAsync(installUrl, Path.Combine(serverFilesPath, fileName));
-                }
+                Error = $"Failed to parse PocketMine-MP build metadata: {ex.Message}";
+                return null;
             }
-            catch
+            catch (IOException ex)
             {
-                Error = $"Fail to download {fileName}";
+                Error = $"Failed to install PocketMine-MP files: {ex.Message}";
+                return null;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                Error = $"Failed to write PocketMine-MP files: {ex.Message}";
                 return null;
             }
 
@@ -177,34 +192,44 @@ namespace WindowsGSM.GameServer
 
         public async Task<Process> Update()
         {
-            //Delete PocketMine-MP.phar
-            string fileName = "PocketMine-MP.phar";
-            string PMMPPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, fileName);
+            string pocketMinePath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, "PocketMine-MP.phar");
+            string stagedPocketMinePath = pocketMinePath + ".download";
+            string buildInfoPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, BuildInfoFileName);
+            string stagedBuildInfoPath = buildInfoPath + ".download";
             try
             {
-                if (File.Exists(PMMPPath))
+                string buildInfoJson;
+                using (WebClient webClient = new WebClient())
+                using (JsonDocument buildInfoDocument = await DownloadBuildInfoAsync(webClient))
                 {
-                    File.Delete(PMMPPath);
+                    JsonElement buildInfo = buildInfoDocument.RootElement;
+                    string pocketMineDownloadUrl = GetPocketMineDownloadUrl(buildInfo);
+                    buildInfoJson = buildInfo.GetRawText();
+                    await webClient.DownloadFileTaskAsync(pocketMineDownloadUrl, stagedPocketMinePath);
                 }
+
+                File.WriteAllText(stagedBuildInfoPath, buildInfoJson);
+                File.Move(stagedPocketMinePath, pocketMinePath, overwrite: true);
+                File.Move(stagedBuildInfoPath, buildInfoPath, overwrite: true);
             }
-            catch
+            catch (WebException ex)
             {
-                Error = $"Fail to delete {fileName}";
+                Error = $"Failed to download PocketMine-MP update: {ex.Message}";
                 return null;
             }
-
-            //Download PocketMine-MP.phar
-            string installUrl = "https://jenkins.pmmp.io/job/PocketMine-MP/lastStableBuild/artifact/PocketMine-MP.phar";
-            try
+            catch (JsonException ex)
             {
-                using (WebClient webClient = new WebClient())
-                {
-                    await webClient.DownloadFileTaskAsync(installUrl, PMMPPath);
-                } 
+                Error = $"Failed to parse PocketMine-MP build metadata: {ex.Message}";
+                return null;
             }
-            catch
+            catch (IOException ex)
             {
-                Error = $"Fail to download {fileName}";
+                Error = $"Failed to update PocketMine-MP files: {ex.Message}";
+                return null;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                Error = $"Failed to write PocketMine-MP files: {ex.Message}";
                 return null;
             }
 
@@ -238,20 +263,67 @@ namespace WindowsGSM.GameServer
                 return string.Empty;
             }
 
-            using (StreamReader sr = File.OpenText(PMMPPath))
+            string buildInfoPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, BuildInfoFileName);
+            if (File.Exists(buildInfoPath))
             {
-                string s = string.Empty;
-                while ((s = sr.ReadLine()) != null)
+                try
                 {
-                    if (s.Contains("const BUILD_NUMBER"))
-                    {
-                        Regex regex = new Regex("\\d+");
-                        return regex.Match(s).Value;
-                    }
+                    using JsonDocument buildInfoDocument = JsonDocument.Parse(File.ReadAllText(buildInfoPath));
+                    return GetBuildNumber(buildInfoDocument.RootElement);
+                }
+                catch (JsonException ex)
+                {
+                    Error = $"Failed to parse installed PocketMine-MP build metadata: {ex.Message}";
+                    return string.Empty;
+                }
+                catch (IOException ex)
+                {
+                    Error = $"Failed to read installed PocketMine-MP build metadata: {ex.Message}";
+                    return string.Empty;
+                }
+                catch (UnauthorizedAccessException ex)
+                {
+                    Error = $"Failed to read installed PocketMine-MP build metadata: {ex.Message}";
+                    return string.Empty;
                 }
             }
 
-            Error = $"Fail to get local build";
+            try
+            {
+                string pharContents = Encoding.ASCII.GetString(File.ReadAllBytes(PMMPPath));
+                Match serializedBuildNumber = SerializedBuildNumberPattern.Match(pharContents);
+                if (serializedBuildNumber.Success)
+                {
+                    return serializedBuildNumber.Groups[1].Success
+                        ? serializedBuildNumber.Groups[1].Value
+                        : serializedBuildNumber.Groups[2].Value;
+                }
+
+                using (StreamReader sr = File.OpenText(PMMPPath))
+                {
+                    string s = string.Empty;
+                    while ((s = sr.ReadLine()) != null)
+                    {
+                        if (s.Contains("const BUILD_NUMBER"))
+                        {
+                            Regex regex = new Regex("\\d+");
+                            return regex.Match(s).Value;
+                        }
+                    }
+                }
+            }
+            catch (IOException ex)
+            {
+                Error = $"Failed to read local PocketMine-MP build: {ex.Message}";
+                return string.Empty;
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                Error = $"Failed to read local PocketMine-MP build: {ex.Message}";
+                return string.Empty;
+            }
+
+            Error = "PocketMine-MP build metadata is unavailable; update the server to refresh it.";
             return string.Empty;
         }
 
@@ -260,25 +332,91 @@ namespace WindowsGSM.GameServer
             try
             {
                 using (WebClient webClient = new WebClient())
+                using (JsonDocument buildInfoDocument = await DownloadBuildInfoAsync(webClient))
                 {
-                    string remoteUrl = "https://jenkins.pmmp.io/job/PocketMine-MP/lastStableBuild/artifact/build_info.json";
-                    string html = await webClient.DownloadStringTaskAsync(remoteUrl);
-                    Regex regex = new Regex("\"build_number\":\\D{0,}(.*?),");
-                    var matches = regex.Matches(html);
-
-                    if (matches.Count == 1 && matches[0].Groups.Count == 2)
-                    {
-                        return matches[0].Groups[1].Value;
-                    }
+                    return GetBuildNumber(buildInfoDocument.RootElement);
                 }
             }
-            catch
+            catch (WebException ex)
             {
-                //ignore
+                Error = $"Failed to download PocketMine-MP build metadata: {ex.Message}";
+            }
+            catch (JsonException ex)
+            {
+                Error = $"Failed to parse PocketMine-MP build metadata: {ex.Message}";
+            }
+            catch (IOException ex)
+            {
+                Error = $"Failed to read PocketMine-MP build metadata: {ex.Message}";
             }
 
-            Error = $"Fail to get remote build";
             return string.Empty;
+        }
+
+        private static async Task<JsonDocument> DownloadBuildInfoAsync(WebClient webClient)
+        {
+            string buildInfoJson = await webClient.DownloadStringTaskAsync(BuildInfoUrl);
+            return JsonDocument.Parse(buildInfoJson);
+        }
+
+        private static string GetBuildNumber(JsonElement buildInfo)
+        {
+            if (!buildInfo.TryGetProperty("build", out JsonElement buildNumber)
+                || (buildNumber.ValueKind != JsonValueKind.Number && buildNumber.ValueKind != JsonValueKind.String)
+                || string.IsNullOrWhiteSpace(buildNumber.ToString()))
+            {
+                throw new InvalidDataException("PocketMine-MP build metadata does not contain a valid build number.");
+            }
+
+            return buildNumber.ToString();
+        }
+
+        private static string GetPocketMineDownloadUrl(JsonElement buildInfo)
+        {
+            string downloadUrl = GetRequiredBuildInfoString(buildInfo, "download_url");
+            if (!Uri.TryCreate(downloadUrl, UriKind.Absolute, out Uri uri)
+                || uri.Scheme != Uri.UriSchemeHttps
+                || uri.Host != "github.com"
+                || !uri.AbsolutePath.StartsWith("/pmmp/PocketMine-MP/releases/download/", StringComparison.Ordinal))
+            {
+                throw new InvalidDataException("PocketMine-MP build metadata contains an invalid download URL.");
+            }
+
+            return uri.AbsoluteUri;
+        }
+
+        private static string GetPhpRuntimeDownloadUrl(JsonElement buildInfo)
+        {
+            string phpVersion = GetRequiredBuildInfoString(buildInfo, "php_version");
+            if (!Regex.IsMatch(phpVersion, @"^\d+\.\d+$", RegexOptions.CultureInvariant))
+            {
+                throw new InvalidDataException("PocketMine-MP build metadata contains an invalid PHP version.");
+            }
+
+            string phpReleaseUrl = GetRequiredBuildInfoString(buildInfo, "php_download_url");
+            Match releaseTagMatch = Regex.Match(
+                phpReleaseUrl,
+                @"^https://github\.com/pmmp/PHP-Binaries/releases/tag/([^/?#]+)$",
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+            if (!releaseTagMatch.Success)
+            {
+                throw new InvalidDataException("PocketMine-MP build metadata contains an invalid PHP release URL.");
+            }
+
+            string releaseTag = Uri.UnescapeDataString(releaseTagMatch.Groups[1].Value);
+            return $"https://github.com/pmmp/PHP-Binaries/releases/download/{Uri.EscapeDataString(releaseTag)}/PHP-{phpVersion}-Windows-x64-PM5.zip";
+        }
+
+        private static string GetRequiredBuildInfoString(JsonElement buildInfo, string propertyName)
+        {
+            if (!buildInfo.TryGetProperty(propertyName, out JsonElement value)
+                || value.ValueKind != JsonValueKind.String
+                || string.IsNullOrWhiteSpace(value.GetString()))
+            {
+                throw new InvalidDataException($"PocketMine-MP build metadata does not contain a valid '{propertyName}' value.");
+            }
+
+            return value.GetString();
         }
     }
 }

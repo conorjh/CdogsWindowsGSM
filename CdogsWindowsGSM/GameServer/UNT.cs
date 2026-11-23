@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using System.Diagnostics;
 using System.IO;
 
@@ -62,6 +63,8 @@ namespace WindowsGSM.GameServer
                         FileName = exePath,
                         Arguments = param,
                         WindowStyle = ProcessWindowStyle.Minimized,
+                        UseShellExecute = false,
+                        RedirectStandardInput = true
                     },
                     EnableRaisingEvents = true
                 };
@@ -98,17 +101,48 @@ namespace WindowsGSM.GameServer
 
         public async Task Stop(Process p)
         {
-            await Task.Run(() =>
+            Error = string.Empty;
+            Notice = string.Empty;
+            if (p == null || p.HasExited)
             {
-                if (Functions.ServerConsole.IsCreatedWithoutWindow(p))
+                return;
+            }
+
+            try
+            {
+                Functions.ServerConsole.SendCommandToProcess(p, "shutdown");
+            }
+            catch (IOException exception)
+            {
+                Notice = "Failed to send the Unturned shutdown command: " + exception.Message;
+            }
+            catch (InvalidOperationException exception) when (!p.HasExited)
+            {
+                Notice = "Failed to send the Unturned shutdown command: " + exception.Message;
+            }
+            catch (InvalidOperationException) when (p.HasExited)
+            {
+                return;
+            }
+
+            bool exited = await Task.Run(() => p.HasExited || p.WaitForExit(10000));
+            if (!exited && !p.HasExited)
+            {
+                try
                 {
-                    p.Kill();
+                    p.Kill(entireProcessTree: true);
                 }
-                else
+                catch (InvalidOperationException) when (p.HasExited)
                 {
-                    Functions.ServerConsole.SendMessageToMainWindow(p.MainWindowHandle, "shutdown");
+                    return;
                 }
-            });
+
+                await p.WaitForExitAsync();
+                string forcedStopNotice = "Unturned did not stop gracefully and was terminated.";
+                Notice = string.IsNullOrWhiteSpace(Notice)
+                    ? forcedStopNotice
+                    : Notice + System.Environment.NewLine + forcedStopNotice;
+            }
         }
 
         public async Task<Process> Install()

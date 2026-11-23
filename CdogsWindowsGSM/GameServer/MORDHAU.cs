@@ -71,10 +71,21 @@ namespace WindowsGSM.GameServer
 
         public async Task<Process> Start()
         {
+            string serverFilesPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID);
             string shipExePath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, StartPath);
             if (!File.Exists(shipExePath))
             {
                 Error = $"{Path.GetFileName(shipExePath)} not found ({shipExePath})";
+                return null;
+            }
+
+            try
+            {
+                await Functions.LegacyDirectXRuntime.EnsureInstalledAsync(serverFilesPath);
+            }
+            catch (System.InvalidOperationException exception)
+            {
+                Error = exception.Message;
                 return null;
             }
 
@@ -90,46 +101,45 @@ namespace WindowsGSM.GameServer
             param += string.IsNullOrWhiteSpace(_serverData.ServerQueryPort) ? string.Empty : $" -QueryPort={_serverData.ServerQueryPort}";
             param += $" {_serverData.ServerParam}" + (!AllowsEmbedConsole ? " -log" : string.Empty);
 
-            Process p;
-            if (!AllowsEmbedConsole)
+            var startInfo = new ProcessStartInfo
             {
-                p = new Process
-                {
-                    StartInfo =
-                    {
-                        FileName = shipExePath,
-                        Arguments = param,
-                        WindowStyle = ProcessWindowStyle.Minimized,
-                        UseShellExecute = false
-                    },
-                    EnableRaisingEvents = true
-                };
-                p.Start();
-            }
-            else
+                WorkingDirectory = serverFilesPath,
+                FileName = shipExePath,
+                Arguments = param,
+                WindowStyle = AllowsEmbedConsole ? ProcessWindowStyle.Hidden : ProcessWindowStyle.Minimized,
+                CreateNoWindow = AllowsEmbedConsole,
+                UseShellExecute = false,
+                RedirectStandardOutput = AllowsEmbedConsole,
+                RedirectStandardError = AllowsEmbedConsole
+            };
+            startInfo.EnvironmentVariables["PATH"] = Functions.ProcessEnvironment.PrependPathDirectories(
+                serverFilesPath,
+                System.Environment.GetEnvironmentVariable("PATH"),
+                @"Engine\Binaries\ThirdParty\PhysX\Win64\VS2015\release",
+                @"Engine\Binaries\ThirdParty\PhysX3\Win64\VS2015",
+                @"Engine\Binaries\ThirdParty\NVIDIA\NVaftermath\Win64",
+                @"Engine\Binaries\ThirdParty\Ogg\Win64\VS2015",
+                @"Engine\Binaries\ThirdParty\Vorbis\Win64\VS2015");
+
+            var p = new Process
             {
-                p = new Process
-                {
-                    StartInfo =
-                    {
-                        FileName = shipExePath,
-                        Arguments = param,
-                        WindowStyle = ProcessWindowStyle.Hidden,
-                        CreateNoWindow = true,
-                        UseShellExecute = false,
-                        RedirectStandardOutput = true,
-                        RedirectStandardError = true
-                    },
-                    EnableRaisingEvents = true
-                };
+                StartInfo = startInfo,
+                EnableRaisingEvents = true
+            };
+            if (AllowsEmbedConsole)
+            {
                 var serverConsole = new Functions.ServerConsole(_serverData.ServerID);
                 p.OutputDataReceived += serverConsole.AddOutput;
                 p.ErrorDataReceived += serverConsole.AddOutput;
-                p.Start();
+            }
+
+            p.Start();
+            if (AllowsEmbedConsole)
+            {
                 p.BeginOutputReadLine();
                 p.BeginErrorReadLine();
             }
-            
+
             return p;
         }
 

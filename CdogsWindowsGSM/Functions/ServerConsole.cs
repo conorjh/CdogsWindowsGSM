@@ -713,7 +713,20 @@ namespace WindowsGSM.Functions
             System.Windows.Application.Current?.Dispatcher.Invoke(() =>
             {
                 MainWindow._serverMetadata[int.Parse(_serverId)].ServerConsole.Add(args.Data);
+                if (IsMountAssertion(args.Data) && System.Windows.Application.Current?.MainWindow is MainWindow mainWindow)
+                {
+                    mainWindow.Log(_serverId, "[SERVER CONSOLE] " + args.Data.Trim());
+                }
             });
+        }
+
+        private static bool IsMountAssertion(string output)
+        {
+            if (string.IsNullOrWhiteSpace(output)) { return false; }
+
+            return output.IndexOf("b_isMounted", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                (output.IndexOf("assert", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                    output.IndexOf("mount", StringComparison.OrdinalIgnoreCase) >= 0);
         }
 
         public async void Input(Process process, string text, IntPtr mainWindow)

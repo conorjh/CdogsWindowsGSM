@@ -148,14 +148,12 @@ namespace WindowsGSM.GameServer.Engine
                 {
                     sb.Append($" +servercfgfile \"{configPath}\"");
                 }
-                List<string> mapRotation = GetMapRotation();
                 if (UsesSharedInstallation || mapRotation.Count > 0)
                 {
                     sb.Append(UsesSharedInstallation
                         ? $" +mapcyclefile {GetSharedMapCycleFileName(serverData.ServerID)}"
                         : " +mapcyclefile mapcycle.txt");
                 }
-                string startMap = mapRotation.Count > 0 ? mapRotation[0] : serverData.ServerMap;
                 sb.Append(string.IsNullOrWhiteSpace(startMap) ? string.Empty : $" +map {startMap}");
                 if (!string.IsNullOrWhiteSpace(serverData.ServerParam) && serverData.ServerParam.Contains("-game "))
                 {
@@ -227,32 +225,7 @@ namespace WindowsGSM.GameServer.Engine
 
         public Task Stop(Process p)
         {
-            if (p == null)
-            {
-                throw new ArgumentNullException(nameof(p));
-            }
-
-            if (p.HasExited)
-            {
-                return Task.CompletedTask;
-            }
-
-            if (Functions.ServerConsole.IsStandardInputRedirected(p))
-            {
-                p.StandardInput.WriteLine("quit");
-                p.StandardInput.Flush();
-            }
-            else
-            {
-                IntPtr mainWindow = p.MainWindowHandle;
-                if (!Functions.ServerConsole.HasUsableWindow(p, mainWindow))
-                {
-                    throw new InvalidOperationException("GoldSrc server has neither redirected standard input nor a usable console window.");
-                }
-
-                Functions.ServerConsole.SendMessageToMainWindow(mainWindow, "quit");
-            }
-
+            Functions.ServerConsole.SendCommandToProcess(p, "quit");
             return Task.CompletedTask;
         }
 
@@ -268,9 +241,12 @@ namespace WindowsGSM.GameServer.Engine
             try
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(configPath));
-                if (!await Functions.Github.DownloadGameServerConfig(configPath, serverData.ServerGame))
+                Functions.GameServerConfigDownloadResult downloadResult = await Functions.Github.DownloadGameServerConfigAsync(
+                    configPath,
+                    serverData.ServerGame).ConfigureAwait(false);
+                if (!downloadResult.Succeeded)
                 {
-                    Error = $"Could not download {serverData.ServerGame} server.cfg.";
+                    Error = $"Could not download {serverData.ServerGame} server.cfg: {downloadResult.ErrorMessage}";
                     return false;
                 }
                 if (!File.Exists(MapCyclePath))
@@ -278,10 +254,13 @@ namespace WindowsGSM.GameServer.Engine
                     File.WriteAllText(MapCyclePath, string.Empty);
                 }
 
-                string configText = File.ReadAllText(configPath);
-                configText = configText.Replace("{{hostname}}", serverData.ServerName);
-                configText = configText.Replace("{{rcon_password}}", serverData.GetRCONPassword());
-                File.WriteAllText(configPath, configText);
+                if (!downloadResult.ExistingFilePreserved)
+                {
+                    string configText = File.ReadAllText(configPath);
+                    configText = configText.Replace("{{hostname}}", serverData.ServerName);
+                    configText = configText.Replace("{{rcon_password}}", serverData.GetRCONPassword());
+                    File.WriteAllText(configPath, configText);
+                }
 
                 string steamAppIdPath = Functions.ServerPath.GetServersServerFiles(serverData.ServerID, "steam_appid.txt");
                 File.WriteAllText(steamAppIdPath, AppId);
@@ -361,13 +340,13 @@ namespace WindowsGSM.GameServer.Engine
         public string GetLocalBuild()
         {
             var steamCMD = new Installer.SteamCMD();
-            return steamCMD.GetLocalBuildAtPath(GetBinaryRoot(), AppId);
+            return steamCMD.GetLocalBuildAtPath(GetBinaryRoot(), SharedInstallationAppId);
         }
 
         public async Task<string> GetRemoteBuild()
         {
             var steamCMD = new Installer.SteamCMD();
-            return await steamCMD.GetRemoteBuild(AppId);
+            return await steamCMD.GetRemoteBuild(SharedInstallationAppId);
         }
 
         private bool UsesSharedInstallation => !string.IsNullOrWhiteSpace(serverData.SharedInstallationId);

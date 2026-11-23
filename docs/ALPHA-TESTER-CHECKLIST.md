@@ -10,19 +10,19 @@ This progress snapshot records the tester's report; the live results have not be
 
 | Area | Reported result | Still open |
 |---|---|---|
-| Shared-install checks (SH series) | On the Team Fortress Classic (TFC) pilot, the tester reports the shared install looks good and the SH checks were completed except for update. | Do not count the shared-install update check as passed; update behavior remains unqualified. Selection is now enabled for the 10 Source titles, 7 GoldSrc titles, COD1, and Minecraft Bedrock; these additional providers have not been live-qualified. |
+| Shared-install checks (SH series) | On the Team Fortress Classic (TFC) pilot, the tester reports the shared install looks good and the SH checks were completed except for update. | Do not count the shared-install update check as passed; update behavior remains unqualified. Selection is now enabled for the 11 Source titles, 7 GoldSrc titles, COD1, and Minecraft Bedrock; these providers, including newly integrated Left 4 Dead, have not been live-qualified. |
 | BK-03 | Skipped. | Corrupt/truncated and mismatched-archive rejection has not been live-tested. |
 | PL-01 and PL-02 | Not done. | Live plugin v1/v2 loading, capability diagnostics, and cache behavior remain unqualified. |
 | AL-01 | Clean-machine test not done. | Fresh Windows app/updater launch and update remain unqualified. |
 | Rust shared-start failure | The prior E: test log shows Rust looking for `Bundles\\Bundles` under the per-instance `serverfiles` directory instead of the shared install. | Rust shared-install selection and start/update operations are now gated in code; existing shared files are preserved. Private Rust and config-only backup remain available. Re-enable sharing only after a supported asset-root/per-instance-data model is verified. |
 
-The app/test project build succeeded; all 41 test-project tests and all 8 `BuiltInGameCapabilitiesTests` passed. These checks validate host capability gates and path plans only; they do not substitute for any of the remaining live checks above.
+For the 24 October snapshot, the app/test project build succeeded; all 41 test-project tests and all 8 `BuiltInGameCapabilitiesTests` passed. Those historical counts validate host capability gates and path plans only; they do not validate `2.0.0-beta1` or substitute for any remaining live checks above.
 
 ## Highest-priority test
 
 If you can test only one lane, finish SH-04 for the existing TFC pilot on a disposable shared installation. Do not use a valuable install for the update check.
 
-The tester reports the other SH checks complete for TFC, but that report has not been independently reproduced and does not qualify other providers. Source games, CoD1, other GoldSrc titles, and Minecraft Bedrock are now selectable but still need game-specific live tests on disposable installations. Rust and plugins remain unavailable; do not force the option or manually attach a shared installation for them. Rust config-only backup/restore is a separate optional test when the maintainer confirms the build and disk space are suitable.
+The tester reports the other SH checks complete for TFC, but that report has not been independently reproduced and does not qualify other providers. Source games (including Left 4 Dead), CoD1, other GoldSrc titles, and Minecraft Bedrock are now selectable but still need game-specific live tests on disposable installations. Rust and plugins remain unavailable; do not force the option or manually attach a shared installation for them. Rust config-only backup/restore is a separate optional test when the maintainer confirms the build and disk space are suitable.
 
 ## Before testing
 

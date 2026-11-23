@@ -38,10 +38,21 @@ namespace WindowsGSM.GameServer
 
         public async Task<Process> Start()
         {
+            string serverFilesPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID);
             string shipExePath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, StartPath);
             if (!File.Exists(shipExePath))
             {
                 Error = $"{Path.GetFileName(shipExePath)} not found ({shipExePath})";
+                return null;
+            }
+
+            try
+            {
+                await Functions.LegacyDirectXRuntime.EnsureInstalledAsync(serverFilesPath);
+            }
+            catch (System.InvalidOperationException exception)
+            {
+                Error = exception.Message;
                 return null;
             }
 
@@ -58,6 +69,7 @@ namespace WindowsGSM.GameServer
             {
                 StartInfo =
                 {
+                    WorkingDirectory = serverFilesPath,
                     FileName = shipExePath,
                     Arguments = param,
                     WindowStyle = ProcessWindowStyle.Minimized,
@@ -65,6 +77,14 @@ namespace WindowsGSM.GameServer
                 },
                 EnableRaisingEvents = true
             };
+            p.StartInfo.EnvironmentVariables["PATH"] = Functions.ProcessEnvironment.PrependPathDirectories(
+                serverFilesPath,
+                System.Environment.GetEnvironmentVariable("PATH"),
+                @"Engine\Binaries\ThirdParty\PhysX\Win64\VS2015\release",
+                @"Engine\Binaries\ThirdParty\PhysX3\Win64\VS2015",
+                @"Engine\Binaries\ThirdParty\NVIDIA\NVaftermath\Win64",
+                @"Engine\Binaries\ThirdParty\Ogg\Win64\VS2015",
+                @"Engine\Binaries\ThirdParty\Vorbis\Win64\VS2015");
             p.Start();
 
             return p;

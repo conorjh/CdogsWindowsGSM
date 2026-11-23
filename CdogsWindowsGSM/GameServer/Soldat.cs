@@ -394,6 +394,14 @@ namespace WindowsGSM.GameServer
 
         private static void CopyDirectory(string sourceDirectory, string destinationDirectory)
         {
+            Directory.CreateDirectory(destinationDirectory);
+            foreach (string sourceSubdirectory in Directory.GetDirectories(sourceDirectory, "*", SearchOption.AllDirectories))
+            {
+                string relativePath = sourceSubdirectory.Substring(sourceDirectory.Length)
+                    .TrimStart(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+                Directory.CreateDirectory(Path.Combine(destinationDirectory, relativePath));
+            }
+
             foreach (string sourceFile in Directory.GetFiles(sourceDirectory, "*", SearchOption.AllDirectories))
             {
                 string relativePath = sourceFile.Substring(sourceDirectory.Length)

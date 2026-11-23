@@ -18,7 +18,11 @@ namespace WindowsGSM.GameServer.Data
                 case CS.FullName: return new CS(serverData);
                 case CSCZ.FullName: return new CSCZ(serverData);
                 case HL2DM.FullName: return new HL2DM(serverData);
+                // Support both built-in and legacy plugin-qualified Left 4 Dead server names.
+                case L4D.FullName:
+                case L4D.LegacyPluginFullName: return new L4D(serverData);
                 case L4D2.FullName: return new L4D2(serverData);
+                case Luanti.FullName: return new Luanti(serverData);
                 case MC.FullName: return new MC(serverData);
                 case PaperMC.FullName: return new PaperMC(serverData);
                 case ForgeMC.FullName: return new ForgeMC(serverData);

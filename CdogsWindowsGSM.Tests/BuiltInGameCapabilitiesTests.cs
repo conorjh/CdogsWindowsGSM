@@ -46,6 +46,7 @@ public sealed class BuiltInGameCapabilitiesTests
             GameServer.GMOD.FullName,
             GameServer.HL2DM.FullName,
             GameServer.INS.FullName,
+            GameServer.L4D.FullName,
             GameServer.L4D2.FullName,
             GameServer.NMRIH.FullName,
             GameServer.TF2.FullName,
@@ -107,6 +108,143 @@ public sealed class BuiltInGameCapabilitiesTests
         Assert.IsFalse(BuiltInGameCapabilities.SupportsSharedInstallation(GameServer.SDK2013.FullName));
         Assert.IsFalse(BuiltInGameCapabilities.SupportsSharedInstallation("GoldSrc Dedicated Server"));
         Assert.IsFalse(BuiltInGameCapabilities.SupportsSharedInstallation("Unknown game"));
+
+        ServerConfig luantiConfig = new ServerConfig("luanti-server")
+        {
+            ServerGame = GameServer.Luanti.FullName,
+            ServerMap = "world"
+        };
+        object luantiServer = GameServer.Data.Class.Get(GameServer.Luanti.FullName, luantiConfig);
+        Assert.IsInstanceOfType<GameServer.Luanti>(luantiServer);
+        Assert.IsFalse(BuiltInGameCapabilities.SupportsSharedInstallation(GameServer.Luanti.FullName, luantiServer));
+        Assert.IsTrue(BuiltInGameCapabilities.SupportsConfigurationBackup(GameServer.Luanti.FullName));
+        Assert.IsFalse(GlobalServerList.IsSupportedGame(GameServer.Luanti.FullName));
+        Assert.IsFalse(string.IsNullOrWhiteSpace(GameServer.Data.Icon.ResourceManager.GetString(GameServer.Luanti.FullName)));
+        List<ConfigurationBackupPath> luantiBackupPlan = BuiltInGameCapabilities.GetConfigurationBackupPlan(
+            luantiConfig,
+            new Dictionary<string, string> { ["serverfiles"] = Path.Combine(_testRoot, "luanti-serverfiles") });
+        CollectionAssert.AreEquivalent(
+            new[] { "minetest.conf", Path.Combine("worlds", "world", "world.mt") },
+            luantiBackupPlan.Select(path => path.RelativePath).ToArray());
+
+        ServerConfig l4dConfig = new ServerConfig("left4dead-server")
+        {
+            ServerGame = GameServer.L4D.FullName
+        };
+        object l4dServer = GameServer.Data.Class.Get(GameServer.L4D.FullName, l4dConfig);
+        Assert.IsInstanceOfType<GameServer.L4D>(l4dServer);
+        Assert.IsTrue(BuiltInGameCapabilities.SupportsSharedInstallation(GameServer.L4D.FullName, l4dServer));
+        Assert.AreEqual("left4dead", ((GameServer.L4D)l4dServer).Game);
+        Assert.AreEqual("222840", ((GameServer.L4D)l4dServer).AppId);
+
+        ServerConfig legacyL4DConfig = new ServerConfig("left4dead-legacy-server")
+        {
+            ServerGame = GameServer.L4D.LegacyPluginFullName
+        };
+        object legacyL4DServer = GameServer.Data.Class.Get(legacyL4DConfig.ServerGame, legacyL4DConfig);
+        Assert.IsInstanceOfType<GameServer.L4D>(legacyL4DServer);
+        Assert.IsTrue(BuiltInGameCapabilities.SupportsSharedInstallation(legacyL4DConfig.ServerGame, legacyL4DServer));
+        Assert.IsTrue(BuiltInGameCapabilities.SupportsConfigurationBackup(legacyL4DConfig.ServerGame));
+
+        List<ConfigurationBackupPath> l4dBackupPlan = BuiltInGameCapabilities.GetConfigurationBackupPlan(
+            l4dConfig,
+            new Dictionary<string, string> { ["serverfiles"] = Path.Combine(_testRoot, "l4d-serverfiles") });
+        CollectionAssert.AreEquivalent(
+            new[] { Path.Combine("left4dead", "cfg", "server.cfg"), Path.Combine("left4dead", "mapcycle.txt") },
+            l4dBackupPlan.Select(path => path.RelativePath).ToArray());
+
+        List<ConfigurationBackupPath> legacyL4DBackupPlan = BuiltInGameCapabilities.GetConfigurationBackupPlan(
+            legacyL4DConfig,
+            new Dictionary<string, string> { ["serverfiles"] = Path.Combine(_testRoot, "l4d-legacy-serverfiles") });
+        CollectionAssert.AreEquivalent(
+            l4dBackupPlan.Select(path => path.RelativePath).ToArray(),
+            legacyL4DBackupPlan.Select(path => path.RelativePath).ToArray());
+        string? left4DeadIcon = GameServer.Data.Icon.ResourceManager.GetString(GameServer.L4D.FullName);
+        Assert.IsFalse(string.IsNullOrWhiteSpace(left4DeadIcon));
+        Assert.AreEqual(left4DeadIcon, GameServer.Data.Icon.ResourceManager.GetString(GameServer.L4D.LegacyPluginFullName));
+    }
+
+    [TestMethod]
+    public async Task Left4DeadConfigOnlyCreatesItsInstanceConfigAndMapCycle()
+    {
+        var config = new ServerConfig("left4dead-config")
+        {
+            ServerGame = GameServer.L4D.FullName,
+            ServerName = "L4D test server",
+            ServerPort = "27015",
+            ServerParam = "-nocrashdialog +clientport {{clientport}}"
+        };
+        var server = new GameServer.L4D(config);
+        GameServer.Engine.ISharedInstallationProvider sharedProvider = server;
+
+        Assert.IsTrue(await sharedProvider.InstallConfigOnly(), server.Error);
+        Assert.AreEqual("-nocrashdialog +clientport 27005", config.ServerParam);
+        server.CreateServerCFG();
+
+        string configPath = ServerPath.GetServersServerFiles(config.ServerID, "left4dead", "cfg", "server.cfg");
+        Assert.IsTrue(File.Exists(configPath));
+        string serverConfig = File.ReadAllText(configPath);
+        StringAssert.Contains(serverConfig, "hostname \"L4D test server\"");
+        StringAssert.Contains(serverConfig, "rcon_password \"");
+        StringAssert.Contains(serverConfig, "sv_lan 0");
+        Assert.IsTrue(File.Exists(ServerPath.GetServersServerFiles(config.ServerID, "left4dead", "mapcycle.txt")));
+        Assert.AreEqual("-nocrashdialog +clientport 27005", config.ServerParam);
+    }
+
+    [TestMethod]
+    public async Task Left4DeadConfigOnlyRejectsPortsThatCannotProduceAClientPort()
+    {
+        var config = new ServerConfig("left4dead-invalid-port")
+        {
+            ServerGame = GameServer.L4D.FullName,
+            ServerPort = "10",
+            ServerParam = "+clientport {{clientport}}"
+        };
+        var server = new GameServer.L4D(config);
+        GameServer.Engine.ISharedInstallationProvider sharedProvider = server;
+
+        Assert.IsFalse(await sharedProvider.InstallConfigOnly());
+        StringAssert.Contains(server.Error, "greater than 10");
+        Assert.IsFalse(Directory.Exists(ServerPath.GetServersServerFiles(config.ServerID, "left4dead")));
+    }
+
+    [TestMethod]
+    public void BuiltInFeatureRowsListAllGamesAndTheirV2Capabilities()
+    {
+        IReadOnlyList<BuiltInGameFeatureRow> rows = BuiltInGameCapabilities.GetFeatureRows();
+
+        Assert.AreEqual(59, rows.Count);
+        Assert.AreEqual(59, rows.Select(row => row.Game).Distinct(StringComparer.OrdinalIgnoreCase).Count());
+        Assert.AreEqual(20, rows.Count(row => row.SupportsSharedInstallation));
+        Assert.AreEqual(22, rows.Count(row => row.SupportsConfigurationBackup));
+        Assert.IsTrue(rows.All(row => row.SupportsProcessHealthCheck));
+        Assert.IsTrue(rows.Any(row => row.Game == GameServer.RUST.FullName && row.SupportsQueryHealthCheck));
+        Assert.IsFalse(rows.Single(row => row.Game == GameServer.Mindustry.FullName).SupportsQueryHealthCheck);
+        Assert.IsFalse(rows.Single(row => row.Game == GameServer.MC.FullName).SupportsGlobalServerListCheck);
+        BuiltInGameFeatureRow luanti = rows.Single(row => row.Game == GameServer.Luanti.FullName);
+        Assert.IsFalse(luanti.SupportsSharedInstallation);
+        Assert.IsTrue(luanti.SupportsConfigurationBackup);
+        Assert.IsTrue(luanti.SupportsProcessHealthCheck);
+        Assert.IsFalse(luanti.SupportsQueryHealthCheck);
+        Assert.IsFalse(luanti.SupportsGlobalServerListCheck);
+        Assert.AreEqual("\u2717", luanti.SharedInstallationIndicator);
+        Assert.AreEqual("\u2713", luanti.ConfigurationBackupIndicator);
+        Assert.AreEqual("\u2713", luanti.ProcessHealthIndicator);
+        Assert.AreEqual("\u2717", luanti.QueryHealthIndicator);
+        Assert.AreEqual(LocalizationManager.Get("FeatureNotSupported"), luanti.QueryHealth);
+        BuiltInGameFeatureRow left4Dead = rows.Single(row => row.Game == GameServer.L4D.FullName);
+        Assert.IsTrue(left4Dead.SupportsSharedInstallation);
+        Assert.IsTrue(left4Dead.SupportsConfigurationBackup);
+        Assert.IsTrue(left4Dead.SupportsQueryHealthCheck);
+        Assert.IsTrue(left4Dead.SupportsGlobalServerListCheck);
+        BuiltInGameFeatureRow rust = rows.Single(row => row.Game == GameServer.RUST.FullName);
+        Assert.IsFalse(rust.SupportsSharedInstallation);
+        Assert.IsTrue(rust.SupportsConfigurationBackup);
+        Assert.AreEqual(LocalizationManager.Get("FeatureSupported"), rust.ProcessHealth);
+        Assert.AreEqual(LocalizationManager.Get("FeatureSupported"), rust.QueryHealth);
+        Assert.AreEqual(
+            LocalizationManager.Get(GlobalServerList.IsSupportedGame(GameServer.RUST.FullName) ? "FeatureSupported" : "FeatureNotSupported"),
+            rust.GlobalServerList);
     }
 
     [TestMethod]
@@ -210,6 +348,60 @@ public sealed class BuiltInGameCapabilitiesTests
     }
 
     [TestMethod]
+    public async Task BedrockStart_RefreshesConfiguredPortsBeforeLaunching()
+    {
+        ServerConfig serverConfig = new ServerConfig("bedrock-start-port")
+        {
+            ServerGame = GameServer.MCBE.FullName,
+            ServerName = "Bedrock Test",
+            ServerMaxPlayer = "12",
+            ServerPort = "19140",
+            ServerMap = "Test World",
+            ServerParam = "/c exit"
+        };
+        string instanceRoot = ServerPath.GetServersServerFiles(serverConfig.ServerID);
+        Directory.CreateDirectory(instanceRoot);
+        File.WriteAllLines(Path.Combine(instanceRoot, "server.properties"), new[]
+        {
+            "server-name=Bedrock Test",
+            "max-players=12",
+            "server-port=19132",
+            "server-portv6=19133",
+            "level-name=Test World",
+            "online-mode=true"
+        });
+
+        var bedrockServer = new GameServer.MCBE(serverConfig)
+        {
+            StartPath = Path.Combine(Environment.SystemDirectory, "cmd.exe"),
+            AllowsEmbedConsole = false
+        };
+        Process process = null;
+        try
+        {
+            process = await bedrockServer.Start();
+
+            Assert.IsNotNull(process, bedrockServer.Error);
+            string[] properties = File.ReadAllLines(Path.Combine(instanceRoot, "server.properties"));
+            CollectionAssert.Contains(properties, "server-port=19140");
+            CollectionAssert.Contains(properties, "server-portv6=19141");
+            CollectionAssert.Contains(properties, "online-mode=true");
+        }
+        finally
+        {
+            if (process != null)
+            {
+                if (!process.HasExited)
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+
+                process.Dispose();
+            }
+        }
+    }
+
+    [TestMethod]
     public async Task RustSharedOperationsAreRejectedWithoutChangingInstanceFiles()
     {
         string serverId = "rust-shared";
@@ -274,6 +466,127 @@ public sealed class BuiltInGameCapabilitiesTests
                 gameKey);
             CollectionAssert.AreEqual(new[] { "serverfiles", "serverfiles" }, plan.Select(path => path.RootId).ToArray(), gameKey);
         }
+    }
+
+    [TestMethod]
+    public void GoldSourceBuildIdentityUsesDedicatedServerManifestForEveryMod()
+    {
+        (string GameKey, string ClientAppId)[] goldSourceGames =
+        {
+            (GameServer.CS.FullName, "10"),
+            (GameServer.CSCZ.FullName, "80"),
+            (GameServer.DOD.FullName, "30"),
+            (GameServer.DMC.FullName, "40"),
+            (GameServer.HLOF.FullName, "50"),
+            (GameServer.RCC.FullName, "60"),
+            (GameServer.TFC.FullName, "20")
+        };
+
+        foreach ((string gameKey, string clientAppId) in goldSourceGames)
+        {
+            string serverId = "goldsrc-build-" + clientAppId;
+            var config = new ServerConfig(serverId) { ServerGame = gameKey };
+            GameServer.Engine.GoldSource server = GameServer.Data.Class.Get(gameKey, config) as GameServer.Engine.GoldSource;
+            Assert.IsNotNull(server, gameKey);
+            Assert.AreEqual(clientAppId, server.AppId, gameKey);
+            Assert.AreEqual("90", server.SharedInstallationAppId, gameKey);
+
+            string steamAppsDirectory = ServerPath.GetServersServerFiles(serverId, "steamapps");
+            Directory.CreateDirectory(steamAppsDirectory);
+            File.WriteAllText(
+                Path.Combine(steamAppsDirectory, "appmanifest_90.acf"),
+                "\"AppState\"\r\n{\r\n\t\"appid\"\t\"90\"\r\n\t\"buildid\"\t\"123456789\"\r\n}");
+            File.WriteAllText(
+                Path.Combine(steamAppsDirectory, $"appmanifest_{clientAppId}.acf"),
+                $"\"AppState\"\r\n{{\r\n\t\"appid\"\t\"{clientAppId}\"\r\n\t\"buildid\"\t\"987654321\"\r\n}}");
+
+            Assert.AreEqual("123456789", server.GetLocalBuild(), gameKey);
+        }
+    }
+
+    [TestMethod]
+    public async Task GoldSourceSharedConfigOnlyCreatesInstanceConfigsAndUniqueMapCyclesForEveryMod()
+    {
+        string[] goldSourceGames =
+        {
+            GameServer.CS.FullName,
+            GameServer.CSCZ.FullName,
+            GameServer.DOD.FullName,
+            GameServer.DMC.FullName,
+            GameServer.HLOF.FullName,
+            GameServer.RCC.FullName,
+            GameServer.TFC.FullName
+        };
+
+        foreach (string gameKey in goldSourceGames)
+        {
+            string ownerId = "goldsrc-config-owner-" + Guid.NewGuid().ToString("N");
+            string clientId = "goldsrc-config-client-" + Guid.NewGuid().ToString("N");
+            string installationId;
+            string sharedBinaryRoot;
+            using (SharedInstallationResolution installation = SharedInstallationStore.ResolveOrCreate(
+                ownerId,
+                gameKey,
+                "90",
+                "hlds.exe"))
+            {
+                installationId = installation.InstallationId;
+                sharedBinaryRoot = SharedInstallationStore.GetServerBinaryRoot(installationId);
+                File.WriteAllText(Path.Combine(sharedBinaryRoot, "hlds.exe"), "test-binary");
+                SharedInstallationStore.MarkReady(installationId, "test-build");
+            }
+
+            ServerConfig ownerConfig = CreateSharedGoldSourceConfig(ownerId, gameKey, installationId);
+            ServerConfig clientConfig = CreateSharedGoldSourceConfig(clientId, gameKey, installationId);
+            GameServer.Engine.GoldSource owner = GameServer.Data.Class.Get(gameKey, ownerConfig) as GameServer.Engine.GoldSource;
+            GameServer.Engine.GoldSource client = GameServer.Data.Class.Get(gameKey, clientConfig) as GameServer.Engine.GoldSource;
+            Assert.IsNotNull(owner, gameKey);
+            Assert.IsNotNull(client, gameKey);
+
+            string ownerConfigPath = ServerPath.GetServersServerFiles(ownerId, owner.Game, "server.cfg");
+            string clientConfigPath = ServerPath.GetServersServerFiles(clientId, client.Game, "server.cfg");
+            string ownerConfigContents = "hostname=owner configuration";
+            string clientConfigContents = "hostname=client configuration";
+            Directory.CreateDirectory(Path.GetDirectoryName(ownerConfigPath));
+            Directory.CreateDirectory(Path.GetDirectoryName(clientConfigPath));
+            File.WriteAllText(ownerConfigPath, ownerConfigContents);
+            File.WriteAllText(clientConfigPath, clientConfigContents);
+
+            Assert.IsTrue(await owner.InstallConfigOnly(), owner.Error);
+            Assert.IsTrue(await client.InstallConfigOnly(), client.Error);
+
+            Assert.AreEqual(ownerConfigContents, File.ReadAllText(ownerConfigPath), gameKey);
+            Assert.AreEqual(clientConfigContents, File.ReadAllText(clientConfigPath), gameKey);
+            Assert.IsTrue(File.Exists(owner.MapCyclePath), gameKey);
+            Assert.IsTrue(File.Exists(client.MapCyclePath), gameKey);
+            Assert.AreNotEqual(Path.GetFullPath(owner.MapCyclePath), Path.GetFullPath(client.MapCyclePath), gameKey);
+
+            var roots = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+            {
+                { "serverfiles", ServerPath.GetServersServerFiles(clientId) },
+                { "sharedserverfiles", sharedBinaryRoot }
+            };
+            List<ConfigurationBackupPath> plan = BuiltInGameCapabilities.GetConfigurationBackupPlan(clientConfig, roots);
+            CollectionAssert.AreEqual(
+                new[]
+                {
+                    "serverfiles/" + Path.Combine(client.Game, "server.cfg").Replace('\\', '/'),
+                    "sharedserverfiles/" + Path.Combine(client.Game, GameServer.Engine.GoldSource.GetSharedMapCycleFileName(clientId)).Replace('\\', '/')
+                },
+                plan.Select(path => path.RootId + "/" + path.RelativePath.Replace('\\', '/')).ToArray(),
+                gameKey);
+        }
+    }
+
+    private static ServerConfig CreateSharedGoldSourceConfig(string serverId, string gameKey, string installationId)
+    {
+        return new ServerConfig(serverId)
+        {
+            ServerGame = gameKey,
+            ServerName = serverId,
+            ServerPort = "27015",
+            SharedInstallationId = installationId
+        };
     }
 
     [TestMethod]

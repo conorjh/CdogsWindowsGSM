@@ -85,6 +85,76 @@ public sealed class SharedInstallationStoreTests
     }
 
     [TestMethod]
+    public void StaleInstallingInstallationIsRemovedWhenInstallationsAreDisplayed()
+    {
+        string installationId;
+        string binaryRoot;
+        using (SharedInstallationResolution created = SharedInstallationStore.ResolveOrCreate(
+            "1",
+            "WindowsGSM.Tests." + Guid.NewGuid().ToString("N"),
+            "test-" + Guid.NewGuid().ToString("N"),
+            "server.exe"))
+        {
+            installationId = created.InstallationId;
+            _installationId = installationId;
+            binaryRoot = SharedInstallationStore.GetServerBinaryRoot(installationId);
+            File.WriteAllText(Path.Combine(binaryRoot, "partial-install.marker"), "incomplete");
+        }
+
+        var visibleInstallations = SharedInstallationStore.GetInstallationsForDisplay(out var cleanupFailures);
+
+        Assert.AreEqual(0, cleanupFailures.Count);
+        Assert.IsFalse(visibleInstallations.Any(item => item.Id == installationId));
+        Assert.IsFalse(SharedInstallationStore.GetInstallations().Any(item => item.Id == installationId));
+        Assert.IsFalse(Directory.Exists(binaryRoot));
+        _installationId = string.Empty;
+    }
+
+    [TestMethod]
+    public void ActiveInstallingInstallationRemainsVisibleWhileItsLeaseIsHeld()
+    {
+        using (SharedInstallationResolution active = SharedInstallationStore.ResolveOrCreate(
+            "1",
+            "WindowsGSM.Tests." + Guid.NewGuid().ToString("N"),
+            "test-" + Guid.NewGuid().ToString("N"),
+            "server.exe"))
+        {
+            _installationId = active.InstallationId;
+            var visibleInstallations = SharedInstallationStore.GetInstallationsForDisplay(out var cleanupFailures);
+
+            Assert.AreEqual(0, cleanupFailures.Count);
+            Assert.AreEqual("Installing", visibleInstallations.Single(item => item.Id == active.InstallationId).State);
+        }
+    }
+
+    [TestMethod]
+    public void FailedReferencedInstallationIsHiddenButItsFilesArePreserved()
+    {
+        string installationId;
+        string binaryRoot;
+        using (SharedInstallationResolution created = SharedInstallationStore.ResolveOrCreate(
+            "1",
+            "WindowsGSM.Tests." + Guid.NewGuid().ToString("N"),
+            "test-" + Guid.NewGuid().ToString("N"),
+            "server.exe"))
+        {
+            installationId = created.InstallationId;
+            _installationId = installationId;
+            binaryRoot = SharedInstallationStore.GetServerBinaryRoot(installationId);
+            File.WriteAllText(Path.Combine(binaryRoot, "server.exe"), "shared binary");
+            SharedInstallationStore.MarkFailed(installationId);
+        }
+        WriteSharedReference("2", installationId);
+
+        var visibleInstallations = SharedInstallationStore.GetInstallationsForDisplay(out var cleanupFailures);
+
+        Assert.AreEqual(installationId, cleanupFailures.Single().InstallationId);
+        Assert.IsFalse(visibleInstallations.Any(item => item.Id == installationId));
+        Assert.IsTrue(File.Exists(Path.Combine(binaryRoot, "server.exe")));
+        Assert.AreEqual("Failed", SharedInstallationStore.GetInstallations().Single(item => item.Id == installationId).State);
+    }
+
+    [TestMethod]
     public void SharedBinaryRootRemainsUntilTheLastInstanceReferenceIsRemoved()
     {
         string gameKey = "WindowsGSM.Tests." + Guid.NewGuid().ToString("N");

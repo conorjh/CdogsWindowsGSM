@@ -55,6 +55,6 @@ using System.Windows;
 // [assembly: AssemblyVersion("1.0.*")]
 [assembly: AssemblyVersion("2.0.0.0")]
 [assembly: AssemblyFileVersion("2.0.0.0")]
-[assembly: AssemblyInformationalVersion("2.0.0-preview.16")]
+[assembly: AssemblyInformationalVersion("2.0.0-beta1")]
 [assembly: NeutralResourcesLanguage("en")]
 

@@ -289,5 +289,4 @@ The standalone Counter-Strike example is compile-tested and checks its inferred 
 
 - [V1-to-V2 migration guide](PLUGIN-V1-TO-V2-GUIDE.md) — adds optional capabilities to an existing plugin; its Garry's Mod sample deliberately uses the Source base class.
 - [Plugin API v2 plan](PLUGIN-API-V2-PLAN.md) — exact host signatures, responsibilities, and implementation/status details.
-- [Compilation cache plan](PLUGIN-COMPILATION-CACHING-PLAN.md) — runtime compilation and cache behavior.
 - [`Skeleton.cs`](../Examples/Skeleton.cs) and [`SkeletonV2.cs`](../Examples/SkeletonV2.cs) — minimal lifecycle and config-backup shapes.

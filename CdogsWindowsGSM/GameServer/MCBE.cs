@@ -299,6 +299,12 @@ namespace WindowsGSM.GameServer
                     return Task.FromResult<Process>(null);
                 }
 
+                if (!UpdateServerPropertiesFromWindowsGsmSettings())
+                {
+                    sharedLease?.Dispose();
+                    return Task.FromResult<Process>(null);
+                }
+
                 Process p;
                 if (!AllowsEmbedConsole)
                 {
@@ -310,6 +316,8 @@ namespace WindowsGSM.GameServer
                             FileName = exePath,
                             Arguments = _serverData.ServerParam,
                             WindowStyle = ProcessWindowStyle.Minimized,
+                            UseShellExecute = false,
+                            RedirectStandardInput = true,
                         },
                         EnableRaisingEvents = true
                     };
@@ -364,6 +372,7 @@ namespace WindowsGSM.GameServer
                 if (Functions.ServerConsole.IsStandardInputRedirected(p))
                 {
                     p.StandardInput.WriteLine("stop");
+                    p.StandardInput.Flush();
                 }
                 else
                 {
@@ -501,6 +510,11 @@ namespace WindowsGSM.GameServer
 
         private bool ConfirmEulaAndPrivacy()
         {
+            if (Functions.UI.HasExplicitMinecraftBedrockEulaAndPrivacyIntegrationTestConsent())
+            {
+                return true;
+            }
+
             MessageBoxResult result = System.Windows.MessageBox.Show(
                 LocalizationManager.Get("MinecraftBedrockEulaPrivacyPrompt"),
                 LocalizationManager.Get("MinecraftEulaTitle"),
@@ -776,6 +790,12 @@ namespace WindowsGSM.GameServer
                     await Task.Run(() => ZipFile.ExtractToDirectory(zipPath, tempPath));
                     await Task.Run(() => File.Delete(zipPath));
 
+                    string stagedServerPath = Path.Combine(tempPath, "bedrock_server.exe");
+                    if (!File.Exists(stagedServerPath))
+                    {
+                        throw new InvalidDataException("The Bedrock update archive does not contain bedrock_server.exe.");
+                    }
+
                     //Delete old folder and files
                     //List of sub folders that may or maynot exist in the various zip files
                     List<string> serverSubFolder = new List<string>() { "behavior_packs", "definitions", "resource_packs", "structures" };
@@ -804,9 +824,19 @@ namespace WindowsGSM.GameServer
                                 Directory.Move(Path.Combine(serverFilesPath, "__temp", folder), Path.Combine(serverFilesPath, folder));
                             }
                         }
-                        File.Move(Path.Combine(serverFilesPath, "__temp", "bedrock_server.exe"), Path.Combine(serverFilesPath, "bedrock_server.exe"));
-                        File.Move(Path.Combine(serverFilesPath, "__temp", "bedrock_server.pdb"), Path.Combine(serverFilesPath, "bedrock_server.pdb"));
-                        File.Move(Path.Combine(serverFilesPath, "__temp", "release-notes.txt"), Path.Combine(serverFilesPath, "release-notes.txt"));
+                        File.Move(stagedServerPath, Path.Combine(serverFilesPath, "bedrock_server.exe"));
+
+                        string stagedSymbolsPath = Path.Combine(serverFilesPath, "__temp", "bedrock_server.pdb");
+                        if (File.Exists(stagedSymbolsPath))
+                        {
+                            File.Move(stagedSymbolsPath, Path.Combine(serverFilesPath, "bedrock_server.pdb"));
+                        }
+
+                        string stagedReleaseNotesPath = Path.Combine(serverFilesPath, "__temp", "release-notes.txt");
+                        if (File.Exists(stagedReleaseNotesPath))
+                        {
+                            File.Move(stagedReleaseNotesPath, Path.Combine(serverFilesPath, "release-notes.txt"));
+                        }
                     });
 
                     //Delete __temp folder

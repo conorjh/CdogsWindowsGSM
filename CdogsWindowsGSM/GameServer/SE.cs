@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System;
+using System.Threading.Tasks;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
@@ -40,30 +41,69 @@ namespace WindowsGSM.GameServer
 
         public async void CreateServerCFG()
         {
+            Error = string.Empty;
             //Download SpaceEngineersDedicated-WindowsGSM.bat
             string batPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, @"DedicatedServer64\SpaceEngineersDedicated-WindowsGSM.bat");
-            await Functions.Github.DownloadGameServerConfig(batPath, _serverData.ServerGame);
+            Functions.GameServerConfigDownloadResult batchResult = await Functions.Github.DownloadGameServerConfigAsync(
+                batPath,
+                _serverData.ServerGame);
+            if (!batchResult.Succeeded)
+            {
+                Error = $"Could not download the Space Engineers startup script: {batchResult.ErrorMessage}";
+                return;
+            }
 
             //Download world and extract
             string zipPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, @"AppData\Roaming\SpaceEngineersDedicated\Saves\world.zip");
-            if (await Functions.Github.DownloadGameServerConfig(zipPath, _serverData.ServerGame))
+            Functions.GameServerConfigDownloadResult worldResult = await Functions.Github.DownloadGameServerConfigAsync(
+                zipPath,
+                _serverData.ServerGame,
+                replaceExisting: true);
+            if (!worldResult.Succeeded)
             {
-                await Task.Run(() =>
-                {
-                    try
-                    {
-                        ZipFile.ExtractToDirectory(zipPath, Path.GetDirectoryName(zipPath));
-                    }
-                    catch
-                    {
-                        //ignore
-                    }
-                });
-                await Task.Run(() => File.Delete(zipPath));
+                Error = $"Could not download the Space Engineers world archive: {worldResult.ErrorMessage}";
+                return;
+            }
+
+            try
+            {
+                await Task.Run(() => ZipFile.ExtractToDirectory(zipPath, Path.GetDirectoryName(zipPath)));
+            }
+            catch (Exception exception) when (
+                exception is IOException ||
+                exception is InvalidDataException ||
+                exception is UnauthorizedAccessException ||
+                exception is System.Security.SecurityException ||
+                exception is ArgumentException)
+            {
+                Error = $"Failed to extract the Space Engineers world archive: {exception.Message}";
+                return;
+            }
+
+            try
+            {
+                File.Delete(zipPath);
+            }
+            catch (Exception exception) when (
+                exception is IOException ||
+                exception is UnauthorizedAccessException ||
+                exception is System.Security.SecurityException)
+            {
+                Error = $"The Space Engineers world was extracted, but its archive could not be removed: {exception.Message}";
+                return;
             }
 
             string configPath = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID, @"AppData\Roaming\SpaceEngineersDedicated", "SpaceEngineers-Dedicated.cfg");
-            if (await Functions.Github.DownloadGameServerConfig(configPath, _serverData.ServerGame))
+            Functions.GameServerConfigDownloadResult configResult = await Functions.Github.DownloadGameServerConfigAsync(
+                configPath,
+                _serverData.ServerGame);
+            if (!configResult.Succeeded)
+            {
+                Error = $"Could not download the Space Engineers server config: {configResult.ErrorMessage}";
+                return;
+            }
+
+            if (!configResult.ExistingFilePreserved)
             {
                 string configText = File.ReadAllText(configPath);
                 configText = configText.Replace("{{maxplayers}}", _serverData.ServerMaxPlayer);

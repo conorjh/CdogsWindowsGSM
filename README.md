@@ -1,14 +1,15 @@
 ﻿# CdogsWindowsGSM
 
 [![License](https://img.shields.io/github/license/conorjh/CdogsWindowsGSM)](LICENSE)
-[![Latest release](https://img.shields.io/github/release/conorjh/CdogsWindowsGSM)](https://github.com/conorjh/CdogsWindowsGSM/releases)
+[![Latest release](https://img.shields.io/github/v/release/conorjh/CdogsWindowsGSM?include_prereleases)](https://github.com/conorjh/CdogsWindowsGSM/releases)
 [![Downloads](https://img.shields.io/github/downloads/conorjh/CdogsWindowsGSM/total)](https://github.com/conorjh/CdogsWindowsGSM/releases)
 
-A community-maintained Windows desktop application for installing, importing, and managing dedicated game servers. This codebase is based on the original [WindowsGSM project](https://github.com/WindowsGSM/WindowsGSM). A clanker did all the heavy lifting.
+A community-maintained Windows desktop application for installing, importing, and managing dedicated game servers. This codebase is based on the original [WindowsGSM project](https://github.com/WindowsGSM/WindowsGSM).
 
 ## Fork-specific features
 
-- **Added built-in games:** Call of Duty 1, CoD4x, OpenRCT2, OpenTTD, Mindustry, OpenRA, RedM, SCUM, and Soldat, alongside the Minecraft server variants.
+- **Added built-in games:** Call of Duty 1, CoD4x, Left 4 Dead (existing `[L4D.cs]` server identities remain supported), Luanti, OpenRCT2, OpenTTD, Mindustry, OpenRA, RedM, SCUM, and Soldat, alongside the Minecraft server variants.
+- **Windows Defender Firewall:** automatic rule creation and updates are opt-in and off by default. The Firewall tab can synchronize inbound rules from saved Server Port and Query Port values, independent of active firewall profiles, and provides Enable All / Disable All controls. Runtime-detected ports are ignored. See the [firewall guide](docs/WINDOWS-FIREWALL.md).
 - **Shared installs and backups:** share a single game installation across compatible servers. Full-server backups cover each server's directory; config-only backups include only host-approved configuration files where supported (see the table below). Read the [shared-installation guide](docs/SHARED-INSTALLATION-GUIDE.md), [config-only backup guide](docs/CONFIG-ONLY-BACKUP-GUIDE.md), and [scheduled backup guide](docs/SCHEDULED-BACKUPS-GUIDE.md) for current behavior and limits.
 - **FiveM and RedM fixes:** share the current CFX server artifacts and query support; both require a valid CFX license key.
 - **OpenRCT2 servers:** download a verified sample park when none is present and start without custom server parameters; a licensed RollerCoaster Tycoon 2 installation is still required.
@@ -52,7 +53,9 @@ See [Changes from WindowsGSM](ChangesFromBase.md) for a detailed comparison with
 | ![logo](CdogsWindowsGSM/Images/Games/heat.png?raw=true)   | Heat Dedicated Server                             |✅|      | — | — |
 | ![logo](CdogsWindowsGSM/Images/Games/ins.png?raw=true)    | Insurgency Dedicated Server                       |✅| A2S  | ✅ | ✅ |
 | ![logo](CdogsWindowsGSM/Images/Games/inss.png?raw=true)   | Insurgency: Sandstorm Dedicated Server            |✅| A2S  | — | — |
+| ![logo](CdogsWindowsGSM/Images/Games/l4d2.png?raw=true)   | Left 4 Dead Dedicated Server                      |✅| A2S  | ✅ | ✅ |
 | ![logo](CdogsWindowsGSM/Images/Games/l4d2.png?raw=true)   | Left 4 Dead 2 Dedicated Server                    |✅| A2S  | ✅ | ✅ |
+| <img src="CdogsWindowsGSM/Images/Games/luanti.png?raw=true" width="16" height="16" alt="Luanti logo"/> | Luanti Dedicated Server                           |✅|      | — | ✅ |
 | ![logo](CdogsWindowsGSM/Images/Games/mcbe.png?raw=true)   | Minecraft: Bedrock Edition Server                 |✅|      | — | — |
 | ![logo](CdogsWindowsGSM/Images/Games/mc.png?raw=true)     | Minecraft: Forge Server                           |✅|      | — | — |
 | ![logo](CdogsWindowsGSM/Images/Games/mc.png?raw=true)     | Minecraft: Java Edition Server                    |✅| UT3  | — | — |
@@ -95,7 +98,7 @@ See [Changes from WindowsGSM](ChangesFromBase.md) for a detailed comparison with
 | <img src="https://github.com/1stian/imgrepo/blob/master/WindowsGSMrepo/waterfall.png?raw=true" width="16" height="16" alt="Waterfall logo"/>   | PaperMC: Waterfall   |✅| A2S     | — | — |
 | <img src="https://github.com/1stian/imgrepo/blob/master/WindowsGSMrepo/spigot.png?raw=true" width="16" height="16" alt="Spigot logo"/>   | Spigot   |✅| A2S     | — | — |
 
-  `✅` marks a capability enabled by the current host implementation; it does not mean the game has passed live Alpha qualification. Shared-install selection is enabled for the 10 Source games, 7 GoldSrc games, and Call of Duty 1 that have config-only backup plans; Rust remains disabled after a shared-start bundle-root failure. TFC is the only one with a tester-reported shared-install run, and its update test remains outstanding. New shared binaries are stored in the first server's `serverfiles`; later linked servers retain their own instance `serverfiles`. A full backup of the owner includes the shared binaries, while linked-server backups do not duplicate them; a full owner restore is blocked while other servers still reference those files. Config-only backup support and shared-install runtime qualification are separate. Full-server backups remain host-managed copies of the entire per-server directory, outside the plugin interface. For config-only backups, plugins may identify the files, but the host owns archive creation and restore. The current plugin API requires a plugin shared-install provider to also expose `GetConfigOnlyBackupPlan`; `InstallSharedBinaries` returns the same `Task<Process>` used by regular install operations, while `InstallConfigOnly` reports its terminal result. Built-in game gates are separate. GoldSrc config-only backups include the instance's mod `server.cfg` and mapcycle file; in shared mode only the server-specific mapcycle file is read from the shared root, never the shared binaries. Restoring shared GoldSrc config requires the matching shared installation/build recorded in the archive. For overall readiness and remaining tests, see the [Roadmap to Alpha](docs/MULTI-INSTANCE-ALPHA-ROADMAP.md) and [Alpha tester checklist](docs/ALPHA-TESTER-CHECKLIST.md).
+	`✅` marks code enablement only, not live Alpha qualification. Shared-install selection is enabled for 20 built-ins; Rust remains gated after a shared-start bundle-root failure. Full-server backup remains host-managed, while config-only backup uses explicit host-approved paths. See the [game operation matrix](docs/GAME-INTEGRATION-ALPHA-MATRIX.md) for per-game status and the [config-only backup guide](docs/CONFIG-ONLY-BACKUP-GUIDE.md) for exact path scopes.
 
 ## Features
   * **Easy Install** - No installation knowledge is required, download any game server by one-click install.
@@ -107,7 +110,8 @@ See [Changes from WindowsGSM](ChangesFromBase.md) for a detailed comparison with
   * **Auto Update** - Checks for updates every 30 minutes, making sure your game servers are up to date!
   * **Restart Crontab** - Schedule your game servers to restart at any time, very useful for servers that require restarts to run smoothly.
   * **Start on Login** - Automatically start the application and selected servers when you sign in.
-  * **Runtime Port Verification** - Detects the running server's process-owned client/main port where supported. Source and GoldSrc A2S health checks use the game/server UDP port; other supported query checks use their configured endpoint.
+	* **Runtime Port Verification** - Detects the running server's process-owned client/main port where supported. Source and GoldSrc A2S health checks use the game/server UDP port; other supported query checks use their configured endpoint. Query logs record initial success, first failure, repeated-failure escalation, and recovery without logging every five-second poll.
+	* **Global Server List Check** - Manually check whether a supported server appears on Steam's global list from the Tools menu. It no longer runs automatically or contributes to server health.
   * **CPU Priority and Affinity** - Set and save the cpu priority and affinity!
   * **Mod Manager** - Manage custom server mods from the application.
   * **Remote Control** - Remote control your game servers with Discord!
@@ -127,29 +131,12 @@ New plugin authors can start with the [from-scratch tutorial without an engine b
 2. [WindowsGSM.ARMA2OA](https://github.com/DevVault/WindowsGSM.ARMA2)
 3. [WindowsGSM.ARMA3](https://github.com/BattlefieldDuck/WindowsGSM.ARMA3)
 3. [WindowsGSM.HLDM](https://github.com/DevVault/WindowsGSM.HLDM)
-3. [WindowsGSM.L4D](https://github.com/DevVault/WindowsGSM.L4D)
 
 ![Screenshot Plugins](https://windowsgsm.com/assets/images/WindowsGSM-Plugins-v1.21.0.png)
 
-## Built-in game integration tests
-
-`CdogsWindowsGSM.Tests` includes lifecycle tests for every built-in game. They run the game's install, update, validation (where supported), and launch operations; shared-install games use the shared binary/configuration path. Games with configuration-backup support also run a backup/restore round trip. The same live suite exercises the V2 `GarrysModV2` shared-install/config-only methods and the `CS16StandaloneV2` backup-plan capability from the plugin examples. Running the `GameIntegration` category starts the live operations directly; there is no environment-variable opt-in.
-
-The [game integration alpha audit and AI handoff](docs/GAME-INTEGRATION-ALPHA-AUDIT.md) reviews all 57 built-ins and both V2 game examples, with source evidence, prioritized follow-up work, per-game live-smoke results, and qualification requirements. Live smoke passes, blocked rows, and source review are not full alpha qualification.
-
-If `CdogsWindowsGSM.Tests\steam-credentials.txt` does not exist, copy `CdogsWindowsGSM.Tests\steam-credentials.example.txt` to that path. Fill in `steamUser` and `steamPass` locally before running the live tests. The real credentials file is git-ignored; do not put its contents in chat or reports. Use a dedicated Steam account with the required game entitlements: SteamCMD receives the credentials through its existing command-line login flow. Signing into SteamCMD interactively does not replace this file; the current harness requires it for every live row, including anonymous and non-Steam games. Minecraft EULA prompts may also require confirmation during a run.
-
-From Windows PowerShell, run:
-
-```powershell
-dotnet test CdogsWindowsGSM.Tests\CdogsWindowsGSM.Tests.csproj --filter "TestCategory=GameIntegration"
-```
-
-By default, integration data is rooted outside the repository at `%LOCALAPPDATA%\CdogsWindowsGSM\GameIntegration`. After each test case, cleanup deletes test-created server directories, per-server backup/log folders, and shared game installations no longer referenced by any server. A shared installation still referenced by another server is retained. The integration root itself is not removed, and an interrupted process may leave files behind. Set `CDOGS_GAME_INTEGRATION_ROOT` to choose another directory outside the repository, `CDOGS_GAME_INTEGRATION_GAMES` to a comma-separated list of exact built-in game names or the `GarrysModV2` / `CS16StandaloneV2` example names to run a subset, or `CDOGS_STEAM_CREDENTIALS_FILE` to use a credentials file elsewhere. Firewall rules are not changed while the test path override is active.
-
 ## Releases and updates
 
-The latest published release is [CdogsWindowsGSM 1.24.1](https://github.com/conorjh/CdogsWindowsGSM/releases/tag/v1.24.1). Download both `CdogsWindowsGSM.exe` and `CdogsWindowsGSM-Updater.exe` from its release assets. In-app updates use releases published in this repository.
+The beta candidate uses the [`v2.0.0-beta1`](https://github.com/conorjh/CdogsWindowsGSM/releases/tag/v2.0.0-beta1) tag and is intended to be published as a GitHub prerelease. Once published, download both [CdogsWindowsGSM.exe](https://github.com/conorjh/CdogsWindowsGSM/releases/download/v2.0.0-beta1/CdogsWindowsGSM.exe) and [CdogsWindowsGSM-Updater.exe](https://github.com/conorjh/CdogsWindowsGSM/releases/download/v2.0.0-beta1/CdogsWindowsGSM-Updater.exe) from that release. The in-app update check and updater use the newest published release, including prereleases; they do not rely on GitHub's stable-only `/releases/latest/download` URL. If your installed copy does not offer this prerelease, download both beta assets manually; the prerelease-aware update flow is included in beta1.
 
 ## Upstream resources
 - **Original source:** [WindowsGSM/WindowsGSM](https://github.com/WindowsGSM/WindowsGSM)

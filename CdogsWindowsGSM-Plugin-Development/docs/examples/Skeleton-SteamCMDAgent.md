@@ -1,6 +1,6 @@
 # Example reference: `Skeleton-SteamCMDAgent.cs`
 
-[Source file](../../Examples/Skeleton-SteamCMDAgent.cs) | [Plugin authoring and migration notes](../PLUGIN-AUTHORING-AND-MIGRATION.md)
+[Source file](../../Examples/Skeleton-SteamCMDAgent.cs) | [Plugin V1-to-V2 migration guide](../PLUGIN-V1-TO-V2-GUIDE.md)
 
 ## Purpose and status
 

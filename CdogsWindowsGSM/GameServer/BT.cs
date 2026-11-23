@@ -65,19 +65,14 @@ namespace WindowsGSM.GameServer
 
             string param = _serverData.ServerParam;
 
-            Process p = new Process
+            Process p = Functions.ServerConsole.StartInNewConsole(new ProcessStartInfo
             {
-                StartInfo =
-                {
-                    WorkingDirectory = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID),
-                    FileName = exePath,
-                    Arguments = param,
-                    WindowStyle = ProcessWindowStyle.Minimized,
-                    UseShellExecute = false
-                },
-                EnableRaisingEvents = true
-            };
-            p.Start();
+                WorkingDirectory = Functions.ServerPath.GetServersServerFiles(_serverData.ServerID),
+                FileName = exePath,
+                Arguments = param,
+                WindowStyle = ProcessWindowStyle.Minimized,
+                UseShellExecute = false
+            });
 
             return p;
         }

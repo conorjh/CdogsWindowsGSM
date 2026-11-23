@@ -6,6 +6,7 @@ using System.Linq;
 using System.Net;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 using WindowsGSM.Functions;
@@ -15,6 +16,8 @@ namespace WindowsGSM.GameServer.Engine
 {
     abstract class MinecraftJava
     {
+        private static readonly SemaphoreSlim JavaRuntimeLock = new SemaphoreSlim(1, 1);
+
         protected readonly ServerConfig ServerData;
         protected string ServerDirectory => ServerPath.GetServersServerFiles(ServerData.ServerID);
         protected abstract string GameName { get; }
@@ -40,7 +43,7 @@ namespace WindowsGSM.GameServer.Engine
 
         protected MinecraftJava(ServerConfig serverData) => ServerData = serverData;
 
-        protected WebClient CreateClient()
+        protected static WebClient CreateClient()
         {
             var client = new WebClient { Encoding = Encoding.UTF8 };
             client.Headers[HttpRequestHeader.UserAgent] = "CdogsWindowsGSM/1.0 (https://github.com/WindowsGSM/WindowsGSM)";
@@ -58,7 +61,7 @@ namespace WindowsGSM.GameServer.Engine
             return File.Exists(path) ? File.ReadAllText(path).Trim() : string.Empty;
         }
 
-        public void CreateServerCFG()
+        public virtual void CreateServerCFG()
         {
             var config = new StringBuilder();
             config.AppendLine($"motd={EscapeProperty(ServerData.ServerName)}");
@@ -131,6 +134,7 @@ namespace WindowsGSM.GameServer.Engine
             if (!Environment.Is64BitOperatingSystem)
                 throw new PlatformNotSupportedException("These Minecraft servers require 64-bit Windows.");
 
+            int major;
             using (var client = CreateClient())
             {
                 string metadataPath = ServerPath.GetServersCache(ServerData.ServerID, "minecraft-" + minecraftVersion + ".json");
@@ -146,35 +150,57 @@ namespace WindowsGSM.GameServer.Engine
                     Directory.CreateDirectory(Path.GetDirectoryName(metadataPath));
                     File.WriteAllText(metadataPath, metadata.ToString());
                 }
-                int major = RequiredJava(minecraftVersion, (int?)metadata["javaVersion"]?["majorVersion"] ?? 8);
-                string runtime = ServerPath.GetServersCache(ServerData.ServerID, "java-" + major);
-                JavaPath = FindRuntime(runtime);
-                if (JavaPath != null) return;
+                major = RequiredJava(minecraftVersion, (int?)metadata["javaVersion"]?["majorVersion"] ?? 8);
+            }
 
-                var assets = JArray.Parse(await client.DownloadStringTaskAsync($"https://api.adoptium.net/v3/assets/latest/{major}/hotspot?architecture=x64&image_type=jre&os=windows"));
-                var package = assets.FirstOrDefault()?["binary"]?["package"];
-                if (package == null)
-                    throw new InvalidDataException($"No Windows x64 Java {major} runtime is available from Adoptium.");
+            JavaPath = await EnsureJavaRuntimeAsync(major);
+        }
 
-                string staging = runtime + "-" + Guid.NewGuid().ToString("N");
-                string archive = staging + ".zip";
-                try
+        internal static async Task<string> EnsureJavaRuntimeAsync(int major)
+        {
+            if (!Environment.Is64BitOperatingSystem)
+                throw new PlatformNotSupportedException("These Minecraft servers require 64-bit Windows.");
+
+            string runtime = ServerPath.Get("cache", "minecraft-java", "java-" + major);
+            await JavaRuntimeLock.WaitAsync();
+            try
+            {
+                string javaPath = FindRuntime(runtime);
+                if (javaPath != null) return javaPath;
+
+                using (var client = CreateClient())
                 {
-                    Directory.CreateDirectory(Path.GetDirectoryName(runtime));
-                    await DownloadVerified(client, (string)package["link"], archive, (string)package["checksum"]);
-                    ZipFile.ExtractToDirectory(archive, staging);
-                    if (FindRuntime(staging) == null)
-                        throw new InvalidDataException("The Java archive does not contain bin\\java.exe.");
-                    if (Directory.Exists(runtime))
-                        throw new InvalidDataException($"Incomplete Java runtime at {runtime}. Remove that cache directory and retry.");
-                    Directory.Move(staging, runtime);
-                    JavaPath = FindRuntime(runtime);
+                    var assets = JArray.Parse(await client.DownloadStringTaskAsync($"https://api.adoptium.net/v3/assets/latest/{major}/hotspot?architecture=x64&image_type=jre&os=windows"));
+                    var package = assets.FirstOrDefault()?["binary"]?["package"];
+                    if (package == null)
+                        throw new InvalidDataException($"No Windows x64 Java {major} runtime is available from Adoptium.");
+
+                    string staging = runtime + "-" + Guid.NewGuid().ToString("N");
+                    string archive = staging + ".zip";
+                    try
+                    {
+                        Directory.CreateDirectory(Path.GetDirectoryName(runtime));
+                        await DownloadVerified(client, (string)package["link"], archive, (string)package["checksum"]);
+                        ZipFile.ExtractToDirectory(archive, staging);
+                        if (FindRuntime(staging) == null)
+                            throw new InvalidDataException("The Java archive does not contain bin\\java.exe.");
+                        if (Directory.Exists(runtime))
+                            throw new InvalidDataException($"Incomplete Java runtime at {runtime}. Remove that cache directory and retry.");
+                        Directory.Move(staging, runtime);
+                    }
+                    finally
+                    {
+                        if (File.Exists(archive)) File.Delete(archive);
+                        if (Directory.Exists(staging)) Directory.Delete(staging, true);
+                    }
                 }
-                finally
-                {
-                    if (File.Exists(archive)) File.Delete(archive);
-                    if (Directory.Exists(staging)) Directory.Delete(staging, true);
-                }
+
+                return FindRuntime(runtime)
+                    ?? throw new InvalidDataException($"The Java {major} runtime was not available after installation.");
+            }
+            finally
+            {
+                JavaRuntimeLock.Release();
             }
         }
 
@@ -211,7 +237,7 @@ namespace WindowsGSM.GameServer.Engine
                     UseShellExecute = false,
                     CreateNoWindow = embed,
                     WindowStyle = ProcessWindowStyle.Minimized,
-                    RedirectStandardInput = embed,
+                    RedirectStandardInput = true,
                     RedirectStandardOutput = embed,
                     RedirectStandardError = embed
                 },
@@ -237,8 +263,6 @@ namespace WindowsGSM.GameServer.Engine
                 if (string.IsNullOrWhiteSpace(build))
                     throw new InvalidDataException("Cannot determine the installed Minecraft version.");
                 await EnsureJava(BuildVersion(build));
-                var firewall = new WindowsFirewall("java.exe", JavaPath);
-                if (!await firewall.IsRuleExist()) await firewall.AddRule();
                 var process = CreateJavaProcess($"{ServerData.ServerParam} {LaunchArguments} nogui", AllowsEmbedConsole);
                 process.Start();
                 if (AllowsEmbedConsole)
@@ -257,7 +281,11 @@ namespace WindowsGSM.GameServer.Engine
 
         public Task Stop(Process process)
         {
-            if (ServerConsole.IsStandardInputRedirected(process)) process.StandardInput.WriteLine("stop");
+            if (ServerConsole.IsStandardInputRedirected(process))
+            {
+                process.StandardInput.WriteLine("stop");
+                process.StandardInput.Flush();
+            }
             else ServerConsole.SendMessageToMainWindow(process.MainWindowHandle, "stop");
             return Task.CompletedTask;
         }

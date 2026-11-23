@@ -435,7 +435,7 @@ namespace WindowsGSM.DiscordBot
             embed.AddField($"Online: {startedCount}/{serverCount}", GetProgressBar((serverCount == 0) ? 0 : startedCount * 100 / serverCount), true);
             embed.AddField("Active Players", GetActivePlayersString(activePlayers), true);
 
-            embed.WithFooter(new EmbedFooterBuilder().WithIconUrl("https://github.com/WindowsGSM/WindowsGSM/raw/master/WindowsGSM/Images/WindowsGSM.png").WithText($"WindowsGSM {MainWindow.WGSM_VERSION} | System Metrics"));
+            embed.WithFooter(new EmbedFooterBuilder().WithIconUrl("https://raw.githubusercontent.com/conorjh/CdogsWindowsGSM/master/CdogsWindowsGSM/Images/WindowsGSM-EMERALD.png").WithText($"WindowsGSM {MainWindow.WGSM_VERSION} | System Metrics"));
             embed.WithCurrentTimestamp();
 
             return embed;

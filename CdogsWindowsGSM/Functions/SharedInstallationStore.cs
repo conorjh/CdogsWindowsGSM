@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Security;
 using Newtonsoft.Json;
 using WindowsGSM.Localization;
 
@@ -40,6 +41,12 @@ namespace WindowsGSM.Functions
         public string BuildId { get; set; }
         public string State { get; set; }
         public DateTime CreatedUtc { get; set; }
+    }
+
+    public sealed class SharedInstallationCleanupFailure
+    {
+        public string InstallationId { get; set; }
+        public string Message { get; set; }
     }
 
     public static class SharedInstallationStore
@@ -287,6 +294,113 @@ namespace WindowsGSM.Functions
                     })
                     .ToList();
             }
+        }
+
+        public static List<SharedInstallationRecord> GetInstallationsForDisplay(out List<SharedInstallationCleanupFailure> cleanupFailures)
+        {
+            cleanupFailures = CleanupFailedInstallations();
+            return GetInstallations()
+                .Where(record => !string.Equals(record.State, FailedState, StringComparison.Ordinal))
+                .ToList();
+        }
+
+        public static List<SharedInstallationCleanupFailure> CleanupFailedInstallations()
+        {
+            var failedInstallationIds = new List<string>();
+            var cleanupFailures = new List<SharedInstallationCleanupFailure>();
+            using (AcquireRegistryLock())
+            {
+                Registry registry = ReadRegistry();
+                bool registryChanged = false;
+                foreach (SharedInstallationRecord record in registry.Installations)
+                {
+                    if (string.Equals(record.State, InstallingState, StringComparison.Ordinal))
+                    {
+                        try
+                        {
+                            using (AcquireExclusiveLease(record.Id))
+                            {
+                                record.State = FailedState;
+                                record.BuildId = null;
+                                registryChanged = true;
+                            }
+                        }
+                        catch (InvalidOperationException)
+                        {
+                            continue;
+                        }
+                        catch (IOException exception)
+                        {
+                            cleanupFailures.Add(CreateCleanupFailure(record.Id, exception.Message));
+                            continue;
+                        }
+                        catch (UnauthorizedAccessException exception)
+                        {
+                            cleanupFailures.Add(CreateCleanupFailure(record.Id, exception.Message));
+                            continue;
+                        }
+                        catch (SecurityException exception)
+                        {
+                            cleanupFailures.Add(CreateCleanupFailure(record.Id, exception.Message));
+                            continue;
+                        }
+                    }
+
+                    if (string.Equals(record.State, FailedState, StringComparison.Ordinal))
+                    {
+                        failedInstallationIds.Add(record.Id);
+                    }
+                }
+
+                if (registryChanged)
+                {
+                    WriteRegistry(registry);
+                }
+            }
+
+            foreach (string installationId in failedInstallationIds)
+            {
+                try
+                {
+                    if (!DeleteIfUnreferenced(installationId))
+                    {
+                        cleanupFailures.Add(CreateCleanupFailure(
+                            installationId,
+                            LocalizationManager.Get("SharedInstallationCleanupNoUnreferencedRecord")));
+                    }
+                }
+                catch (InvalidOperationException exception)
+                {
+                    cleanupFailures.Add(CreateCleanupFailure(installationId, exception.Message));
+                }
+                catch (IOException exception)
+                {
+                    cleanupFailures.Add(CreateCleanupFailure(installationId, exception.Message));
+                }
+                catch (UnauthorizedAccessException exception)
+                {
+                    cleanupFailures.Add(CreateCleanupFailure(installationId, exception.Message));
+                }
+                catch (ArgumentException exception)
+                {
+                    cleanupFailures.Add(CreateCleanupFailure(installationId, exception.Message));
+                }
+                catch (SecurityException exception)
+                {
+                    cleanupFailures.Add(CreateCleanupFailure(installationId, exception.Message));
+                }
+            }
+
+            return cleanupFailures;
+        }
+
+        private static SharedInstallationCleanupFailure CreateCleanupFailure(string installationId, string message)
+        {
+            return new SharedInstallationCleanupFailure
+            {
+                InstallationId = installationId,
+                Message = message
+            };
         }
 
         public static bool DeleteIfUnreferenced(string installationId)

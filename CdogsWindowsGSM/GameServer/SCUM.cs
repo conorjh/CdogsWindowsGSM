@@ -36,24 +36,24 @@ namespace WindowsGSM.GameServer
         {
         }
 
-        public Task<Process> Start()
+        public async Task<Process> Start()
         {
             Error = string.Empty;
             Notice = string.Empty;
             if (!IsInstallValid())
             {
-                return Task.FromResult<Process>(null);
+                return null;
             }
 
             if (!int.TryParse(_serverData.ServerPort, out int port) || port < 1 || port > 65535)
             {
                 Error = "SCUM server port must be between 1 and 65535.";
-                return Task.FromResult<Process>(null);
+                return null;
             }
             if (!int.TryParse(_serverData.ServerMaxPlayer, out int maxPlayers) || maxPlayers < 1)
             {
                 Error = "SCUM max players must be a positive number.";
-                return Task.FromResult<Process>(null);
+                return null;
             }
 
             string serverFilesPath = ServerPath.GetServersServerFiles(_serverData.ServerID);
@@ -63,36 +63,50 @@ namespace WindowsGSM.GameServer
                 : _serverData.ServerParam.Trim();
             string arguments = $"{serverParameters} -port={port} -MaxPlayers={maxPlayers}";
 
-            var process = new Process
+            var startInfo = new ProcessStartInfo
             {
-                StartInfo =
-                {
-                    WorkingDirectory = serverFilesPath,
-                    FileName = executablePath,
-                    Arguments = arguments,
-                    WindowStyle = AllowsEmbedConsole ? ProcessWindowStyle.Hidden : ProcessWindowStyle.Minimized,
-                    UseShellExecute = false,
-                    CreateNoWindow = false,
-                    RedirectStandardOutput = AllowsEmbedConsole,
-                    RedirectStandardError = AllowsEmbedConsole
-                },
-                EnableRaisingEvents = true
+                WorkingDirectory = serverFilesPath,
+                FileName = executablePath,
+                Arguments = arguments,
+                WindowStyle = AllowsEmbedConsole ? ProcessWindowStyle.Hidden : ProcessWindowStyle.Minimized,
+                UseShellExecute = false,
+                CreateNoWindow = false,
+                RedirectStandardOutput = AllowsEmbedConsole,
+                RedirectStandardError = AllowsEmbedConsole
             };
+            startInfo.EnvironmentVariables["PATH"] = ProcessEnvironment.PrependPathDirectories(
+                serverFilesPath,
+                Environment.GetEnvironmentVariable("PATH"),
+                @"Engine\Binaries\ThirdParty\PhysX\Win64\VS2015\release",
+                @"Engine\Binaries\ThirdParty\NVIDIA\NVaftermath\Win64",
+                @"Engine\Binaries\ThirdParty\Ogg\Win64\VS2015",
+                @"Engine\Binaries\ThirdParty\Vorbis\Win64\VS2015");
 
-            if (AllowsEmbedConsole)
-            {
-                var serverConsole = new ServerConsole(_serverData.ServerID);
-                process.OutputDataReceived += serverConsole.AddOutput;
-                process.ErrorDataReceived += serverConsole.AddOutput;
-            }
-
+            Process process = null;
             try
             {
+                await LegacyDirectXRuntime.EnsureInstalledAsync(serverFilesPath);
+                process = new Process
+                {
+                    StartInfo = startInfo,
+                    EnableRaisingEvents = true
+                };
+
+                if (AllowsEmbedConsole)
+                {
+                    var serverConsole = new ServerConsole(_serverData.ServerID);
+                    process.OutputDataReceived += serverConsole.AddOutput;
+                    process.ErrorDataReceived += serverConsole.AddOutput;
+                }
+
                 if (!process.Start())
                 {
                     Error = "SCUM did not start a server process.";
-                    process.Dispose();
-                    return Task.FromResult<Process>(null);
+            if (process != null)
+            {
+                process.Dispose();
+            }
+                    return null;
                 }
 
                 if (AllowsEmbedConsole)
@@ -101,7 +115,7 @@ namespace WindowsGSM.GameServer
                     process.BeginErrorReadLine();
                 }
 
-                return Task.FromResult(process);
+                return process;
             }
             catch (Win32Exception exception)
             {
@@ -121,7 +135,7 @@ namespace WindowsGSM.GameServer
             }
 
             process.Dispose();
-            return Task.FromResult<Process>(null);
+            return null;
         }
 
         public async Task Stop(Process process)
@@ -133,23 +147,33 @@ namespace WindowsGSM.GameServer
                 return;
             }
 
-            IntPtr windowHandle = process.MainWindowHandle;
-            if (windowHandle != IntPtr.Zero)
+            bool hasUsableWindow = ServerConsole.HasUsableWindow(process, process.MainWindowHandle);
+            if (hasUsableWindow)
             {
-                ServerConsole.SetMainWindow(windowHandle);
-                ServerConsole.SendWaitToMainWindow("^c");
-            }
-            else
-            {
-                process.CloseMainWindow();
+                try
+                {
+                    process.CloseMainWindow();
+                }
+                catch (InvalidOperationException) when (process.HasExited)
+                {
+                    return;
+                }
             }
 
-            bool exited = await Task.Run(() => process.HasExited || process.WaitForExit(5000));
-            if (!exited)
+            bool exited = hasUsableWindow && await Task.Run(() => process.HasExited || process.WaitForExit(5000));
+            if (!exited && !process.HasExited)
             {
-                process.Kill();
-                await Task.Run(() => process.WaitForExit());
-                Notice = "SCUM did not stop after Ctrl+C and was terminated.";
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch (InvalidOperationException) when (process.HasExited)
+                {
+                    return;
+                }
+
+                await process.WaitForExitAsync();
+                Notice = "SCUM did not stop gracefully and was terminated.";
             }
         }
 
