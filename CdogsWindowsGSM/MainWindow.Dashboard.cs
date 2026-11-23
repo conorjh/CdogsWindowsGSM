@@ -18,6 +18,7 @@ namespace WindowsGSM
         private readonly CancellationTokenSource _dashboardRefreshCancellation = new CancellationTokenSource();
         private string _lastDashboardTemperatureError;
         private string _dashboardAttentionServerId;
+        private string _dashboardAttentionScheduleId;
         private bool _dashboardAttentionOpensSchedules;
 
         private async void DashboardContent_Loaded(object sender, RoutedEventArgs e)
@@ -56,11 +57,13 @@ namespace WindowsGSM
             DateTime? nextBackupAt = null;
             string nextBackupServerId = null;
             string nextBackupServerName = null;
+            string nextBackupScheduleId = null;
             DateTime? backupAttentionAt = null;
             string backupAttentionServerId = null;
             string backupAttentionServerName = null;
             string backupAttentionResult = null;
             string backupAttentionMessage = null;
+            string backupAttentionScheduleId = null;
 
             foreach (DashboardServerSnapshot server in servers)
             {
@@ -76,39 +79,46 @@ namespace WindowsGSM
                     backupAttentionServerName = server.Name;
                     backupAttentionResult = "ConfigurationError";
                     backupAttentionMessage = exception.Message;
+                    backupAttentionScheduleId = null;
                     continue;
                 }
 
-                if (scheduleConfig.Enabled)
+                foreach (BackupScheduleTaskConfig task in scheduleConfig.Tasks)
                 {
-                    CrontabSchedule schedule = CrontabSchedule.TryParse(scheduleConfig.CronExpression);
-                    if (schedule == null)
+                    if (task.Enabled)
                     {
-                        backupAttentionAt = now;
-                        backupAttentionServerId = server.ID;
-                        backupAttentionServerName = server.Name;
-                        backupAttentionResult = "Invalid";
-                        backupAttentionMessage = LocalizationManager.Get("ScheduleInvalidMessage");
+                        CrontabSchedule schedule = CrontabSchedule.TryParse(task.CronExpression);
+                        if (schedule == null)
+                        {
+                            backupAttentionAt = now;
+                            backupAttentionServerId = server.ID;
+                            backupAttentionServerName = server.Name;
+                            backupAttentionResult = "Invalid";
+                            backupAttentionMessage = LocalizationManager.Get("ScheduleInvalidMessage");
+                            backupAttentionScheduleId = task.Id;
+                        }
+                        else if (TryGetNextBackupOccurrence(schedule, now, out DateTime occurrence) &&
+                            (!nextBackupAt.HasValue || occurrence < nextBackupAt.Value))
+                        {
+                            nextBackupAt = occurrence;
+                            nextBackupServerId = server.ID;
+                            nextBackupServerName = server.Name;
+                            nextBackupScheduleId = task.Id;
+                        }
                     }
-                    else if (TryGetNextBackupOccurrence(schedule, now, out DateTime occurrence) &&
-                        (!nextBackupAt.HasValue || occurrence < nextBackupAt.Value))
-                    {
-                        nextBackupAt = occurrence;
-                        nextBackupServerId = server.ID;
-                        nextBackupServerName = server.Name;
-                    }
-                }
 
-                if (IsDashboardBackupAttention(scheduleConfig.LastResult))
-                {
-                    DateTime attemptAt = scheduleConfig.LastAttemptedAt ?? scheduleConfig.LastEvaluatedAt ?? DateTime.MinValue;
-                    if (!backupAttentionAt.HasValue || attemptAt >= backupAttentionAt.Value)
+                    if (IsDashboardBackupAttention(task.LastResult))
                     {
-                        backupAttentionAt = attemptAt;
-                        backupAttentionServerId = server.ID;
-                        backupAttentionServerName = server.Name;
-                        backupAttentionResult = scheduleConfig.LastResult;
-                        backupAttentionMessage = scheduleConfig.LastResultMessage;
+                        DateTime attemptAt = task.LastAttemptedAt ?? task.LastEvaluatedAt ?? DateTime.MinValue;
+                        if (!backupAttentionAt.HasValue || attemptAt >= backupAttentionAt.Value)
+                        {
+                            backupAttentionAt = attemptAt;
+                            backupAttentionServerId = server.ID;
+                            backupAttentionServerName = server.Name;
+                            backupAttentionResult = task.LastResult;
+                            backupAttentionMessage = task.LastResultMessage;
+                            backupAttentionScheduleId = task.Id;
+                        }
                     }
                 }
             }
@@ -116,6 +126,9 @@ namespace WindowsGSM
             DashboardServerSnapshot healthAttention = servers.FirstOrDefault(server =>
                 server.HealthStatus == ServerHealthStatus.Warning || server.HealthStatus == ServerHealthStatus.Unhealthy);
             string actionServerId = backupAttentionServerId ?? healthAttention?.ID ?? nextBackupServerId;
+            string actionScheduleId = backupAttentionServerId != null
+                ? backupAttentionScheduleId
+                : healthAttention == null ? nextBackupScheduleId : null;
             bool actionOpensSchedules = backupAttentionServerId != null || healthAttention == null;
 
             return new DashboardExtendedSnapshot(
@@ -130,6 +143,7 @@ namespace WindowsGSM
                 backupAttentionResult,
                 backupAttentionMessage,
                 actionServerId,
+                actionScheduleId,
                 actionOpensSchedules);
         }
 
@@ -184,6 +198,7 @@ namespace WindowsGSM
             button_dashboard_fleet_summary.ToolTip = LocalizationManager.Get("DashboardFleetAttentionTooltip");
             button_dashboard_fleet_summary.IsEnabled = !string.IsNullOrWhiteSpace(snapshot.ActionServerId);
             _dashboardAttentionServerId = snapshot.ActionServerId;
+            _dashboardAttentionScheduleId = snapshot.ActionScheduleId;
             _dashboardAttentionOpensSchedules = snapshot.ActionOpensSchedules;
         }
 
@@ -247,9 +262,7 @@ namespace WindowsGSM
             if (_dashboardAttentionOpensSchedules)
             {
                 HamburgerMenuControl.SelectedIndex = 2;
-                RefreshBackupSchedules(_dashboardAttentionServerId);
-                BackupScheduleGrid.SelectedItem = BackupScheduleGrid.Items.Cast<BackupScheduleRow>()
-                    .FirstOrDefault(row => row.ServerId == _dashboardAttentionServerId);
+                RefreshBackupSchedules(_dashboardAttentionServerId, _dashboardAttentionScheduleId);
                 return;
             }
 
@@ -299,6 +312,7 @@ namespace WindowsGSM
             public string BackupAttentionResult { get; private set; }
             public string BackupAttentionMessage { get; private set; }
             public string ActionServerId { get; private set; }
+            public string ActionScheduleId { get; private set; }
             public bool ActionOpensSchedules { get; private set; }
 
             public DashboardExtendedSnapshot(
@@ -313,6 +327,7 @@ namespace WindowsGSM
                 string backupAttentionResult,
                 string backupAttentionMessage,
                 string actionServerId,
+                string actionScheduleId,
                 bool actionOpensSchedules)
             {
                 Temperature = temperature;
@@ -326,6 +341,7 @@ namespace WindowsGSM
                 BackupAttentionResult = backupAttentionResult;
                 BackupAttentionMessage = backupAttentionMessage;
                 ActionServerId = actionServerId;
+                ActionScheduleId = actionScheduleId;
                 ActionOpensSchedules = actionOpensSchedules;
             }
         }

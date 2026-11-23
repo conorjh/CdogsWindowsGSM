@@ -838,6 +838,7 @@ public sealed class BuiltInGameIntegrationTests
 
     private async Task RunLaunchSmokeTestAsync(GameInstance instance, string gameKey)
     {
+        ApplyConfiguredConsoleMode(instance.GameServer, instance.Config.EmbedConsole, gameKey);
         MethodInfo start = FindProcessOperation(instance.GameServer, "Start");
         ClearError(instance.GameServer);
         TestContext.WriteLine($"{gameKey}: launching for {ServerStartupGracePeriod}.");
@@ -863,11 +864,55 @@ public sealed class BuiltInGameIntegrationTests
             }
             finally
             {
+                LogProcessStopDiagnostics(process, gameKey, instance.Config.EmbedConsole);
                 await StopServerAsync(instance.GameServer, gameKey, process);
             }
         }
 
         TestContext.WriteLine($"{gameKey}: launch stayed alive and was stopped.");
+    }
+
+    private static void ApplyConfiguredConsoleMode(object gameServer, bool embedConsole, string gameKey)
+    {
+        PropertyInfo property = gameServer.GetType().GetProperty("AllowsEmbedConsole", BindingFlags.Instance | BindingFlags.Public);
+        if (property != null)
+        {
+            Assert.AreEqual(typeof(bool), property.PropertyType, $"'{gameKey}' AllowsEmbedConsole must be Boolean.");
+            if (property.SetMethod?.IsPublic == true)
+            {
+                property.SetValue(gameServer, embedConsole);
+            }
+
+            Assert.AreEqual(embedConsole, (bool)property.GetValue(gameServer), $"'{gameKey}' did not use the configured console mode.");
+            return;
+        }
+
+        FieldInfo field = gameServer.GetType().GetField("AllowsEmbedConsole", BindingFlags.Instance | BindingFlags.Public);
+        if (field == null)
+        {
+            return;
+        }
+
+        Assert.AreEqual(typeof(bool), field.FieldType, $"'{gameKey}' AllowsEmbedConsole must be Boolean.");
+        if (!field.IsInitOnly && !field.IsLiteral)
+        {
+            field.SetValue(gameServer, embedConsole);
+        }
+
+        Assert.AreEqual(embedConsole, (bool)field.GetValue(gameServer), $"'{gameKey}' did not use the configured console mode.");
+    }
+
+    private void LogProcessStopDiagnostics(Process process, string gameKey, bool embedConsole)
+    {
+        IntPtr mainWindow = process.MainWindowHandle;
+        ProcessStartInfo startInfo = process.StartInfo;
+        bool hasUsableWindow = ServerConsole.HasUsableWindow(process, mainWindow);
+        TestContext.WriteLine(
+            $"{gameKey}: stop diagnostics; embedConsole={embedConsole}, processId={process.Id}, " +
+            $"hasUsableWindow={hasUsableWindow}, createNoWindow={startInfo.CreateNoWindow}, " +
+            $"redirectStandardInput={startInfo.RedirectStandardInput}, " +
+            $"redirectStandardOutput={startInfo.RedirectStandardOutput}, " +
+            $"redirectStandardError={startInfo.RedirectStandardError}.");
     }
 
     private async Task StopServerAsync(object gameServer, string gameKey, Process process)

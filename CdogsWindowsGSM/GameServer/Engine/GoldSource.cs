@@ -127,6 +127,16 @@ namespace WindowsGSM.GameServer.Engine
                     }
                 }
 
+                List<string> mapRotation = GetMapRotation();
+                string startMap = mapRotation.Count > 0 ? mapRotation[0] : serverData.ServerMap;
+                string mapDirectory = Path.Combine(binaryRoot, Game, "maps");
+                if (!string.IsNullOrWhiteSpace(startMap) && !File.Exists(Path.Combine(mapDirectory, startMap + ".bsp")))
+                {
+                    Error = $"Configured map '{startMap}' is missing from '{mapDirectory}'. Verify the {Game} game-content files (Steam AppID {AppId}) are installed.";
+                    sharedLease?.Dispose();
+                    return null;
+                }
+
                 StringBuilder sb = new StringBuilder();
                 sb.Append($"-console -game {Game}");
                 sb.Append(string.IsNullOrWhiteSpace(serverData.ServerIP) ? string.Empty : $" +ip {serverData.ServerIP}");
@@ -186,6 +196,7 @@ namespace WindowsGSM.GameServer.Engine
                             Arguments = param,
                             WindowStyle = ProcessWindowStyle.Minimized,
                             UseShellExecute = false,
+                            RedirectStandardInput = true,
                             RedirectStandardOutput = true,
                             RedirectStandardError = true
                         },
@@ -214,12 +225,35 @@ namespace WindowsGSM.GameServer.Engine
             }
         }
 
-        public async Task Stop(Process p)
+        public Task Stop(Process p)
         {
-            await Task.Run(() =>
+            if (p == null)
             {
-                Functions.ServerConsole.SendMessageToMainWindow(p.MainWindowHandle, "quit");
-            });
+                throw new ArgumentNullException(nameof(p));
+            }
+
+            if (p.HasExited)
+            {
+                return Task.CompletedTask;
+            }
+
+            if (Functions.ServerConsole.IsStandardInputRedirected(p))
+            {
+                p.StandardInput.WriteLine("quit");
+                p.StandardInput.Flush();
+            }
+            else
+            {
+                IntPtr mainWindow = p.MainWindowHandle;
+                if (!Functions.ServerConsole.HasUsableWindow(p, mainWindow))
+                {
+                    throw new InvalidOperationException("GoldSrc server has neither redirected standard input nor a usable console window.");
+                }
+
+                Functions.ServerConsole.SendMessageToMainWindow(mainWindow, "quit");
+            }
+
+            return Task.CompletedTask;
         }
 
         public async void CreateServerCFG()

@@ -26,6 +26,18 @@ namespace WindowsGSM.Functions
         private const uint TcpStateListen = 2;
         private static readonly IntPtr InvalidHandle = new IntPtr(-1);
 
+        public static bool AreConfiguredUdpEndpointsConflicting(string firstAddress, int firstPort, string secondAddress, int secondPort)
+        {
+            if (firstPort < 1 || firstPort > ushort.MaxValue || firstPort != secondPort ||
+                !IPAddress.TryParse(firstAddress, out IPAddress firstIp) || firstIp.AddressFamily != AddressFamily.InterNetwork ||
+                !IPAddress.TryParse(secondAddress, out IPAddress secondIp) || secondIp.AddressFamily != AddressFamily.InterNetwork)
+            {
+                return false;
+            }
+
+            return firstIp.Equals(IPAddress.Any) || secondIp.Equals(IPAddress.Any) || firstIp.Equals(secondIp);
+        }
+
         public static int? FindClientPort(Process serverProcess, string address, int configuredClientPort, int configuredQueryPort)
         {
             if (serverProcess == null ||

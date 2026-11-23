@@ -135,7 +135,9 @@ New plugin authors can start with the [from-scratch tutorial without an engine b
 
 `CdogsWindowsGSM.Tests` includes lifecycle tests for every built-in game. They run the game's install, update, validation (where supported), and launch operations; shared-install games use the shared binary/configuration path. Games with configuration-backup support also run a backup/restore round trip. The same live suite exercises the V2 `GarrysModV2` shared-install/config-only methods and the `CS16StandaloneV2` backup-plan capability from the plugin examples. Running the `GameIntegration` category starts the live operations directly; there is no environment-variable opt-in.
 
-Copy `CdogsWindowsGSM.Tests\steam-credentials.example.txt` to `CdogsWindowsGSM.Tests\steam-credentials.txt` and fill in `steamUser` and `steamPass` before running the live tests. The real credentials file is git-ignored. Use a dedicated Steam account with the required game entitlements: SteamCMD receives the credentials through its existing command-line login flow. Minecraft EULA prompts may also require confirmation during a run.
+The [game integration alpha audit and AI handoff](docs/GAME-INTEGRATION-ALPHA-AUDIT.md) reviews all 57 built-ins and both V2 game examples, with source evidence, prioritized follow-up work, per-game live-smoke results, and qualification requirements. Live smoke passes, blocked rows, and source review are not full alpha qualification.
+
+If `CdogsWindowsGSM.Tests\steam-credentials.txt` does not exist, copy `CdogsWindowsGSM.Tests\steam-credentials.example.txt` to that path. Fill in `steamUser` and `steamPass` locally before running the live tests. The real credentials file is git-ignored; do not put its contents in chat or reports. Use a dedicated Steam account with the required game entitlements: SteamCMD receives the credentials through its existing command-line login flow. Signing into SteamCMD interactively does not replace this file; the current harness requires it for every live row, including anonymous and non-Steam games. Minecraft EULA prompts may also require confirmation during a run.
 
 From Windows PowerShell, run:
 

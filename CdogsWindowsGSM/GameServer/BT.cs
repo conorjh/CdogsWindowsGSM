@@ -82,12 +82,10 @@ namespace WindowsGSM.GameServer
             return p;
         }
 
-        public async Task Stop(Process p)
+        public Task Stop(Process p)
         {
-            await Task.Run(() =>
-            {
-                Functions.ServerConsole.SendMessageToMainWindow(p.MainWindowHandle, "quit");
-            });
+            Functions.ServerConsole.SendConsoleKeystrokes(p, "quit\r");
+            return Task.CompletedTask;
         }
 
         public async Task<Process> Install()

@@ -36,6 +36,8 @@ Here, “single exe” means a game-server binary installation shared by multipl
 
 The full built-in inventory, explicit config-only scopes, current selection allowlist, and per-family qualification steps are recorded in the [built-in game shared-install/config-only report](BUILT-IN-GAME-SHARED-INSTALL-CONFIG-REPORT.md). The report distinguishes code enablement from live runtime qualification.
 
+For the integration-suite audit of every built-in and both V2 game examples, including prioritized source findings and AI-ready acceptance criteria, use the [game integration alpha audit and handoff](GAME-INTEGRATION-ALPHA-AUDIT.md). Its blocked or source-only checks must not be counted as completed Alpha gates.
+
 | Integration | Instance paths/mechanism represented in source | New shared-install choice | Evidence still required |
 |---|---|---|---|
 | Rust | `servers\\<id>\\serverfiles\\server.cfg`; shared binaries previously launched with a per-server working directory. | Gated by the host after the live process failed to find `Bundles\\Bundles` in that instance directory. Private Rust and config-only backups remain available. | Design and verify a supported split between the shared asset root and per-instance writable data before re-enabling; then test two instances, saves/config/logs, update blocking, recovery, and backup/restore. |
